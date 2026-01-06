@@ -105,12 +105,32 @@ class SiteDetailActivity : AppCompatActivity() {
             .setPositiveButton("Rename") { _, _ ->
                 val newName = editText.text.toString().trim()
                 if (newName.isNotBlank() && newName != site.name) {
-                    viewModel.renameSite(site, newName)
-                    // Update local site object and UI
-                    site = site.copy(name = newName)
-                    siteNameText.text = newName
-                    supportActionBar?.title = newName
-                    Toast.makeText(this, "Site renamed", Toast.LENGTH_SHORT).show()
+                    // Show loading indicator
+                    val progressDialog = android.app.ProgressDialog.show(
+                        this,
+                        "Renaming",
+                        "Please wait...",
+                        true,
+                        false
+                    )
+                    
+                    lifecycleScope.launch {
+                        val result = viewModel.renameSite(site, newName)
+                        progressDialog.dismiss()
+                        
+                        when (result) {
+                            is MainViewModel.RenameSiteResult.Success -> {
+                                // Update local site object and UI
+                                site = site.copy(name = newName)
+                                siteNameText.text = newName
+                                supportActionBar?.title = newName
+                                Toast.makeText(this@SiteDetailActivity, "Site renamed", Toast.LENGTH_SHORT).show()
+                            }
+                            is MainViewModel.RenameSiteResult.Error -> {
+                                Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
                 } else if (newName.isBlank()) {
                     Toast.makeText(this, "Site name cannot be empty", Toast.LENGTH_SHORT).show()
                 }
