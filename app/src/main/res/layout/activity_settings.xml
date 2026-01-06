@@ -147,18 +147,6 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Home Button Section -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/buttonHome"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="Home"
-                app:icon="@android:drawable/ic_menu_revert"
-                app:iconGravity="start"
-                app:iconPadding="8dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
         </LinearLayout>
 
     </androidx.core.widget.NestedScrollView>

@@ -40,6 +40,13 @@ class MainViewModel(private val database: AppDatabase) : ViewModel() {
             )
         }
     }
+    
+    fun deleteSite(site: SamplingSite) {
+        viewModelScope.launch {
+            database.samplingSiteDao().deleteSite(site)
+            // Form completions will be deleted automatically due to CASCADE foreign key
+        }
+    }
 }
 
 class MainViewModelFactory(private val database: AppDatabase) : ViewModelProvider.Factory {
