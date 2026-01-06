@@ -3,6 +3,8 @@ package com.trec.customlogsheets
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -11,11 +13,13 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.AppDatabase
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.ui.MainViewModel
 import com.trec.customlogsheets.ui.MainViewModelFactory
 import com.trec.customlogsheets.ui.SamplingSiteAdapter
+import com.trec.customlogsheets.ui.SettingsActivity
 import com.trec.customlogsheets.ui.SiteDetailActivity
 import kotlinx.coroutines.launch
 
@@ -28,6 +32,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
+        val toolbar = findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        
         val database = AppDatabase.getDatabase(applicationContext)
         viewModel = ViewModelProvider(
             this,
@@ -37,6 +44,22 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerViews()
         setupCreateButton()
         observeData()
+    }
+    
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
     
     private fun setupRecyclerViews() {

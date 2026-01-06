@@ -21,6 +21,10 @@
         <activity
             android:name=".ui.SiteDetailActivity"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:parentActivityName=".MainActivity"
+            android:label="Settings" />
     </application>
 
 </manifest>
