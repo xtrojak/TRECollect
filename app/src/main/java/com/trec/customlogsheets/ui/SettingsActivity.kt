@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import com.google.android.material.button.MaterialButton
 import com.trec.customlogsheets.MainActivity
 import com.trec.customlogsheets.R
+import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SettingsPreferences
 
 class SettingsActivity : AppCompatActivity() {
@@ -166,26 +167,45 @@ class SettingsActivity : AppCompatActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
                 
-                // Save the URI
-                settingsPreferences.setFolderUri(uri.toString())
-                
-                // Get folder name and display full path
-                val documentFile = DocumentFile.fromTreeUri(this, uri)
-                val fullPath = getFullPath(uri, documentFile)
-                folderPathText.text = fullPath
-                
-                // Make it visually obvious that folder is selected
-                folderPathLayout.setBackgroundColor(0xFFE8F5E9.toInt()) // Light green background
-                iconFolderSelected.visibility = android.view.View.VISIBLE
-                iconFolderSelected.setImageResource(android.R.drawable.checkbox_on_background)
-                
-                // Also save a human-readable path if available
-                val path = documentFile?.uri?.path ?: ""
-                settingsPreferences.setSubmissionPath(path)
-                
-                val folderName = documentFile?.name ?: "Unknown"
-                Toast.makeText(this, "Folder selected: $folderName", Toast.LENGTH_SHORT).show()
+                // Create the folder structure
+                createFolderStructure(uri)
             }
+        }
+    }
+    
+    private fun createFolderStructure(baseUri: Uri) {
+        try {
+            val folderHelper = FolderStructureHelper(this)
+            val trecFolder = folderHelper.ensureFolderStructure(baseUri)
+            
+            if (trecFolder == null) {
+                Toast.makeText(this, "Error: Could not create folder structure", Toast.LENGTH_LONG).show()
+                return
+            }
+            
+            // Get the URI for the TREC_logsheets folder
+            val trecFolderUri = trecFolder.uri
+            
+            // Save the URI
+            settingsPreferences.setFolderUri(trecFolderUri.toString())
+            
+            // Display the path with structure info
+            val fullPath = getFullPath(trecFolderUri, trecFolder)
+            val structureInfo = "\n\nStructure created:\n• TREC_logsheets/\n  - ongoing/\n  - finished/\n  - deleted/"
+            folderPathText.text = fullPath + structureInfo
+            
+            // Make it visually obvious that folder is selected
+            folderPathLayout.setBackgroundColor(0xFFE8F5E9.toInt()) // Light green background
+            iconFolderSelected.visibility = android.view.View.VISIBLE
+            iconFolderSelected.setImageResource(android.R.drawable.checkbox_on_background)
+            
+            // Also save a human-readable path if available
+            val path = trecFolderUri.path ?: ""
+            settingsPreferences.setSubmissionPath(path)
+            
+            Toast.makeText(this, "Folder structure created successfully", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error creating folder structure: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }
