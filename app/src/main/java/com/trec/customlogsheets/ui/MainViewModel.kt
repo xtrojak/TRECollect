@@ -12,6 +12,8 @@ import com.trec.customlogsheets.data.SiteStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.InputStream
+import java.io.OutputStream
 
 class MainViewModel(
     private val database: AppDatabase,
@@ -221,11 +223,215 @@ class MainViewModel(
         }
     }
     
-    fun deleteSite(site: SamplingSite) {
-        viewModelScope.launch {
+    suspend fun deleteSite(site: SamplingSite): DeleteSiteResult {
+        // Get storage settings
+        val settingsPreferences = SettingsPreferences(context)
+        val folderUriString = settingsPreferences.getFolderUri()
+        
+        if (folderUriString.isEmpty()) {
+            // Still delete from database even if storage is not configured
             database.samplingSiteDao().deleteSite(site)
-            // Form completions will be deleted automatically due to CASCADE foreign key
+            return DeleteSiteResult.Success
         }
+        
+        val folderHelper = FolderStructureHelper(context)
+        
+        // Get the ongoing and deleted folders
+        val ongoingFolder = try {
+            folderHelper.getOngoingFolder(settingsPreferences)
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
+            // Still delete from database
+            database.samplingSiteDao().deleteSite(site)
+            return DeleteSiteResult.Success
+        }
+        
+        val deletedFolder = try {
+            folderHelper.getDeletedFolder(settingsPreferences)
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error accessing deleted folder: ${e.message}", e)
+            // Still delete from database
+            database.samplingSiteDao().deleteSite(site)
+            return DeleteSiteResult.Success
+        }
+        
+        if (ongoingFolder == null || !ongoingFolder.exists() || !ongoingFolder.canRead()) {
+            android.util.Log.w("MainViewModel", "Ongoing folder not accessible, deleting from database only")
+            database.samplingSiteDao().deleteSite(site)
+            return DeleteSiteResult.Success
+        }
+        
+        if (deletedFolder == null || !deletedFolder.exists() || !deletedFolder.canWrite()) {
+            android.util.Log.w("MainViewModel", "Deleted folder not accessible, deleting from database only")
+            database.samplingSiteDao().deleteSite(site)
+            return DeleteSiteResult.Success
+        }
+        
+        // Find the site folder in ongoing
+        val siteFolder = ongoingFolder.findFile(site.name)
+        if (siteFolder != null && siteFolder.exists()) {
+            // Check if a folder with the same name already exists in deleted
+            val existingDeletedFolder = deletedFolder.findFile(site.name)
+            if (existingDeletedFolder != null && existingDeletedFolder.exists()) {
+                // If it exists, rename the source folder with a timestamp to avoid conflicts
+                val timestamp = System.currentTimeMillis()
+                val newName = "${site.name}_${timestamp}"
+                val renameSuccess = siteFolder.renameTo(newName)
+                if (renameSuccess) {
+                    val renamedFolder = ongoingFolder.findFile(newName)
+                    if (renamedFolder != null && renamedFolder.exists()) {
+                        // Now try to move it
+                        val moveSuccess = moveFolder(renamedFolder, deletedFolder)
+                        if (!moveSuccess) {
+                            android.util.Log.w("MainViewModel", "Could not move folder to deleted, but continuing with database deletion")
+                        }
+                    } else {
+                        android.util.Log.w("MainViewModel", "Could not find renamed folder, but continuing with database deletion")
+                    }
+                } else {
+                    android.util.Log.w("MainViewModel", "Could not rename folder before moving, but continuing with database deletion")
+                }
+            } else {
+                // Move the folder to deleted
+                val moveSuccess = moveFolder(siteFolder, deletedFolder)
+                if (!moveSuccess) {
+                    android.util.Log.w("MainViewModel", "Could not move folder to deleted, but continuing with database deletion")
+                }
+            }
+        } else {
+            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found in ongoing folder, deleting from database only")
+        }
+        
+        // Delete from database (form completions will be deleted automatically due to CASCADE foreign key)
+        database.samplingSiteDao().deleteSite(site)
+        
+        return DeleteSiteResult.Success
+    }
+    
+    /**
+     * Moves a folder from source to destination by copying recursively and then deleting the source.
+     * Returns true if the move was successful, false otherwise.
+     */
+    private fun moveFolder(sourceFolder: androidx.documentfile.provider.DocumentFile, destinationFolder: androidx.documentfile.provider.DocumentFile): Boolean {
+        if (!sourceFolder.exists() || !sourceFolder.isDirectory) {
+            android.util.Log.e("MainViewModel", "Source folder does not exist or is not a directory")
+            return false
+        }
+        
+        if (!destinationFolder.exists() || !destinationFolder.canWrite()) {
+            android.util.Log.e("MainViewModel", "Destination folder does not exist or is not writable")
+            return false
+        }
+        
+        // Check if a folder with the same name already exists in destination
+        val folderName = sourceFolder.name ?: return false
+        val existingFolder = destinationFolder.findFile(folderName)
+        if (existingFolder != null && existingFolder.exists()) {
+            android.util.Log.w("MainViewModel", "Folder '$folderName' already exists in deleted folder")
+            // We could append a timestamp, but for now let's just return false
+            return false
+        }
+        
+        // Create the destination folder
+        val newFolder = destinationFolder.createDirectory(folderName)
+        if (newFolder == null || !newFolder.exists()) {
+            android.util.Log.e("MainViewModel", "Could not create folder '${sourceFolder.name}' in destination")
+            return false
+        }
+        
+        // Recursively copy all files and subfolders
+        val copySuccess = copyFolderRecursive(sourceFolder, newFolder)
+        
+        if (copySuccess) {
+            // Delete the source folder and all its contents
+            val deleteSuccess = sourceFolder.delete()
+            if (!deleteSuccess) {
+                android.util.Log.w("MainViewModel", "Could not delete source folder after copying")
+                // The copy succeeded, so we'll consider it a partial success
+                return true
+            }
+            return true
+        } else {
+            // Copy failed, try to clean up the destination folder
+            newFolder.delete()
+            return false
+        }
+    }
+    
+    /**
+     * Recursively copies all files and subfolders from source to destination.
+     */
+    private fun copyFolderRecursive(source: androidx.documentfile.provider.DocumentFile, destination: androidx.documentfile.provider.DocumentFile): Boolean {
+        try {
+            val files = source.listFiles()
+            if (files == null) {
+                android.util.Log.w("MainViewModel", "Could not list files in source folder")
+                return true // Empty folder, consider it success
+            }
+            
+            for (file in files) {
+                val fileName = file.name ?: continue // Skip files/folders without a name
+                if (file.isDirectory) {
+                    // Create subdirectory in destination
+                    val newSubDir = destination.createDirectory(fileName)
+                    if (newSubDir == null || !newSubDir.exists()) {
+                        android.util.Log.e("MainViewModel", "Could not create subdirectory '$fileName'")
+                        return false
+                    }
+                    // Recursively copy subdirectory
+                    if (!copyFolderRecursive(file, newSubDir)) {
+                        return false
+                    }
+                } else {
+                    // Copy file
+                    if (!copyFile(file, destination)) {
+                        android.util.Log.e("MainViewModel", "Could not copy file '$fileName'")
+                        return false
+                    }
+                }
+            }
+            return true
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error copying folder: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * Copies a single file from source to destination directory.
+     */
+    private fun copyFile(sourceFile: androidx.documentfile.provider.DocumentFile, destinationDir: androidx.documentfile.provider.DocumentFile): Boolean {
+        try {
+            // Create the destination file
+            val fileName = sourceFile.name ?: return false
+            val destinationFile = destinationDir.createFile(sourceFile.type ?: "*/*", fileName)
+            if (destinationFile == null || !destinationFile.exists()) {
+                android.util.Log.e("MainViewModel", "Could not create destination file '${sourceFile.name}'")
+                return false
+            }
+            
+            // Copy the file content using use blocks for automatic resource management
+            context.contentResolver.openInputStream(sourceFile.uri)?.use { inputStream ->
+                context.contentResolver.openOutputStream(destinationFile.uri)?.use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                    return true
+                } ?: run {
+                    android.util.Log.e("MainViewModel", "Could not open output stream for file '${sourceFile.name}'")
+                    return false
+                }
+            } ?: run {
+                android.util.Log.e("MainViewModel", "Could not open input stream for file '${sourceFile.name}'")
+                return false
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error copying file '${sourceFile.name}': ${e.message}", e)
+            return false
+        }
+    }
+    
+    sealed class DeleteSiteResult {
+        object Success : DeleteSiteResult()
+        data class Error(val message: String) : DeleteSiteResult()
     }
 }
 

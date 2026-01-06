@@ -142,12 +142,32 @@ class SiteDetailActivity : AppCompatActivity() {
     private fun showDeleteConfirmationDialog() {
         AlertDialog.Builder(this)
             .setTitle("Delete Site")
-            .setMessage("Are you sure you want to delete \"${site.name}\"? This action cannot be undone and will also delete all associated form data.")
+            .setMessage("Are you sure you want to delete \"${site.name}\"? The site folder will be moved to the deleted folder. This action cannot be undone and will also delete all associated form data.")
             .setPositiveButton("Delete") { _, _ ->
-                viewModel.deleteSite(site)
-                Toast.makeText(this, "Site deleted", Toast.LENGTH_SHORT).show()
-                // Navigate back to main activity
-                navigateToHome()
+                // Show loading indicator
+                val progressDialog = android.app.ProgressDialog.show(
+                    this,
+                    "Deleting",
+                    "Moving site folder to deleted...",
+                    true,
+                    false
+                )
+                
+                lifecycleScope.launch {
+                    val result = viewModel.deleteSite(site)
+                    progressDialog.dismiss()
+                    
+                    when (result) {
+                        is MainViewModel.DeleteSiteResult.Success -> {
+                            Toast.makeText(this@SiteDetailActivity, "Site deleted", Toast.LENGTH_SHORT).show()
+                            // Navigate back to main activity
+                            navigateToHome()
+                        }
+                        is MainViewModel.DeleteSiteResult.Error -> {
+                            Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
