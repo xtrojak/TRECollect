@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity() {
         val database = AppDatabase.getDatabase(applicationContext)
         viewModel = ViewModelProvider(
             this,
-            MainViewModelFactory(database)
+            MainViewModelFactory(database, applicationContext)
         )[MainViewModel::class.java]
         
         setupRecyclerViews()
@@ -85,8 +85,26 @@ class MainActivity : AppCompatActivity() {
             val siteName = editText.text?.toString() ?: ""
             
             if (siteName.isNotBlank()) {
-                viewModel.createSite(siteName)
-                editText.text?.clear()
+                lifecycleScope.launch {
+                    val result = viewModel.createSite(siteName)
+                    when (result) {
+                        is MainViewModel.CreateSiteResult.Success -> {
+                            editText.text?.clear()
+                            android.widget.Toast.makeText(
+                                this@MainActivity,
+                                "Site created successfully",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        is MainViewModel.CreateSiteResult.Error -> {
+                            android.widget.Toast.makeText(
+                                this@MainActivity,
+                                result.message,
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
             }
         }
     }

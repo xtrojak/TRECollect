@@ -40,7 +40,7 @@ class SiteDetailActivity : AppCompatActivity() {
         database = AppDatabase.getDatabase(applicationContext)
         viewModel = ViewModelProvider(
             this,
-            MainViewModelFactory(database)
+            MainViewModelFactory(database, applicationContext)
         )[MainViewModel::class.java]
         
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
