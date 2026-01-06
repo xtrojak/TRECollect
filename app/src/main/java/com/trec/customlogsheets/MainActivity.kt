@@ -2,11 +2,8 @@ package com.trec.customlogsheets
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
-import android.widget.EditText
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -64,15 +61,11 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupRecyclerViews() {
         ongoingAdapter = SamplingSiteAdapter(
-            onItemClick = { site -> navigateToDetail(site) },
-            onRenameClick = { site -> showRenameDialog(site) },
-            showRenameButton = true
+            onItemClick = { site -> navigateToDetail(site) }
         )
         
         finishedAdapter = SamplingSiteAdapter(
-            onItemClick = { site -> navigateToDetail(site) },
-            onRenameClick = { site -> showRenameDialog(site) },
-            showRenameButton = false
+            onItemClick = { site -> navigateToDetail(site) }
         )
         
         findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOngoing).apply {
@@ -110,24 +103,6 @@ class MainActivity : AppCompatActivity() {
                 finishedAdapter.submitList(sites)
             }
         }
-    }
-    
-    private fun showRenameDialog(site: SamplingSite) {
-        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_rename_site, null)
-        val editText = dialogView.findViewById<EditText>(R.id.editTextNewName)
-        editText.setText(site.name)
-        editText.selectAll()
-        
-        AlertDialog.Builder(this)
-            .setView(dialogView)
-            .setPositiveButton("Rename") { _, _ ->
-                val newName = editText.text.toString()
-                if (newName.isNotBlank()) {
-                    viewModel.renameSite(site, newName)
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
     
     private fun navigateToDetail(site: SamplingSite) {

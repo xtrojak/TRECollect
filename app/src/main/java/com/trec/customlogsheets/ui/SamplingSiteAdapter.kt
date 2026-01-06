@@ -13,9 +13,7 @@ import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.SiteStatus
 
 class SamplingSiteAdapter(
-    private val onItemClick: (SamplingSite) -> Unit,
-    private val onRenameClick: (SamplingSite) -> Unit,
-    private val showRenameButton: Boolean = false
+    private val onItemClick: (SamplingSite) -> Unit
 ) : ListAdapter<SamplingSite, SamplingSiteAdapter.SiteViewHolder>(SiteDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SiteViewHolder {
@@ -30,18 +28,12 @@ class SamplingSiteAdapter(
 
     inner class SiteViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val siteNameText: TextView = itemView.findViewById(R.id.textViewSiteName)
-        private val renameButton: ImageButton = itemView.findViewById(R.id.buttonRename)
 
         fun bind(site: SamplingSite) {
             siteNameText.text = site.name
-            renameButton.visibility = if (showRenameButton) View.VISIBLE else View.GONE
             
             itemView.setOnClickListener {
                 onItemClick(site)
-            }
-            
-            renameButton.setOnClickListener {
-                onRenameClick(site)
             }
         }
     }

@@ -24,7 +24,6 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var folderPathLayout: LinearLayout
     private lateinit var iconFolderSelected: ImageView
     private lateinit var selectFolderButton: MaterialButton
-    private lateinit var homeButton: MaterialButton
     private lateinit var teamSpinner: Spinner
     private val teams = arrayOf(SettingsPreferences.DEFAULT_TEAM)
     
@@ -58,7 +57,6 @@ class SettingsActivity : AppCompatActivity() {
         folderPathLayout = findViewById(R.id.layoutFolderPath)
         iconFolderSelected = findViewById(R.id.iconFolderSelected)
         selectFolderButton = findViewById(R.id.buttonSelectFolder)
-        homeButton = findViewById(R.id.buttonHome)
         
         // Setup team spinner
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, teams)
@@ -68,10 +66,6 @@ class SettingsActivity : AppCompatActivity() {
         
         selectFolderButton.setOnClickListener {
             openFolderPicker()
-        }
-        
-        homeButton.setOnClickListener {
-            navigateToHome()
         }
         
         teamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
