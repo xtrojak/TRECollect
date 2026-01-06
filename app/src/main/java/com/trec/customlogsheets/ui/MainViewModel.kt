@@ -140,14 +140,77 @@ class MainViewModel(
         data class Error(val message: String) : CreateSiteResult()
     }
     
-    fun renameSite(site: SamplingSite, newName: String) {
-        if (newName.isNotBlank()) {
-            viewModelScope.launch {
-                database.samplingSiteDao().updateSite(
-                    site.copy(name = newName.trim())
-                )
+    suspend fun renameSite(site: SamplingSite, newName: String): RenameSiteResult {
+        val trimmedName = newName.trim()
+        if (trimmedName.isBlank()) {
+            return RenameSiteResult.Error("Site name cannot be empty")
+        }
+        
+        if (trimmedName == site.name) {
+            return RenameSiteResult.Error("New name is the same as the current name")
+        }
+        
+        // Check if a site with the new name already exists in database
+        val existingSites = database.samplingSiteDao().getAllSites().first()
+        if (existingSites.any { it.name.equals(trimmedName, ignoreCase = true) && it.id != site.id }) {
+            return RenameSiteResult.Error("A site with this name already exists")
+        }
+        
+        // Get storage settings
+        val settingsPreferences = SettingsPreferences(context)
+        val folderUriString = settingsPreferences.getFolderUri()
+        
+        if (folderUriString.isEmpty()) {
+            return RenameSiteResult.Error("Storage folder not configured. Please select a folder in Settings.")
+        }
+        
+        val folderHelper = FolderStructureHelper(context)
+        
+        // Get the ongoing folder
+        val ongoingFolder = try {
+            folderHelper.getOngoingFolder(settingsPreferences)
+        } catch (e: Exception) {
+            return RenameSiteResult.Error("Error accessing storage folder: ${e.message}")
+        }
+        
+        if (ongoingFolder == null || !ongoingFolder.exists()) {
+            return RenameSiteResult.Error("Ongoing folder not found. Please reconfigure storage in Settings.")
+        }
+        
+        if (!ongoingFolder.canRead() || !ongoingFolder.canWrite()) {
+            return RenameSiteResult.Error("Cannot access ongoing folder. Please check permissions.")
+        }
+        
+        // Find the old site folder
+        val oldSiteFolder = ongoingFolder.findFile(site.name)
+        if (oldSiteFolder == null || !oldSiteFolder.exists()) {
+            // Folder doesn't exist, but we can still update the database
+            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found, but updating database anyway")
+        } else {
+            // Check if a folder with the new name already exists
+            val newSiteFolder = ongoingFolder.findFile(trimmedName)
+            if (newSiteFolder != null && newSiteFolder.exists()) {
+                return RenameSiteResult.Error("A folder with this name already exists in TREC_logsheets/ongoing/")
+            }
+            
+            // Rename the folder
+            val renameSuccess = oldSiteFolder.renameTo(trimmedName)
+            if (!renameSuccess) {
+                return RenameSiteResult.Error("Could not rename site folder. Please check permissions.")
             }
         }
+        
+        // Update the site in database
+        database.samplingSiteDao().updateSite(
+            site.copy(name = trimmedName)
+        )
+        
+        return RenameSiteResult.Success
+    }
+    
+    sealed class RenameSiteResult {
+        object Success : RenameSiteResult()
+        data class Error(val message: String) : RenameSiteResult()
     }
     
     fun finishSite(site: SamplingSite) {
