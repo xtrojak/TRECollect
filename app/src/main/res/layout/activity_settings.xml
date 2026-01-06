@@ -16,7 +16,8 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
-            app:navigationIcon="?attr/actionBarItemBackground" />
+            app:navigationIcon="@android:drawable/ic_menu_revert"
+            app:title="Settings" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -60,17 +61,36 @@
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
 
-                    <TextView
-                        android:id="@+id/textFolderPath"
+                    <LinearLayout
+                        android:id="@+id/layoutFolderPath"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="No folder selected"
-                        android:textSize="14sp"
+                        android:orientation="horizontal"
                         android:padding="12dp"
                         android:background="#F5F5F5"
                         android:layout_marginBottom="12dp"
                         android:minHeight="48dp"
-                        android:gravity="center_vertical" />
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/textFolderPath"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="No folder selected"
+                            android:textSize="14sp"
+                            android:gravity="center_vertical" />
+
+                        <ImageView
+                            android:id="@+id/iconFolderSelected"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="8dp"
+                            android:src="@android:drawable/ic_menu_agenda"
+                            android:visibility="gone"
+                            android:contentDescription="Folder selected" />
+
+                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/buttonSelectFolder"
@@ -126,6 +146,18 @@
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- Home Button Section -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/buttonHome"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="Home"
+                app:icon="@android:drawable/ic_menu_revert"
+                app:iconGravity="start"
+                app:iconPadding="8dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
         </LinearLayout>
 
