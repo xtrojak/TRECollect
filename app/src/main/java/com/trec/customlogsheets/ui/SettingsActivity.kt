@@ -183,11 +183,30 @@ class SettingsActivity : AppCompatActivity() {
                 return
             }
             
-            // Get the URI for the TREC_logsheets folder
+            // Verify we have the TREC_logsheets folder
+            if (trecFolder.name != FolderStructureHelper.PARENT_FOLDER_NAME) {
+                android.util.Log.w("SettingsActivity", "Warning: Folder name is '${trecFolder.name}', expected '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
+            }
+            
+            // Get the URI for the TREC_logsheets folder directly from the DocumentFile
             val trecFolderUri = trecFolder.uri
             
-            // Save the URI
+            // Also take persistable permission for the TREC_logsheets folder
+            try {
+                contentResolver.takePersistableUriPermission(
+                    trecFolderUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("SettingsActivity", "Could not take persistable permission for TREC_logsheets: ${e.message}")
+            }
+            
+            // Save the tree URI - this should point to TREC_logsheets folder
             settingsPreferences.setFolderUri(trecFolderUri.toString())
+            
+            // Verify we're saving the correct URI
+            android.util.Log.d("SettingsActivity", "Saved TREC_logsheets URI: $trecFolderUri")
+            android.util.Log.d("SettingsActivity", "TREC_logsheets folder name: ${trecFolder.name}")
             
             // Display the path with structure info
             val fullPath = getFullPath(trecFolderUri, trecFolder)
@@ -202,6 +221,9 @@ class SettingsActivity : AppCompatActivity() {
             // Also save a human-readable path if available
             val path = trecFolderUri.path ?: ""
             settingsPreferences.setSubmissionPath(path)
+            
+            // Verify the saved URI
+            android.util.Log.d("SettingsActivity", "Verifying saved URI: ${settingsPreferences.getFolderUri()}")
             
             Toast.makeText(this, "Folder structure created successfully", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
