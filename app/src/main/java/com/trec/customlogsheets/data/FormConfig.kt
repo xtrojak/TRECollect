@@ -23,7 +23,8 @@ data class FormFieldConfig(
         MULTISELECT,
         GPS,
         PHOTO,
-        BARCODE
+        BARCODE,
+        SECTION // Section header (display only, not collected)
     }
 }
 
@@ -121,6 +122,7 @@ object FormConfigLoader {
                     "gps" -> FormFieldConfig.FieldType.GPS
                     "photo" -> FormFieldConfig.FieldType.PHOTO
                     "barcode" -> FormFieldConfig.FieldType.BARCODE
+                    "section" -> FormFieldConfig.FieldType.SECTION
                     else -> {
                         android.util.Log.w("FormConfigLoader", "Unknown field type: $typeString, defaulting to TEXT")
                         FormFieldConfig.FieldType.TEXT
@@ -134,14 +136,15 @@ object FormConfigLoader {
                     null
                 }
                 
+                // Section headers don't need options, inputType, or required flag
                 fields.add(
                     FormFieldConfig(
                         id = fieldObj.getString("id"),
                         label = fieldObj.getString("label"),
                         type = fieldType,
-                        required = fieldObj.optBoolean("required", false),
-                        options = options,
-                        inputType = fieldObj.optString("inputType", null)
+                        required = if (fieldType == FormFieldConfig.FieldType.SECTION) false else fieldObj.optBoolean("required", false),
+                        options = if (fieldType == FormFieldConfig.FieldType.SECTION) null else options,
+                        inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType", null)
                     )
                 )
             }

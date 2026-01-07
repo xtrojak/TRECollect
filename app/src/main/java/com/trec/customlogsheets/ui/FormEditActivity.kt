@@ -366,12 +366,16 @@ class FormEditActivity : AppCompatActivity() {
                 try {
                     val fieldView = createFieldView(fieldConfig)
                     containerFields.addView(fieldView)
-                    fieldViews[fieldConfig.id] = fieldView
                     
-                    // Load existing value if available
-                    val existingValue = fieldValues[fieldConfig.id]
-                    if (existingValue != null) {
-                        setFieldValue(fieldView, fieldConfig, existingValue)
+                    // Section headers are display-only and don't need to be stored in fieldViews
+                    if (fieldConfig.type != FormFieldConfig.FieldType.SECTION) {
+                        fieldViews[fieldConfig.id] = fieldView
+                        
+                        // Load existing value if available
+                        val existingValue = fieldValues[fieldConfig.id]
+                        if (existingValue != null) {
+                            setFieldValue(fieldView, fieldConfig, existingValue)
+                        }
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("FormEditActivity", "Error creating field ${fieldConfig.id}: ${e.message}", e)
@@ -401,6 +405,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.GPS -> createGPSField(fieldConfig)
                 FormFieldConfig.FieldType.PHOTO -> createPhotoField(fieldConfig)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeField(fieldConfig)
+                FormFieldConfig.FieldType.SECTION -> createSectionHeader(fieldConfig)
             }
         } catch (e: Exception) {
             android.util.Log.e("FormEditActivity", "Error creating field view for ${fieldConfig.id}: ${e.message}", e)
@@ -410,6 +415,23 @@ class FormEditActivity : AppCompatActivity() {
                 setTextColor(android.graphics.Color.RED)
             }
         }
+    }
+    
+    private fun createSectionHeader(fieldConfig: FormFieldConfig): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_section_header,
+            containerFields,
+            false
+        ) as LinearLayout
+        
+        val sectionTitle = container.findViewById<TextView>(R.id.textSectionTitle)
+        sectionTitle.text = fieldConfig.label
+        
+        // Section headers are not interactive and don't need a tag
+        container.tag = null
+        
+        return container
     }
     
     private fun createTextField(fieldConfig: FormFieldConfig): View {
@@ -1167,6 +1189,11 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun validateForm(): Boolean {
         for (fieldConfig in formConfig.fields) {
+            // Skip section headers in validation
+            if (fieldConfig.type == FormFieldConfig.FieldType.SECTION) {
+                continue
+            }
+            
             if (fieldConfig.required) {
                 val fieldValue = fieldValues[fieldConfig.id]
                 
@@ -1217,6 +1244,11 @@ class FormEditActivity : AppCompatActivity() {
                             ).show()
                             return false
                         }
+                    }
+                    FormFieldConfig.FieldType.SECTION -> {
+                        // Section headers are display-only and don't need validation
+                        // This case should never be reached due to the continue statement above,
+                        // but included for exhaustiveness
                     }
                 }
             }
