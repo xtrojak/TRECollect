@@ -26,6 +26,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var iconFolderSelected: ImageView
     private lateinit var selectFolderButton: MaterialButton
     private lateinit var teamSpinner: Spinner
+    private lateinit var buttonOfflineMaps: MaterialButton
     private val teams = arrayOf(SettingsPreferences.DEFAULT_TEAM)
     
     companion object {
@@ -58,6 +59,7 @@ class SettingsActivity : AppCompatActivity() {
         folderPathLayout = findViewById(R.id.layoutFolderPath)
         iconFolderSelected = findViewById(R.id.iconFolderSelected)
         selectFolderButton = findViewById(R.id.buttonSelectFolder)
+        buttonOfflineMaps = findViewById(R.id.buttonOfflineMaps)
         
         // Setup team spinner
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, teams)
@@ -67,6 +69,11 @@ class SettingsActivity : AppCompatActivity() {
         
         selectFolderButton.setOnClickListener {
             openFolderPicker()
+        }
+        
+        buttonOfflineMaps.setOnClickListener {
+            val intent = Intent(this, OfflineMapsActivity::class.java)
+            startActivity(intent)
         }
         
         teamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {

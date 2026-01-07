@@ -109,3 +109,6 @@ kapt3/
 *.swp
 *~.nib
 
+.cursorindexingignore
+.specstory/
+.vscode/

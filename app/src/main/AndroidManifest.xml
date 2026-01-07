@@ -41,10 +41,22 @@
             android:name=".ui.FormEditActivity"
             android:parentActivityName=".ui.SiteDetailActivity"
             android:label="Edit Form" />
-        <activity
-            android:name=".ui.GPSPickerActivity"
-            android:parentActivityName=".ui.FormEditActivity"
-            android:label="Select GPS Location" />
+           <activity
+               android:name=".ui.GPSPickerActivity"
+               android:parentActivityName=".ui.FormEditActivity"
+               android:label="Select GPS Location" />
+           <activity
+               android:name=".ui.OfflineMapsActivity"
+               android:parentActivityName=".ui.SettingsActivity"
+               android:label="Offline Maps" />
+           <activity
+               android:name=".ui.DownloadRegionActivity"
+               android:parentActivityName=".ui.OfflineMapsActivity"
+               android:label="Download Map Region" />
+           <activity
+               android:name=".ui.MapPreviewActivity"
+               android:parentActivityName=".ui.OfflineMapsActivity"
+               android:label="Map Preview" />
         
         <!-- FileProvider for photo capture -->
         <provider

@@ -14,8 +14,10 @@ class SettingsPreferences(context: Context) {
         private const val KEY_SUBMISSION_PATH = "submission_path"
         private const val KEY_SAMPLING_TEAM = "sampling_team"
         private const val KEY_FOLDER_URI = "folder_uri"
+        private const val KEY_MAP_EXPIRY_DAYS = "map_expiry_days"
         
         const val DEFAULT_TEAM = "LSI"
+        const val DEFAULT_MAP_EXPIRY_DAYS = 30L // Default: 30 days
     }
     
     fun getSubmissionPath(): String {
@@ -40,6 +42,20 @@ class SettingsPreferences(context: Context) {
     
     fun setSamplingTeam(team: String) {
         prefs.edit().putString(KEY_SAMPLING_TEAM, team).apply()
+    }
+    
+    /**
+     * Gets the map expiry time in days (0 means never expire)
+     */
+    fun getMapExpiryDays(): Long {
+        return prefs.getLong(KEY_MAP_EXPIRY_DAYS, DEFAULT_MAP_EXPIRY_DAYS)
+    }
+    
+    /**
+     * Sets the map expiry time in days (0 means never expire)
+     */
+    fun setMapExpiryDays(days: Long) {
+        prefs.edit().putLong(KEY_MAP_EXPIRY_DAYS, days).apply()
     }
 }
 
