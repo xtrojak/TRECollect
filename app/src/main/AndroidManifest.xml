@@ -41,6 +41,21 @@
             android:name=".ui.FormEditActivity"
             android:parentActivityName=".ui.SiteDetailActivity"
             android:label="Edit Form" />
+        <activity
+            android:name=".ui.GPSPickerActivity"
+            android:parentActivityName=".ui.FormEditActivity"
+            android:label="Select GPS Location" />
+        
+        <!-- FileProvider for photo capture -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
