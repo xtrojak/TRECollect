@@ -10,8 +10,12 @@ import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.data.SiteStatus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -19,8 +23,86 @@ class MainViewModel(
     private val database: AppDatabase,
     private val context: Context
 ) : ViewModel() {
-    val ongoingSites: Flow<List<SamplingSite>> = database.samplingSiteDao().getSitesByStatus(SiteStatus.ONGOING)
-    val finishedSites: Flow<List<SamplingSite>> = database.samplingSiteDao().getSitesByStatus(SiteStatus.FINISHED)
+    private val _ongoingSites = MutableStateFlow<List<SamplingSite>>(emptyList())
+    val ongoingSites: StateFlow<List<SamplingSite>> = _ongoingSites.asStateFlow()
+    
+    private val _finishedSites = MutableStateFlow<List<SamplingSite>>(emptyList())
+    val finishedSites: StateFlow<List<SamplingSite>> = _finishedSites.asStateFlow()
+    
+    init {
+        // Load sites from folder structure on initialization
+        loadSitesFromFolders()
+    }
+    
+    /**
+     * Loads sites from the folder structure (ongoing and finished folders)
+     */
+    fun loadSitesFromFolders() {
+        viewModelScope.launch {
+            val settingsPreferences = SettingsPreferences(context)
+            val folderUriString = settingsPreferences.getFolderUri()
+            
+            if (folderUriString.isEmpty()) {
+                // No storage configured, set empty lists
+                _ongoingSites.value = emptyList()
+                _finishedSites.value = emptyList()
+                return@launch
+            }
+            
+            val folderHelper = FolderStructureHelper(context)
+            
+            // Load ongoing sites
+            val ongoingFolder = try {
+                folderHelper.getOngoingFolder(settingsPreferences)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error loading ongoing folder: ${e.message}", e)
+                null
+            }
+            
+            val ongoingSitesList = if (ongoingFolder != null && ongoingFolder.exists() && ongoingFolder.canRead()) {
+                val folders = ongoingFolder.listFiles() ?: emptyArray()
+                folders.filter { it.isDirectory && it.name != null }
+                    .map { folder ->
+                        SamplingSite(
+                            id = 0, // ID not used when loading from folders
+                            name = folder.name!!,
+                            status = SiteStatus.ONGOING,
+                            createdAt = 0 // We don't have creation time from folders
+                        )
+                    }
+                    .sortedBy { it.name }
+            } else {
+                emptyList()
+            }
+            
+            // Load finished sites
+            val finishedFolder = try {
+                folderHelper.getFinishedFolder(settingsPreferences)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error loading finished folder: ${e.message}", e)
+                null
+            }
+            
+            val finishedSitesList = if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
+                val folders = finishedFolder.listFiles() ?: emptyArray()
+                folders.filter { it.isDirectory && it.name != null }
+                    .map { folder ->
+                        SamplingSite(
+                            id = 0, // ID not used when loading from folders
+                            name = folder.name!!,
+                            status = SiteStatus.FINISHED,
+                            createdAt = 0 // We don't have creation time from folders
+                        )
+                    }
+                    .sortedBy { it.name }
+            } else {
+                emptyList()
+            }
+            
+            _ongoingSites.value = ongoingSitesList
+            _finishedSites.value = finishedSitesList
+        }
+    }
     
     suspend fun createSite(name: String): CreateSiteResult {
         val trimmedName = name.trim()
@@ -28,21 +110,46 @@ class MainViewModel(
             return CreateSiteResult.Error("Site name cannot be empty")
         }
         
-        // Check if site already exists in database
-        val existingSites = database.samplingSiteDao().getAllSites().first()
-        if (existingSites.any { it.name.equals(trimmedName, ignoreCase = true) }) {
-            return CreateSiteResult.Error("A site with this name already exists")
+        // Check if site already exists by checking folders
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        
+        // Check ongoing folder
+        val ongoingFolder = try {
+            folderHelper.getOngoingFolder(settingsPreferences)
+        } catch (e: Exception) {
+            // Will be handled later
+            null
         }
         
-        // Check if folder already exists
-        val settingsPreferences = SettingsPreferences(context)
+        if (ongoingFolder != null && ongoingFolder.exists() && ongoingFolder.canRead()) {
+            val existingFolder = ongoingFolder.findFile(trimmedName)
+            if (existingFolder != null && existingFolder.exists()) {
+                return CreateSiteResult.Error("A site with this name already exists")
+            }
+        }
+        
+        // Check finished folder
+        val finishedFolder = try {
+            folderHelper.getFinishedFolder(settingsPreferences)
+        } catch (e: Exception) {
+            // Will be handled later
+            null
+        }
+        
+        if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
+            val existingFolder = finishedFolder.findFile(trimmedName)
+            if (existingFolder != null && existingFolder.exists()) {
+                return CreateSiteResult.Error("A site with this name already exists")
+            }
+        }
+        
+        // Check if storage is configured
         val folderUriString = settingsPreferences.getFolderUri()
         
         if (folderUriString.isEmpty()) {
             return CreateSiteResult.Error("Storage folder not configured. Please select a folder in Settings.")
         }
-        
-        val folderHelper = FolderStructureHelper(context)
         
         // Try to get the TREC_logsheets folder (the stored URI should point to TREC_logsheets)
         val trecFolder = try {
@@ -129,10 +236,10 @@ class MainViewModel(
             return CreateSiteResult.Error("Could not create site folder in TREC_logsheets/ongoing/")
         }
         
-        // Create the site in database
-        database.samplingSiteDao().insertSite(
-            SamplingSite(name = siteName, status = SiteStatus.ONGOING)
-        )
+        // Give the file system a moment to update, then reload sites from folders to update the UI
+        // Using a small delay to ensure the folder is visible in the file system
+        kotlinx.coroutines.delay(100)
+        loadSitesFromFolders()
         
         return CreateSiteResult.Success
     }
@@ -152,23 +259,16 @@ class MainViewModel(
             return RenameSiteResult.Error("New name is the same as the current name")
         }
         
-        // Check if a site with the new name already exists in database
-        val existingSites = database.samplingSiteDao().getAllSites().first()
-        if (existingSites.any { it.name.equals(trimmedName, ignoreCase = true) && it.id != site.id }) {
-            return RenameSiteResult.Error("A site with this name already exists")
-        }
-        
         // Get storage settings
         val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
         val folderUriString = settingsPreferences.getFolderUri()
         
         if (folderUriString.isEmpty()) {
             return RenameSiteResult.Error("Storage folder not configured. Please select a folder in Settings.")
         }
         
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Get the ongoing folder
+        // Check ongoing folder
         val ongoingFolder = try {
             folderHelper.getOngoingFolder(settingsPreferences)
         } catch (e: Exception) {
@@ -183,18 +283,33 @@ class MainViewModel(
             return RenameSiteResult.Error("Cannot access ongoing folder. Please check permissions.")
         }
         
+        // Check if a folder with the new name already exists
+        val newSiteFolder = ongoingFolder.findFile(trimmedName)
+        if (newSiteFolder != null && newSiteFolder.exists() && newSiteFolder.name != site.name) {
+            return RenameSiteResult.Error("A site with this name already exists")
+        }
+        
+        // Check finished folder
+        val finishedFolder = try {
+            folderHelper.getFinishedFolder(settingsPreferences)
+        } catch (e: Exception) {
+            // Continue with ongoing folder check
+            null
+        }
+        
+        if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
+            val existingFolder = finishedFolder.findFile(trimmedName)
+            if (existingFolder != null && existingFolder.exists()) {
+                return RenameSiteResult.Error("A site with this name already exists")
+            }
+        }
+        
         // Find the old site folder
         val oldSiteFolder = ongoingFolder.findFile(site.name)
         if (oldSiteFolder == null || !oldSiteFolder.exists()) {
-            // Folder doesn't exist, but we can still update the database
-            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found, but updating database anyway")
+            // Folder doesn't exist, but we can still proceed
+            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found")
         } else {
-            // Check if a folder with the new name already exists
-            val newSiteFolder = ongoingFolder.findFile(trimmedName)
-            if (newSiteFolder != null && newSiteFolder.exists()) {
-                return RenameSiteResult.Error("A folder with this name already exists in TREC_logsheets/ongoing/")
-            }
-            
             // Rename the folder
             val renameSuccess = oldSiteFolder.renameTo(trimmedName)
             if (!renameSuccess) {
@@ -202,10 +317,8 @@ class MainViewModel(
             }
         }
         
-        // Update the site in database
-        database.samplingSiteDao().updateSite(
-            site.copy(name = trimmedName)
-        )
+        // Reload sites from folders to update the UI
+        loadSitesFromFolders()
         
         return RenameSiteResult.Success
     }
@@ -229,8 +342,13 @@ class MainViewModel(
         val folderUriString = settingsPreferences.getFolderUri()
         
         if (folderUriString.isEmpty()) {
-            // Still delete from database even if storage is not configured
-            database.samplingSiteDao().deleteSite(site)
+            // No storage configured, just delete form completions
+            try {
+                database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+            }
+            loadSitesFromFolders()
             return DeleteSiteResult.Success
         }
         
@@ -256,14 +374,26 @@ class MainViewModel(
         }
         
         if (ongoingFolder == null || !ongoingFolder.exists() || !ongoingFolder.canRead()) {
-            android.util.Log.w("MainViewModel", "Ongoing folder not accessible, deleting from database only")
-            database.samplingSiteDao().deleteSite(site)
+            android.util.Log.w("MainViewModel", "Ongoing folder not accessible")
+            // Delete form completions anyway
+            try {
+                database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+            }
+            loadSitesFromFolders()
             return DeleteSiteResult.Success
         }
         
         if (deletedFolder == null || !deletedFolder.exists() || !deletedFolder.canWrite()) {
-            android.util.Log.w("MainViewModel", "Deleted folder not accessible, deleting from database only")
-            database.samplingSiteDao().deleteSite(site)
+            android.util.Log.w("MainViewModel", "Deleted folder not accessible")
+            // Delete form completions anyway
+            try {
+                database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+            }
+            loadSitesFromFolders()
             return DeleteSiteResult.Success
         }
         
@@ -299,11 +429,18 @@ class MainViewModel(
                 }
             }
         } else {
-            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found in ongoing folder, deleting from database only")
+            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found in ongoing folder")
         }
         
-        // Delete from database (form completions will be deleted automatically due to CASCADE foreign key)
-        database.samplingSiteDao().deleteSite(site)
+        // Delete form completions for this site (using site name)
+        try {
+            database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
+        } catch (e: Exception) {
+            android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+        }
+        
+        // Reload sites from folders to update the UI
+        loadSitesFromFolders()
         
         return DeleteSiteResult.Success
     }

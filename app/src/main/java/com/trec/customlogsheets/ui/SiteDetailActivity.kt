@@ -192,7 +192,7 @@ class SiteDetailActivity : AppCompatActivity() {
     
     private fun loadFormCompletions() {
         lifecycleScope.launch {
-            val completions = database.formCompletionDao().getCompletionsForSite(site.id).first()
+            val completions = database.formCompletionDao().getCompletionsForSite(site.name).first()
             val completedFormIds = completions.map { it.formId }.toSet()
             
             val sections = PredefinedForms.sections
