@@ -9,6 +9,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.*
 import android.widget.TextView
@@ -40,6 +42,7 @@ class FormEditActivity : AppCompatActivity() {
     private lateinit var formId: String
     private lateinit var formConfig: FormConfig
     private lateinit var formFileHelper: FormFileHelper
+    private var isReadOnly: Boolean = false
     
     private lateinit var containerFields: LinearLayout
     private lateinit var textFormName: TextView
@@ -49,10 +52,17 @@ class FormEditActivity : AppCompatActivity() {
     
     private val fieldViews = mutableMapOf<String, View>()
     private val fieldValues = mutableMapOf<String, FormFieldValue>()
+    private val initialFieldValues = mutableMapOf<String, FormFieldValue>() // Track initial state
     private var currentPhotoFieldId: String? = null
     private var photoFile: File? = null
     private var currentBarcodeFieldId: String? = null
     private val barcodeScanner = BarcodeScanning.getClient()
+    private var isFormSaved = false // Track if form was just saved
+    
+    // Helper to mark form as changed
+    private fun markFormChanged() {
+        isFormSaved = false
+    }
     
     // Activity result launchers
     private val takePictureLauncher = registerForActivityResult(
@@ -72,6 +82,7 @@ class FormEditActivity : AppCompatActivity() {
                         photoFileName = fileName
                     )
                     updatePhotoFieldView(currentPhotoFieldId!!, fileName)
+                    markFormChanged()
                 }
             }
         }
@@ -112,6 +123,7 @@ class FormEditActivity : AppCompatActivity() {
                     gpsLongitude = longitude
                 )
                 updateGPSFieldView(fieldId, latitude, longitude)
+                markFormChanged()
             }
         }
     }
@@ -137,6 +149,8 @@ class FormEditActivity : AppCompatActivity() {
             return
         }
         
+        isReadOnly = intent.getBooleanExtra("isReadOnly", false)
+        
         formFileHelper = FormFileHelper(this)
         
         // Load form configuration
@@ -161,13 +175,141 @@ class FormEditActivity : AppCompatActivity() {
         renderFields()
     }
     
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.form_edit_menu, menu)
+        return true
+    }
+    
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        // Hide clear form option if read-only
+        val clearItem = menu.findItem(R.id.action_clear_form)
+        clearItem?.isVisible = !isReadOnly
+        return super.onPrepareOptionsMenu(menu)
+    }
+    
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_clear_form -> {
+                if (!isReadOnly) {
+                    showClearFormConfirmation()
+                }
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+    
     private fun setupToolbar() {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = formConfig.name
+        if (isReadOnly) {
+            supportActionBar?.title = "${formConfig.name} (Read Only)"
+        } else {
+            supportActionBar?.title = formConfig.name
+        }
         toolbar.setNavigationOnClickListener {
+            if (isReadOnly) {
+                finish() // No need to check for unsaved changes in read-only mode
+            } else {
+                handleBackPress()
+            }
+        }
+    }
+    
+    override fun onBackPressed() {
+        handleBackPress()
+    }
+    
+    private fun handleBackPress() {
+        if (hasUnsavedChanges()) {
+            showSaveChangesDialog()
+        } else {
             finish()
+        }
+    }
+    
+    private fun hasUnsavedChanges(): Boolean {
+        if (isFormSaved) {
+            return false
+        }
+        
+        // Compare current values with initial values
+        if (fieldValues.size != initialFieldValues.size) {
+            return true
+        }
+        
+        for ((key, value) in fieldValues) {
+            val initialValue = initialFieldValues[key]
+            if (initialValue == null || !valuesEqual(value, initialValue)) {
+                return true
+            }
+        }
+        
+        // Check for removed values
+        for (key in initialFieldValues.keys) {
+            if (!fieldValues.containsKey(key)) {
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    private fun valuesEqual(v1: FormFieldValue, v2: FormFieldValue): Boolean {
+        return v1.value == v2.value &&
+               v1.values == v2.values &&
+               v1.gpsLatitude == v2.gpsLatitude &&
+               v1.gpsLongitude == v2.gpsLongitude &&
+               v1.photoFileName == v2.photoFileName
+    }
+    
+    private fun showSaveChangesDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Unsaved Changes")
+            .setMessage("You have unsaved changes. What would you like to do?")
+            .setPositiveButton("Save Draft") { _, _ ->
+                saveForm(isDraft = true)
+                finish()
+            }
+            .setNeutralButton("Discard") { _, _ ->
+                finish()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun showClearFormConfirmation() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear Form")
+            .setMessage("Are you sure you want to clear this form? This will delete all saved data (both draft and submitted versions) and cannot be undone.")
+            .setPositiveButton("Clear") { _, _ ->
+                clearForm()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun clearForm() {
+        lifecycleScope.launch {
+            try {
+                // Delete both draft and submitted versions
+                formFileHelper.deleteForm(siteName, formId, isDraft = true)
+                formFileHelper.deleteForm(siteName, formId, isDraft = false)
+                
+                // Clear all field values
+                fieldValues.clear()
+                initialFieldValues.clear()
+                
+                // Re-render fields to show empty state
+                renderFields()
+                
+                Toast.makeText(this@FormEditActivity, "Form cleared", Toast.LENGTH_SHORT).show()
+                isFormSaved = true // Mark as saved since there are no changes now
+            } catch (e: Exception) {
+                android.util.Log.e("FormEditActivity", "Error clearing form: ${e.message}", e)
+                Toast.makeText(this@FormEditActivity, "Error clearing form: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
     
@@ -184,13 +326,19 @@ class FormEditActivity : AppCompatActivity() {
             textFormDescription.visibility = View.VISIBLE
         }
         
-        buttonSaveDraft.setOnClickListener {
-            saveForm(isDraft = true)
-        }
-        
-        buttonSubmit.setOnClickListener {
-            if (validateForm()) {
-                showSubmitConfirmation()
+        // Hide buttons and disable editing if read-only
+        if (isReadOnly) {
+            buttonSaveDraft.visibility = View.GONE
+            buttonSubmit.visibility = View.GONE
+        } else {
+            buttonSaveDraft.setOnClickListener {
+                saveForm(isDraft = true)
+            }
+            
+            buttonSubmit.setOnClickListener {
+                if (validateForm()) {
+                    showSubmitConfirmation()
+                }
             }
         }
     }
@@ -203,6 +351,8 @@ class FormEditActivity : AppCompatActivity() {
         if (existingData != null) {
             for (fieldValue in existingData.fieldValues) {
                 fieldValues[fieldValue.fieldId] = fieldValue
+                // Store initial state for comparison
+                initialFieldValues[fieldValue.fieldId] = fieldValue
             }
         }
     }
@@ -283,19 +433,31 @@ class FormEditActivity : AppCompatActivity() {
         // Store field ID in tag for retrieval
         textInputLayout.tag = fieldConfig.id
         
-        // Update fieldValues as user types
-        editText.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) {
-                val value = s?.toString()?.trim() ?: ""
-                if (value.isNotEmpty()) {
-                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
-                } else {
-                    fieldValues.remove(fieldConfig.id)
+        // Disable editing if read-only
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        } else {
+            // Update fieldValues as user types
+            editText.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val value = s?.toString()?.trim() ?: ""
+                    if (value.isNotEmpty()) {
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                        markFormChanged()
+                    } else {
+                        fieldValues.remove(fieldConfig.id)
+                        markFormChanged()
+                    }
                 }
-            }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+        }
         
         return textInputLayout
     }
@@ -313,25 +475,39 @@ class FormEditActivity : AppCompatActivity() {
         editText.minLines = 3
         editText.maxLines = 5
         
+        // Make read-only if needed
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        }
+        
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
         }
         
         textInputLayout.tag = fieldConfig.id
         
-        // Update fieldValues as user types
-        editText.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) {
-                val value = s?.toString()?.trim() ?: ""
-                if (value.isNotEmpty()) {
-                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
-                } else {
-                    fieldValues.remove(fieldConfig.id)
+        // Update fieldValues as user types (only if not read-only)
+        if (!isReadOnly) {
+            editText.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val value = s?.toString()?.trim() ?: ""
+                    if (value.isNotEmpty()) {
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                        markFormChanged()
+                    } else {
+                        fieldValues.remove(fieldConfig.id)
+                        markFormChanged()
+                    }
                 }
-            }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+        }
         
         return textInputLayout
     }
@@ -346,8 +522,6 @@ class FormEditActivity : AppCompatActivity() {
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
         editText.hint = fieldConfig.label
-        editText.isFocusable = false
-        editText.isClickable = true
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
@@ -355,8 +529,20 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = fieldConfig.id
         
-        editText.setOnClickListener {
-            showDatePicker(fieldConfig.id, editText)
+        // Disable editing if read-only
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        } else {
+            editText.isFocusable = false
+            editText.isClickable = true
+            editText.setOnClickListener {
+                showDatePicker(fieldConfig.id, editText)
+            }
         }
         
         return textInputLayout
@@ -372,8 +558,6 @@ class FormEditActivity : AppCompatActivity() {
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
         editText.hint = fieldConfig.label
-        editText.isFocusable = false
-        editText.isClickable = true
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
@@ -381,8 +565,20 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = fieldConfig.id
         
-        editText.setOnClickListener {
-            showTimePicker(fieldConfig.id, editText)
+        // Disable editing if read-only
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        } else {
+            editText.isFocusable = false
+            editText.isClickable = true
+            editText.setOnClickListener {
+                showTimePicker(fieldConfig.id, editText)
+            }
         }
         
         return textInputLayout
@@ -398,8 +594,6 @@ class FormEditActivity : AppCompatActivity() {
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
         editText.hint = fieldConfig.label
-        editText.isFocusable = false
-        editText.isClickable = true
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
@@ -407,8 +601,20 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = fieldConfig.id
         
-        editText.setOnClickListener {
-            showSelectDialog(fieldConfig, editText)
+        // Disable editing if read-only
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        } else {
+            editText.isFocusable = false
+            editText.isClickable = true
+            editText.setOnClickListener {
+                showSelectDialog(fieldConfig, editText)
+            }
         }
         
         return textInputLayout
@@ -449,9 +655,17 @@ class FormEditActivity : AppCompatActivity() {
                 textSelected.text = existingValue.values.joinToString(", ")
             }
             
+        if (isReadOnly) {
+            textSelected.isEnabled = false
+            textSelected.isClickable = false
+            textSelected.isFocusable = false
+            textSelected.isFocusableInTouchMode = false
+            textSelected.alpha = 0.6f // Make it visually appear disabled
+        } else {
             textSelected.setOnClickListener {
                 showMultiSelectDialog(fieldConfig, textSelected)
             }
+        }
             
             return container
         } catch (e: Exception) {
@@ -487,9 +701,11 @@ class FormEditActivity : AppCompatActivity() {
                         fieldConfig.id,
                         values = currentValues.toList()
                     )
+                    markFormChanged()
                 } else {
                     textView.text = "Tap to select options"
                     fieldValues.remove(fieldConfig.id)
+                    markFormChanged()
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -523,8 +739,12 @@ class FormEditActivity : AppCompatActivity() {
             textCoordinates.visibility = View.VISIBLE
         }
         
-        buttonGetLocation.setOnClickListener {
-            openGPSPicker(fieldConfig.id)
+        if (!isReadOnly) {
+            buttonGetLocation.setOnClickListener {
+                openGPSPicker(fieldConfig.id)
+            }
+        } else {
+            buttonGetLocation.isEnabled = false
         }
         
         return container
@@ -574,9 +794,13 @@ class FormEditActivity : AppCompatActivity() {
             textFileName.visibility = View.VISIBLE
         }
         
-        buttonCapture.setOnClickListener {
-            currentPhotoFieldId = fieldConfig.id
-            checkCameraPermissionAndCapture()
+        if (!isReadOnly) {
+            buttonCapture.setOnClickListener {
+                currentPhotoFieldId = fieldConfig.id
+                checkCameraPermissionAndCapture()
+            }
+        } else {
+            buttonCapture.isEnabled = false
         }
         
         return container
@@ -683,9 +907,13 @@ class FormEditActivity : AppCompatActivity() {
             textBarcodeValue.visibility = View.VISIBLE
         }
         
-        buttonScan.setOnClickListener {
-            currentBarcodeFieldId = fieldConfig.id
-            startBarcodeScanning()
+        if (!isReadOnly) {
+            buttonScan.setOnClickListener {
+                currentBarcodeFieldId = fieldConfig.id
+                startBarcodeScanning()
+            }
+        } else {
+            buttonScan.isEnabled = false
         }
         
         return container
@@ -760,11 +988,12 @@ class FormEditActivity : AppCompatActivity() {
                     }
                     
                     if (currentBarcodeFieldId != null) {
-                        fieldValues[currentBarcodeFieldId!!] = FormFieldValue(
-                            currentBarcodeFieldId!!,
-                            value = barcodeValue
-                        )
-                        updateBarcodeFieldView(currentBarcodeFieldId!!, barcodeValue)
+                    fieldValues[currentBarcodeFieldId!!] = FormFieldValue(
+                        currentBarcodeFieldId!!,
+                        value = barcodeValue
+                    )
+                    updateBarcodeFieldView(currentBarcodeFieldId!!, barcodeValue)
+                    markFormChanged()
                         Toast.makeText(this@FormEditActivity, "Barcode scanned: $barcodeValue", Toast.LENGTH_SHORT).show()
                     }
                 } else {
@@ -816,6 +1045,7 @@ class FormEditActivity : AppCompatActivity() {
                 val dateString = dateFormat.format(selectedDate.time)
                 editText.setText(dateString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = dateString)
+                markFormChanged()
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -844,6 +1074,7 @@ class FormEditActivity : AppCompatActivity() {
                 val timeString = String.format("%02d:%02d", hourOfDay, minute)
                 editText.setText(timeString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
+                markFormChanged()
             },
             calendar.get(Calendar.HOUR_OF_DAY),
             calendar.get(Calendar.MINUTE),
@@ -860,6 +1091,7 @@ class FormEditActivity : AppCompatActivity() {
                 val selectedValue = options[which]
                 editText.setText(selectedValue)
                 fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = selectedValue)
+                markFormChanged()
             }
             .show()
     }
@@ -1024,6 +1256,11 @@ class FormEditActivity : AppCompatActivity() {
             val success = formFileHelper.saveFormData(formData, isDraft = isDraft)
             
             if (success) {
+                // Update initial state to match current state
+                initialFieldValues.clear()
+                initialFieldValues.putAll(allValues)
+                isFormSaved = true
+                
                 if (isDraft) {
                     Toast.makeText(this@FormEditActivity, "Draft saved", Toast.LENGTH_SHORT).show()
                 } else {

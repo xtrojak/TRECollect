@@ -72,19 +72,12 @@ class FormFileHelper(private val context: Context) {
      * @param siteName The name of the site
      * @param formId The ID of the form
      * @param loadDraft If true, loads draft version, if false, loads submitted version
+     * @param checkFinished If true, also checks the finished folder (for finalized sites)
      * @return FormData if found, null otherwise
      */
-    fun loadFormData(siteName: String, formId: String, loadDraft: Boolean = false): FormData? {
+    fun loadFormData(siteName: String, formId: String, loadDraft: Boolean = false, checkFinished: Boolean = true): FormData? {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
-        
-        // Get the site folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences) ?: return null
-        val siteFolder = ongoingFolder.findFile(siteName) ?: return null
-        
-        if (!siteFolder.exists() || !siteFolder.canRead()) {
-            return null
-        }
         
         // Determine filename
         val fileName = if (loadDraft) {
@@ -93,21 +86,45 @@ class FormFileHelper(private val context: Context) {
             "${formId}.xml"
         }
         
-        val file = siteFolder.findFile(fileName) ?: return null
-        if (!file.exists() || !file.canRead()) {
-            return null
+        // Try ongoing folder first
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
+        if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
+            val file = ongoingSiteFolder.findFile(fileName)
+            if (file != null && file.exists() && file.canRead()) {
+                return try {
+                    val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+                    val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+                    inputStream?.close()
+                    FormData.fromXml(xmlContent)
+                } catch (e: Exception) {
+                    android.util.Log.e("FormFileHelper", "Error loading form from ongoing: ${e.message}", e)
+                    null
+                }
+            }
         }
         
-        // Read XML content
-        return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-            inputStream?.close()
-            FormData.fromXml(xmlContent)
-        } catch (e: Exception) {
-            android.util.Log.e("FormFileHelper", "Error loading form: ${e.message}", e)
-            null
+        // If not found in ongoing and checkFinished is true, try finished folder
+        if (checkFinished) {
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+            val finishedSiteFolder = finishedFolder?.findFile(siteName)
+            if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
+                val file = finishedSiteFolder.findFile(fileName)
+                if (file != null && file.exists() && file.canRead()) {
+                    return try {
+                        val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+                        val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+                        inputStream?.close()
+                        FormData.fromXml(xmlContent)
+                    } catch (e: Exception) {
+                        android.util.Log.e("FormFileHelper", "Error loading form from finished: ${e.message}", e)
+                        null
+                    }
+                }
+            }
         }
+        
+        return null
     }
     
     /**
@@ -128,31 +145,98 @@ class FormFileHelper(private val context: Context) {
     
     /**
      * Gets all submitted forms for a site
+     * @param siteName The name of the site
+     * @param checkFinished If true, also checks the finished folder (for finalized sites)
      */
-    fun getSubmittedForms(siteName: String): List<String> {
+    fun getSubmittedForms(siteName: String, checkFinished: Boolean = true): List<String> {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        val formIds = mutableSetOf<String>()
+        
+        // Check ongoing folder
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
+        if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
+            val files = ongoingSiteFolder.listFiles() ?: emptyArray()
+            files
+                .filter { file ->
+                    val fileName = file.name
+                    file.isFile && 
+                    fileName != null && 
+                    fileName.endsWith(".xml") && 
+                    !fileName.endsWith("_draft.xml")
+                }
+                .mapNotNull { 
+                    val name = it.name ?: return@mapNotNull null
+                    name.removeSuffix(".xml")
+                }
+                .forEach { formIds.add(it) }
+        }
+        
+        // Check finished folder if requested
+        if (checkFinished) {
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+            val finishedSiteFolder = finishedFolder?.findFile(siteName)
+            if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
+                val files = finishedSiteFolder.listFiles() ?: emptyArray()
+                files
+                    .filter { file ->
+                        val fileName = file.name
+                        file.isFile && 
+                        fileName != null && 
+                        fileName.endsWith(".xml") && 
+                        !fileName.endsWith("_draft.xml")
+                    }
+                    .mapNotNull { 
+                        val name = it.name ?: return@mapNotNull null
+                        name.removeSuffix(".xml")
+                    }
+                    .forEach { formIds.add(it) }
+            }
+        }
+        
+        return formIds.toList()
+    }
+    
+    /**
+     * Deletes a form file (draft or submitted)
+     * @param siteName The name of the site
+     * @param formId The ID of the form
+     * @param isDraft If true, deletes draft version, if false, deletes submitted version
+     * @return true if successful, false otherwise
+     */
+    fun deleteForm(siteName: String, formId: String, isDraft: Boolean): Boolean {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences) ?: return emptyList()
-        val siteFolder = ongoingFolder.findFile(siteName) ?: return emptyList()
+        // Get the site folder (in ongoing)
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences) ?: return false
+        val siteFolder = ongoingFolder.findFile(siteName) ?: return false
         
-        if (!siteFolder.exists() || !siteFolder.canRead()) {
-            return emptyList()
+        if (!siteFolder.exists() || !siteFolder.canWrite()) {
+            return false
         }
         
-        val files = siteFolder.listFiles() ?: return emptyList()
-        return files
-            .filter { file ->
-                val fileName = file.name
-                file.isFile && 
-                fileName != null && 
-                fileName.endsWith(".xml") && 
-                !fileName.endsWith("_draft.xml")
+        // Determine filename
+        val fileName = if (isDraft) {
+            "${formId}_draft.xml"
+        } else {
+            "${formId}.xml"
+        }
+        
+        // Find and delete the file
+        val file = siteFolder.findFile(fileName)
+        return if (file != null && file.exists()) {
+            try {
+                file.delete()
+            } catch (e: Exception) {
+                android.util.Log.e("FormFileHelper", "Error deleting form: ${e.message}", e)
+                false
             }
-            .mapNotNull { 
-                val name = it.name ?: return@mapNotNull null
-                name.removeSuffix(".xml")
-            }
+        } else {
+            // File doesn't exist, consider it already deleted
+            true
+        }
     }
 }
 

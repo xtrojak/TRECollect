@@ -38,7 +38,23 @@ class FormAdapter(
         private val statusIcon: ImageView = itemView.findViewById(R.id.iconStatus)
 
         fun bind(form: Form, isCompleted: Boolean) {
-            formNameText.text = form.name
+            // Show mandatory indicator
+            val formNameDisplay = if (form.mandatory) {
+                "${form.name} *"
+            } else {
+                form.name
+            }
+            formNameText.text = formNameDisplay
+            
+            // Make mandatory forms visually distinct
+            if (form.mandatory) {
+                formNameText.setTextColor(0xFFD32F2F.toInt()) // Red for mandatory
+                formNameText.textSize = 16.5f // Slightly larger
+            } else {
+                formNameText.setTextColor(0xFF212121.toInt()) // Default dark gray
+                formNameText.textSize = 16f
+            }
+            
             formDescriptionText.text = form.description
             formDescriptionText.visibility = if (form.description != null) View.VISIBLE else View.GONE
 
@@ -48,7 +64,11 @@ class FormAdapter(
                 itemView.setBackgroundColor(0xFFE8F5E9.toInt()) // Light green for completed
             } else {
                 statusIcon.setImageResource(android.R.drawable.checkbox_off_background)
-                itemView.setBackgroundColor(0xFFFFFFFF.toInt()) // White for not completed
+                if (form.mandatory) {
+                    itemView.setBackgroundColor(0xFFFFEBEE.toInt()) // Light red for mandatory incomplete
+                } else {
+                    itemView.setBackgroundColor(0xFFFFFFFF.toInt()) // White for not completed
+                }
             }
 
             itemView.setOnClickListener {

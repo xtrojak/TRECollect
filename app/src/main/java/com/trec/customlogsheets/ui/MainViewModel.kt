@@ -336,6 +336,86 @@ class MainViewModel(
         }
     }
     
+    suspend fun finalizeSite(site: SamplingSite): FinalizeSiteResult {
+        // Get storage settings
+        val settingsPreferences = SettingsPreferences(context)
+        val folderUriString = settingsPreferences.getFolderUri()
+        
+        if (folderUriString.isEmpty()) {
+            return FinalizeSiteResult.Error("Storage not configured. Please configure storage in settings.")
+        }
+        
+        val folderHelper = FolderStructureHelper(context)
+        
+        // Get the ongoing and finished folders
+        val ongoingFolder = try {
+            folderHelper.getOngoingFolder(settingsPreferences)
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
+            return FinalizeSiteResult.Error("Error accessing ongoing folder: ${e.message}")
+        }
+        
+        val finishedFolder = try {
+            folderHelper.getFinishedFolder(settingsPreferences)
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error accessing finished folder: ${e.message}", e)
+            return FinalizeSiteResult.Error("Error accessing finished folder: ${e.message}")
+        }
+        
+        if (ongoingFolder == null || !ongoingFolder.exists() || !ongoingFolder.canRead()) {
+            return FinalizeSiteResult.Error("Ongoing folder not accessible")
+        }
+        
+        if (finishedFolder == null || !finishedFolder.exists() || !finishedFolder.canWrite()) {
+            return FinalizeSiteResult.Error("Finished folder not accessible")
+        }
+        
+        // Find the site folder in ongoing
+        val siteFolder = ongoingFolder.findFile(site.name)
+        if (siteFolder == null || !siteFolder.exists()) {
+            return FinalizeSiteResult.Error("Site folder '${site.name}' not found in ongoing folder")
+        }
+        
+        // Check if a folder with the same name already exists in finished
+        val existingFinishedFolder = finishedFolder.findFile(site.name)
+        if (existingFinishedFolder != null && existingFinishedFolder.exists()) {
+            // If it exists, rename the source folder with a timestamp to avoid conflicts
+            val timestamp = System.currentTimeMillis()
+            val newName = "${site.name}_${timestamp}"
+            val renameSuccess = siteFolder.renameTo(newName)
+            if (renameSuccess) {
+                val renamedFolder = ongoingFolder.findFile(newName)
+                if (renamedFolder != null && renamedFolder.exists()) {
+                    // Now try to move it
+                    val moveSuccess = moveFolder(renamedFolder, finishedFolder)
+                    if (!moveSuccess) {
+                        return FinalizeSiteResult.Error("Could not move folder to finished")
+                    }
+                } else {
+                    return FinalizeSiteResult.Error("Could not find renamed folder")
+                }
+            } else {
+                return FinalizeSiteResult.Error("Could not rename folder before moving")
+            }
+        } else {
+            // Move the folder to finished
+            val moveSuccess = moveFolder(siteFolder, finishedFolder)
+            if (!moveSuccess) {
+                return FinalizeSiteResult.Error("Could not move folder to finished")
+            }
+        }
+        
+        // Reload sites from folders to update the UI
+        loadSitesFromFolders()
+        
+        return FinalizeSiteResult.Success
+    }
+    
+    sealed class FinalizeSiteResult {
+        object Success : FinalizeSiteResult()
+        data class Error(val message: String) : FinalizeSiteResult()
+    }
+    
     suspend fun deleteSite(site: SamplingSite): DeleteSiteResult {
         // Get storage settings
         val settingsPreferences = SettingsPreferences(context)
