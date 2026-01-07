@@ -19,6 +19,7 @@ import com.trec.customlogsheets.ui.MainViewModelFactory
 import com.trec.customlogsheets.ui.SamplingSiteAdapter
 import com.trec.customlogsheets.ui.SettingsActivity
 import com.trec.customlogsheets.ui.SiteDetailActivity
+import com.trec.customlogsheets.ui.DownloadRegionActivity
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -108,6 +109,8 @@ class MainActivity : AppCompatActivity() {
                                 "Site created successfully",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
+                            // Show offline maps prompt
+                            showOfflineMapsPrompt(siteName)
                         }
                         is MainViewModel.CreateSiteResult.Error -> {
                             android.widget.Toast.makeText(
@@ -142,4 +145,20 @@ class MainActivity : AppCompatActivity() {
         }
         startActivity(intent)
     }
+    
+    private fun showOfflineMapsPrompt(siteName: String) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Offline Maps")
+            .setMessage("In order to use GPS widgets in offline mode, please download offline maps for this site.")
+            .setPositiveButton("Download Maps") { _, _ ->
+                // Navigate to download region activity
+                val intent = Intent(this, DownloadRegionActivity::class.java)
+                startActivity(intent)
+            }
+            .setNegativeButton("Dismiss") { _, _ ->
+                // Do nothing, user dismissed the prompt
+            }
+            .show()
+    }
 }
+
