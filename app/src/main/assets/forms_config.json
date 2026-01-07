@@ -29,7 +29,7 @@
           "id": "site_photo",
           "label": "Site Photo",
           "type": "photo",
-          "required": true
+          "required": false
         },
         {
           "id": "site_barcode",
@@ -46,60 +46,11 @@
       ]
     },
     {
-      "id": "site_conditions",
-      "name": "Site Conditions",
-      "section": "Site Information",
-      "description": "Environmental conditions at the site",
-      "mandatory": false,
-      "fields": [
-        {
-          "id": "weather",
-          "label": "Weather Conditions",
-          "type": "select",
-          "options": ["Sunny", "Cloudy", "Rainy", "Snowy", "Other"],
-          "required": false
-        },
-        {
-          "id": "wind_conditions",
-          "label": "Wind Conditions",
-          "type": "multiselect",
-          "options": ["Calm", "Light Breeze", "Moderate Wind", "Strong Wind", "Gusty"],
-          "required": false
-        },
-        {
-          "id": "temperature",
-          "label": "Temperature (°C)",
-          "type": "text",
-          "inputType": "number",
-          "required": false
-        },
-        {
-          "id": "wind_speed",
-          "label": "Wind Speed (km/h)",
-          "type": "text",
-          "inputType": "number",
-          "required": false
-        },
-        {
-          "id": "condition_photos",
-          "label": "Condition Photos",
-          "type": "photo",
-          "required": false
-        },
-        {
-          "id": "notes",
-          "label": "Additional Notes",
-          "type": "textarea",
-          "required": false
-        }
-      ]
-    },
-    {
       "id": "sampling_protocol",
       "name": "Sampling Protocol",
       "section": "Sampling",
       "description": "Protocol used for sampling",
-      "mandatory": true,
+      "mandatory": false,
       "fields": [
         {
           "id": "protocol_type",
@@ -158,7 +109,7 @@
       "name": "Sample Collection",
       "section": "Sampling",
       "description": "Details of collected samples",
-      "mandatory": true,
+      "mandatory": false,
       "fields": [
         {
           "id": "sample_count",
@@ -216,112 +167,6 @@
           "label": "Collection Notes",
           "type": "textarea",
           "required": false
-        }
-      ]
-    },
-    {
-      "id": "test_form_1",
-      "name": "Test Form 1",
-      "section": "Testing",
-      "description": "A simple test form with various field types",
-      "mandatory": false,
-      "fields": [
-        {
-          "id": "test_text",
-          "label": "Text Field",
-          "type": "text",
-          "required": false
-        },
-        {
-          "id": "test_number",
-          "label": "Number Field",
-          "type": "text",
-          "inputType": "number",
-          "required": false
-        },
-        {
-          "id": "test_textarea",
-          "label": "Text Area",
-          "type": "textarea",
-          "required": false
-        },
-        {
-          "id": "test_select",
-          "label": "Select Field",
-          "type": "select",
-          "options": ["Option 1", "Option 2", "Option 3"],
-          "required": false
-        },
-        {
-          "id": "test_multiselect",
-          "label": "Multi-Select Field",
-          "type": "multiselect",
-          "options": ["Option A", "Option B", "Option C", "Option D"],
-          "required": false
-        },
-        {
-          "id": "test_date",
-          "label": "Date Field",
-          "type": "date",
-          "required": false
-        },
-        {
-          "id": "test_time",
-          "label": "Time Field",
-          "type": "time",
-          "required": false
-        },
-        {
-          "id": "test_gps",
-          "label": "GPS Location",
-          "type": "gps",
-          "required": false
-        },
-        {
-          "id": "test_photo",
-          "label": "Photo Field",
-          "type": "photo",
-          "required": false
-        },
-        {
-          "id": "test_barcode",
-          "label": "Barcode Field",
-          "type": "barcode",
-          "required": false
-        }
-      ]
-    },
-    {
-      "id": "test_form_2",
-      "name": "Test Form 2",
-      "section": "Testing",
-      "description": "Another test form for validation",
-      "mandatory": false,
-      "fields": [
-        {
-          "id": "required_text",
-          "label": "Required Text Field",
-          "type": "text",
-          "required": true
-        },
-        {
-          "id": "optional_text",
-          "label": "Optional Text Field",
-          "type": "text",
-          "required": false
-        },
-        {
-          "id": "required_select",
-          "label": "Required Select",
-          "type": "select",
-          "options": ["Yes", "No", "Maybe"],
-          "required": true
-        },
-        {
-          "id": "required_date",
-          "label": "Required Date",
-          "type": "date",
-          "required": true
         }
       ]
     }

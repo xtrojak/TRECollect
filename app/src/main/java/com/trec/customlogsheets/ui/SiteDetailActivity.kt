@@ -32,6 +32,7 @@ class SiteDetailActivity : AppCompatActivity() {
     private lateinit var database: AppDatabase
     private lateinit var viewModel: MainViewModel
     private lateinit var siteNameText: TextView
+    private var canFinalize: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +70,8 @@ class SiteDetailActivity : AppCompatActivity() {
         super.onResume()
         // Reload form completions when returning from form editing
         loadFormCompletions()
+        // Update menu to refresh finalize button state
+        invalidateOptionsMenu()
     }
     
     private fun navigateToHome() {
@@ -84,8 +87,37 @@ class SiteDetailActivity : AppCompatActivity() {
         return true
     }
     
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val isFinalized = site.status == com.trec.customlogsheets.data.SiteStatus.FINISHED
+        
+        // Hide/disable menu items for finalized sites
+        val finalizeItem = menu.findItem(R.id.action_finalize)
+        val renameItem = menu.findItem(R.id.action_rename)
+        val deleteItem = menu.findItem(R.id.action_delete)
+        
+        if (isFinalized) {
+            // Hide all editing options for finalized sites
+            finalizeItem?.isVisible = false
+            renameItem?.isVisible = false
+            deleteItem?.isVisible = false
+        } else {
+            // Show all items for ongoing sites
+            finalizeItem?.isVisible = true
+            renameItem?.isVisible = true
+            deleteItem?.isVisible = true
+            // Update finalize button state based on mandatory forms completion
+            finalizeItem?.isEnabled = canFinalize
+        }
+        
+        return super.onPrepareOptionsMenu(menu)
+    }
+    
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_finalize -> {
+                showFinalizeConfirmationDialog()
+                true
+            }
             R.id.action_rename -> {
                 showRenameDialog()
                 true
@@ -95,6 +127,73 @@ class SiteDetailActivity : AppCompatActivity() {
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+    
+    private suspend fun checkAllMandatoryFormsSubmitted(): Boolean {
+        val mandatoryForms = PredefinedForms.getMandatoryForms(this)
+        if (mandatoryForms.isEmpty()) {
+            return true // No mandatory forms, can finalize
+        }
+        
+        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
+        val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
+        
+        // Check if all mandatory forms are submitted
+        return mandatoryForms.all { form ->
+            submittedFormIds.contains(form.id)
+        }
+    }
+    
+    private fun showFinalizeConfirmationDialog() {
+        lifecycleScope.launch {
+            val mandatoryForms = PredefinedForms.getMandatoryForms(this@SiteDetailActivity)
+            val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
+            
+            val missingForms = mandatoryForms.filter { !submittedFormIds.contains(it.id) }
+            
+            if (missingForms.isNotEmpty()) {
+                val missingNames = missingForms.joinToString(", ") { it.name }
+                Toast.makeText(
+                    this@SiteDetailActivity,
+                    "Cannot finalize: Missing mandatory forms: $missingNames",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@launch
+            }
+            
+            AlertDialog.Builder(this@SiteDetailActivity)
+                .setTitle("Finalize Site")
+                .setMessage("Are you sure you want to finalize \"${site.name}\"? This will move the site to finished sites and cannot be undone.")
+                .setPositiveButton("Finalize") { _, _ ->
+                    // Show loading indicator
+                    val progressDialog = android.app.ProgressDialog.show(
+                        this@SiteDetailActivity,
+                        "Finalizing",
+                        "Moving site to finished...",
+                        true,
+                        false
+                    )
+                    
+                    lifecycleScope.launch {
+                        val result = viewModel.finalizeSite(site)
+                        progressDialog.dismiss()
+                        
+                        when (result) {
+                            is MainViewModel.FinalizeSiteResult.Success -> {
+                                Toast.makeText(this@SiteDetailActivity, "Site finalized", Toast.LENGTH_SHORT).show()
+                                // Navigate back to main activity
+                                navigateToHome()
+                            }
+                            is MainViewModel.FinalizeSiteResult.Error -> {
+                                Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
     
@@ -207,6 +306,10 @@ class SiteDetailActivity : AppCompatActivity() {
                 PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
             }
             formSectionAdapter.setData(sections, formsBySection, submittedFormIds)
+            
+            // Update canFinalize flag
+            canFinalize = checkAllMandatoryFormsSubmitted()
+            invalidateOptionsMenu() // Refresh menu to update finalize button state
         }
     }
     
@@ -215,6 +318,7 @@ class SiteDetailActivity : AppCompatActivity() {
         val intent = Intent(this, FormEditActivity::class.java).apply {
             putExtra("siteName", site.name)
             putExtra("formId", form.id)
+            putExtra("isReadOnly", site.status == com.trec.customlogsheets.data.SiteStatus.FINISHED)
         }
         startActivity(intent)
     }
