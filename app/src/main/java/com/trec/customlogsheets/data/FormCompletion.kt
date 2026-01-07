@@ -7,20 +7,12 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "form_completions",
-    foreignKeys = [
-        ForeignKey(
-            entity = SamplingSite::class,
-            parentColumns = ["id"],
-            childColumns = ["siteId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["siteId", "formId"], unique = true)]
+    indices = [Index(value = ["siteName", "formId"], unique = true)]
 )
 data class FormCompletion(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val siteId: Long,
+    val siteName: String,
     val formId: String,
     val completedAt: Long = System.currentTimeMillis()
 )

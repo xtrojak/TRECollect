@@ -43,6 +43,12 @@ class MainActivity : AppCompatActivity() {
         observeData()
     }
     
+    override fun onResume() {
+        super.onResume()
+        // Reload sites from folders when returning to this activity
+        viewModel.loadSitesFromFolders()
+    }
+    
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         return true
