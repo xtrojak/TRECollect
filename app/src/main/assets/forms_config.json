@@ -79,6 +79,11 @@
           "required": false
         },
         {
+          "id": "protocol_section_header",
+          "label": "Protocol Details",
+          "type": "section"
+        },
+        {
           "id": "sample_location_gps",
           "label": "Sample Collection GPS",
           "type": "gps",
