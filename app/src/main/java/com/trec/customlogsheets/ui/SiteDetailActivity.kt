@@ -65,6 +65,12 @@ class SiteDetailActivity : AppCompatActivity() {
         loadFormCompletions()
     }
     
+    override fun onResume() {
+        super.onResume()
+        // Reload form completions when returning from form editing
+        loadFormCompletions()
+    }
+    
     private fun navigateToHome() {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
@@ -182,31 +188,35 @@ class SiteDetailActivity : AppCompatActivity() {
         }
         recyclerView.adapter = formSectionAdapter
         
-        // Initialize with all forms
-        val sections = PredefinedForms.sections
+        // Initialize with all forms from config
+        val sections = PredefinedForms.getSections(this)
         val formsBySection = sections.associateWith { section ->
-            PredefinedForms.getFormsBySection(section)
+            PredefinedForms.getFormsBySection(this, section)
         }
         formSectionAdapter.setData(sections, formsBySection, emptySet())
     }
     
     private fun loadFormCompletions() {
         lifecycleScope.launch {
-            val completions = database.formCompletionDao().getCompletionsForSite(site.name).first()
-            val completedFormIds = completions.map { it.formId }.toSet()
+            // Check which forms are submitted using FormFileHelper
+            val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
             
-            val sections = PredefinedForms.sections
+            val sections = PredefinedForms.getSections(this@SiteDetailActivity)
             val formsBySection = sections.associateWith { section ->
-                PredefinedForms.getFormsBySection(section)
+                PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
             }
-            formSectionAdapter.setData(sections, formsBySection, completedFormIds)
+            formSectionAdapter.setData(sections, formsBySection, submittedFormIds)
         }
     }
     
     private fun onFormClick(form: Form) {
-        // For now, clicking does nothing as requested
-        // This is where form filling functionality will be added later
-        Toast.makeText(this, "Form: ${form.name} (clicking does nothing for now)", Toast.LENGTH_SHORT).show()
+        // Open form editing activity
+        val intent = Intent(this, FormEditActivity::class.java).apply {
+            putExtra("siteName", site.name)
+            putExtra("formId", form.id)
+        }
+        startActivity(intent)
     }
     
     override fun onSupportNavigateUp(): Boolean {
