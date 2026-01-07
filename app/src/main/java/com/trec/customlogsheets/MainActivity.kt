@@ -12,6 +12,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.AppDatabase
+import com.trec.customlogsheets.data.OfflineMapsManager
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.ui.MainViewModel
 import com.trec.customlogsheets.ui.MainViewModelFactory
@@ -41,6 +42,12 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerViews()
         setupCreateButton()
         observeData()
+        
+        // Cleanup expired offline maps on startup
+        lifecycleScope.launch {
+            val mapsManager = OfflineMapsManager(this@MainActivity)
+            mapsManager.cleanupExpiredRegions()
+        }
     }
     
     override fun onResume() {

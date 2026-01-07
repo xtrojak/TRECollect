@@ -38,7 +38,7 @@ class MainViewModel(
      * Loads sites from the folder structure (ongoing and finished folders)
      */
     fun loadSitesFromFolders() {
-        viewModelScope.launch {
+            viewModelScope.launch {
             val settingsPreferences = SettingsPreferences(context)
             val folderUriString = settingsPreferences.getFolderUri()
             

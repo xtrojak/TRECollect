@@ -43,6 +43,12 @@ class GPSPickerActivity : AppCompatActivity() {
         Configuration.getInstance().load(this, getSharedPreferences("osmdroid", MODE_PRIVATE))
         Configuration.getInstance().userAgentValue = packageName
         
+        // Enable tile caching for offline support
+        // OSMDroid will cache tiles automatically when loaded online
+        // Cached tiles will be available when offline
+        Configuration.getInstance().osmdroidBasePath = cacheDir
+        Configuration.getInstance().osmdroidTileCache = cacheDir
+        
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         
         setupToolbar()
