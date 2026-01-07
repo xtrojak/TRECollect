@@ -43,36 +43,62 @@ data class FormConfig(
  * Loader for form configurations from JSON
  */
 object FormConfigLoader {
+    private var cachedConfigs: List<FormConfig>? = null
+    
     fun loadFromAssets(context: android.content.Context): List<FormConfig> {
+        // Cache the configs to avoid reloading on every call
+        if (cachedConfigs != null) {
+            return cachedConfigs!!
+        }
+        
         return try {
             val inputStream = context.assets.open("forms_config.json")
             val jsonString = inputStream.bufferedReader().use { it.readText() }
-            parseJson(jsonString)
+            val configs = parseJson(jsonString)
+            android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms: ${configs.map { it.id }}")
+            cachedConfigs = configs
+            configs
         } catch (e: Exception) {
             android.util.Log.e("FormConfigLoader", "Error loading form config: ${e.message}", e)
+            e.printStackTrace()
             emptyList()
         }
     }
     
+    fun clearCache() {
+        cachedConfigs = null
+    }
+    
     private fun parseJson(jsonString: String): List<FormConfig> {
-        val jsonObject = JSONObject(jsonString)
-        val formsArray = jsonObject.getJSONArray("forms")
         val forms = mutableListOf<FormConfig>()
         
-        for (i in 0 until formsArray.length()) {
-            val formObj = formsArray.getJSONObject(i)
-            val fields = parseFields(formObj.getJSONArray("fields"))
+        try {
+            val jsonObject = JSONObject(jsonString)
+            val formsArray = jsonObject.getJSONArray("forms")
             
-            forms.add(
-                FormConfig(
-                    id = formObj.getString("id"),
-                    name = formObj.getString("name"),
-                    section = formObj.getString("section"),
-                    description = formObj.optString("description", null),
-                    mandatory = formObj.optBoolean("mandatory", false),
-                    fields = fields
-                )
-            )
+            for (i in 0 until formsArray.length()) {
+                try {
+                    val formObj = formsArray.getJSONObject(i)
+                    val fields = parseFields(formObj.getJSONArray("fields"))
+                    
+                    forms.add(
+                        FormConfig(
+                            id = formObj.getString("id"),
+                            name = formObj.getString("name"),
+                            section = formObj.getString("section"),
+                            description = formObj.optString("description", null),
+                            mandatory = formObj.optBoolean("mandatory", false),
+                            fields = fields
+                        )
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("FormConfigLoader", "Error parsing form at index $i: ${e.message}", e)
+                    // Continue with next form
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error parsing JSON: ${e.message}", e)
+            throw e
         }
         
         return forms
@@ -81,39 +107,47 @@ object FormConfigLoader {
     private fun parseFields(fieldsArray: JSONArray): List<FormFieldConfig> {
         val fields = mutableListOf<FormFieldConfig>()
         
-        for (i in 0 until fieldsArray.length()) {
-            val fieldObj = fieldsArray.getJSONObject(i)
-            val typeString = fieldObj.getString("type")
-            val fieldType = when (typeString.lowercase()) {
-                "text" -> FormFieldConfig.FieldType.TEXT
-                "textarea" -> FormFieldConfig.FieldType.TEXTAREA
-                "date" -> FormFieldConfig.FieldType.DATE
-                "time" -> FormFieldConfig.FieldType.TIME
-                "select" -> FormFieldConfig.FieldType.SELECT
-                "multiselect" -> FormFieldConfig.FieldType.MULTISELECT
-                "gps" -> FormFieldConfig.FieldType.GPS
-                "photo" -> FormFieldConfig.FieldType.PHOTO
-                "barcode" -> FormFieldConfig.FieldType.BARCODE
-                else -> FormFieldConfig.FieldType.TEXT
-            }
-            
-            val options = if (fieldObj.has("options")) {
-                val optionsArray = fieldObj.getJSONArray("options")
-                (0 until optionsArray.length()).map { optionsArray.getString(it) }
-            } else {
-                null
-            }
-            
-            fields.add(
-                FormFieldConfig(
-                    id = fieldObj.getString("id"),
-                    label = fieldObj.getString("label"),
-                    type = fieldType,
-                    required = fieldObj.optBoolean("required", false),
-                    options = options,
-                    inputType = fieldObj.optString("inputType", null)
+        try {
+            for (i in 0 until fieldsArray.length()) {
+                val fieldObj = fieldsArray.getJSONObject(i)
+                val typeString = fieldObj.getString("type")
+                val fieldType = when (typeString.lowercase()) {
+                    "text" -> FormFieldConfig.FieldType.TEXT
+                    "textarea" -> FormFieldConfig.FieldType.TEXTAREA
+                    "date" -> FormFieldConfig.FieldType.DATE
+                    "time" -> FormFieldConfig.FieldType.TIME
+                    "select" -> FormFieldConfig.FieldType.SELECT
+                    "multiselect" -> FormFieldConfig.FieldType.MULTISELECT
+                    "gps" -> FormFieldConfig.FieldType.GPS
+                    "photo" -> FormFieldConfig.FieldType.PHOTO
+                    "barcode" -> FormFieldConfig.FieldType.BARCODE
+                    else -> {
+                        android.util.Log.w("FormConfigLoader", "Unknown field type: $typeString, defaulting to TEXT")
+                        FormFieldConfig.FieldType.TEXT
+                    }
+                }
+                
+                val options = if (fieldObj.has("options") && !fieldObj.isNull("options")) {
+                    val optionsArray = fieldObj.getJSONArray("options")
+                    (0 until optionsArray.length()).map { optionsArray.getString(it) }
+                } else {
+                    null
+                }
+                
+                fields.add(
+                    FormFieldConfig(
+                        id = fieldObj.getString("id"),
+                        label = fieldObj.getString("label"),
+                        type = fieldType,
+                        required = fieldObj.optBoolean("required", false),
+                        options = options,
+                        inputType = fieldObj.optString("inputType", null)
+                    )
                 )
-            )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error parsing fields: ${e.message}", e)
+            throw e
         }
         
         return fields

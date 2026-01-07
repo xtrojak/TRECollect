@@ -20,6 +20,24 @@
           "required": false
         },
         {
+          "id": "location_gps",
+          "label": "GPS Location",
+          "type": "gps",
+          "required": true
+        },
+        {
+          "id": "site_photo",
+          "label": "Site Photo",
+          "type": "photo",
+          "required": true
+        },
+        {
+          "id": "site_barcode",
+          "label": "Site Barcode/QR Code",
+          "type": "barcode",
+          "required": false
+        },
+        {
           "id": "site_description",
           "label": "Site Description",
           "type": "textarea",
@@ -42,6 +60,13 @@
           "required": false
         },
         {
+          "id": "wind_conditions",
+          "label": "Wind Conditions",
+          "type": "multiselect",
+          "options": ["Calm", "Light Breeze", "Moderate Wind", "Strong Wind", "Gusty"],
+          "required": false
+        },
+        {
           "id": "temperature",
           "label": "Temperature (°C)",
           "type": "text",
@@ -53,6 +78,12 @@
           "label": "Wind Speed (km/h)",
           "type": "text",
           "inputType": "number",
+          "required": false
+        },
+        {
+          "id": "condition_photos",
+          "label": "Condition Photos",
+          "type": "photo",
           "required": false
         },
         {
@@ -78,6 +109,13 @@
           "required": true
         },
         {
+          "id": "protocol_methods",
+          "label": "Sampling Methods Used",
+          "type": "multiselect",
+          "options": ["Grab Sample", "Composite", "Continuous", "Automated", "Manual"],
+          "required": true
+        },
+        {
           "id": "protocol_date",
           "label": "Protocol Date",
           "type": "date",
@@ -87,6 +125,24 @@
           "id": "protocol_time",
           "label": "Protocol Time",
           "type": "time",
+          "required": false
+        },
+        {
+          "id": "sample_location_gps",
+          "label": "Sample Collection GPS",
+          "type": "gps",
+          "required": false
+        },
+        {
+          "id": "sample_barcode",
+          "label": "Sample Barcode",
+          "type": "barcode",
+          "required": false
+        },
+        {
+          "id": "protocol_photo",
+          "label": "Protocol Setup Photo",
+          "type": "photo",
           "required": false
         },
         {
@@ -119,6 +175,13 @@
           "required": true
         },
         {
+          "id": "sample_containers",
+          "label": "Sample Container Types",
+          "type": "multiselect",
+          "options": ["Glass Bottle", "Plastic Bottle", "Vial", "Bag", "Other"],
+          "required": false
+        },
+        {
           "id": "collection_date",
           "label": "Collection Date",
           "type": "date",
@@ -128,6 +191,24 @@
           "id": "collection_time",
           "label": "Collection Time",
           "type": "time",
+          "required": false
+        },
+        {
+          "id": "collection_gps",
+          "label": "Collection Point GPS",
+          "type": "gps",
+          "required": false
+        },
+        {
+          "id": "sample_barcodes",
+          "label": "Sample Container Barcodes",
+          "type": "barcode",
+          "required": false
+        },
+        {
+          "id": "collection_photo",
+          "label": "Collection Photo",
+          "type": "photo",
           "required": false
         },
         {
@@ -172,6 +253,13 @@
           "required": false
         },
         {
+          "id": "test_multiselect",
+          "label": "Multi-Select Field",
+          "type": "multiselect",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "required": false
+        },
+        {
           "id": "test_date",
           "label": "Date Field",
           "type": "date",
@@ -181,6 +269,24 @@
           "id": "test_time",
           "label": "Time Field",
           "type": "time",
+          "required": false
+        },
+        {
+          "id": "test_gps",
+          "label": "GPS Location",
+          "type": "gps",
+          "required": false
+        },
+        {
+          "id": "test_photo",
+          "label": "Photo Field",
+          "type": "photo",
+          "required": false
+        },
+        {
+          "id": "test_barcode",
+          "label": "Barcode Field",
+          "type": "barcode",
           "required": false
         }
       ]
