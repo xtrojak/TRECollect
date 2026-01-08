@@ -406,6 +406,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.PHOTO -> createPhotoField(fieldConfig)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeField(fieldConfig)
                 FormFieldConfig.FieldType.SECTION -> createSectionHeader(fieldConfig)
+                FormFieldConfig.FieldType.TABLE -> createTableField(fieldConfig)
             }
         } catch (e: Exception) {
             android.util.Log.e("FormEditActivity", "Error creating field view for ${fieldConfig.id}: ${e.message}", e)
@@ -941,6 +942,161 @@ class FormEditActivity : AppCompatActivity() {
         return container
     }
     
+    private fun createTableField(fieldConfig: FormFieldConfig): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_table,
+            containerFields,
+            false
+        ) as LinearLayout
+        
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val tableLayout = container.findViewById<android.widget.TableLayout>(R.id.tableLayout)
+        
+        // Set label
+        textLabel.text = if (fieldConfig.required) {
+            "${fieldConfig.label} *"
+        } else {
+            fieldConfig.label
+        }
+        
+        container.tag = fieldConfig.id
+        
+        // Get rows and columns from config
+        val rows = fieldConfig.rows ?: emptyList()
+        val columns = fieldConfig.columns ?: emptyList()
+        val inputType = fieldConfig.inputType ?: "text"
+        
+        if (rows.isEmpty() || columns.isEmpty()) {
+            android.util.Log.w("FormEditActivity", "Table field ${fieldConfig.id} has no rows or columns")
+            return container
+        }
+        
+        // Load existing table data
+        val existingValue = fieldValues[fieldConfig.id]
+        val existingTableData = existingValue?.tableData ?: emptyMap()
+        
+        // Create header row
+        val headerRow = android.widget.TableRow(this).apply {
+            layoutParams = android.widget.TableLayout.LayoutParams(
+                android.widget.TableLayout.LayoutParams.MATCH_PARENT,
+                android.widget.TableLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        
+        // Add empty cell for row header column
+        val emptyHeader = TextView(this).apply {
+            text = ""
+            setPadding(8, 8, 8, 8)
+            setBackgroundColor(0xFFE0E0E0.toInt())
+            layoutParams = android.widget.TableRow.LayoutParams(
+                0,
+                android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        }
+        headerRow.addView(emptyHeader)
+        
+        // Add column headers
+        for (column in columns) {
+            val columnHeader = TextView(this).apply {
+                text = column
+                setPadding(8, 8, 8, 8)
+                setBackgroundColor(0xFFE0E0E0.toInt())
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = android.view.Gravity.CENTER
+                layoutParams = android.widget.TableRow.LayoutParams(
+                    0,
+                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+            headerRow.addView(columnHeader)
+        }
+        tableLayout.addView(headerRow)
+        
+        // Create data rows
+        for (row in rows) {
+            val dataRow = android.widget.TableRow(this).apply {
+                layoutParams = android.widget.TableLayout.LayoutParams(
+                    android.widget.TableLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.TableLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            
+            // Row header
+            val rowHeader = TextView(this).apply {
+                text = row
+                setPadding(8, 8, 8, 8)
+                setBackgroundColor(0xFFF5F5F5.toInt())
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                layoutParams = android.widget.TableRow.LayoutParams(
+                    0,
+                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+            dataRow.addView(rowHeader)
+            
+            // Data cells
+            for (column in columns) {
+                val cellValue = existingTableData[row]?.get(column) ?: ""
+                val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
+                    hint = ""
+                    setText(cellValue)
+                    setPadding(8, 8, 8, 8)
+                    setBackgroundColor(android.graphics.Color.WHITE)
+                    layoutParams = android.widget.TableRow.LayoutParams(
+                        0,
+                        android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
+                    
+                    // Set input type
+                    when (inputType.lowercase()) {
+                        "number" -> {
+                            this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
+                                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or 
+                                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                        }
+                        "integer" -> {
+                            this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
+                                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                        }
+                        else -> {
+                            this.inputType = android.text.InputType.TYPE_CLASS_TEXT
+                        }
+                    }
+                    
+                    // Store row and column in tag for value collection
+                    tag = "$row|$column"
+                    
+                    // Disable if read-only
+                    if (isReadOnly) {
+                        isEnabled = false
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        isClickable = false
+                    } else {
+                        // Mark form as changed when text changes
+                        addTextChangedListener(object : android.text.TextWatcher {
+                            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                            override fun afterTextChanged(s: android.text.Editable?) {
+                                markFormChanged()
+                            }
+                        })
+                    }
+                }
+                dataRow.addView(editText)
+            }
+            tableLayout.addView(dataRow)
+        }
+        
+        return container
+    }
+    
     private fun startBarcodeScanning() {
         // For now, use a simple approach: take a photo and scan it
         // In a full implementation, you'd use CameraX with ML Kit overlay
@@ -1177,6 +1333,51 @@ class FormEditActivity : AppCompatActivity() {
                 // Barcode value is stored when scanned
                 fieldValues[fieldId]?.let { values.add(it) }
             }
+            FormFieldConfig.FieldType.TABLE -> {
+                // Collect table data from all cells
+                val tableData = mutableMapOf<String, MutableMap<String, String>>()
+                val tableLayout = fieldView.findViewById<android.widget.TableLayout>(R.id.tableLayout)
+                
+                // Iterate through table rows (skip header row at index 0)
+                for (i in 1 until tableLayout.childCount) {
+                    val row = tableLayout.getChildAt(i) as? android.widget.TableRow ?: continue
+                    // First child is row header, rest are data cells
+                    val rowHeader = row.getChildAt(0) as? TextView
+                    val rowName = rowHeader?.text?.toString() ?: continue
+                    
+                    val rowData = mutableMapOf<String, String>()
+                    // Get column names from header row
+                    val headerRow = tableLayout.getChildAt(0) as? android.widget.TableRow
+                    val columnNames = mutableListOf<String>()
+                    if (headerRow != null) {
+                        for (j in 1 until headerRow.childCount) {
+                            val colHeader = headerRow.getChildAt(j) as? TextView
+                            colHeader?.text?.toString()?.let { columnNames.add(it) }
+                        }
+                    }
+                    
+                    // Collect cell values
+                    for (j in 1 until row.childCount) {
+                        val cell = row.getChildAt(j) as? com.google.android.material.textfield.TextInputEditText
+                        val cellValue = cell?.text?.toString()?.trim() ?: ""
+                        val columnIndex = j - 1
+                        if (columnIndex < columnNames.size) {
+                            val columnName = columnNames[columnIndex]
+                            if (cellValue.isNotEmpty()) {
+                                rowData[columnName] = cellValue
+                            }
+                        }
+                    }
+                    
+                    if (rowData.isNotEmpty()) {
+                        tableData[rowName] = rowData
+                    }
+                }
+                
+                if (tableData.isNotEmpty()) {
+                    values.add(FormFieldValue(fieldId, tableData = tableData))
+                }
+            }
             else -> {
                 // Use existing value if available
                 fieldValues[fieldId]?.let { values.add(it) }
@@ -1237,6 +1438,19 @@ class FormEditActivity : AppCompatActivity() {
                     }
                     FormFieldConfig.FieldType.PHOTO -> {
                         if (fieldValue?.photoFileName.isNullOrEmpty()) {
+                            Toast.makeText(
+                                this,
+                                "${fieldConfig.label} is required",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return false
+                        }
+                    }
+                    FormFieldConfig.FieldType.TABLE -> {
+                        // For tables, check if at least one cell has a value if required
+                        val tableData = fieldValue?.tableData
+                        if (tableData == null || tableData.isEmpty() || 
+                            tableData.values.all { rowData -> rowData.isEmpty() }) {
                             Toast.makeText(
                                 this,
                                 "${fieldConfig.label} is required",

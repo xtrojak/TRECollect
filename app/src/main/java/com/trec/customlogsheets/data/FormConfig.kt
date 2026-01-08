@@ -12,7 +12,9 @@ data class FormFieldConfig(
     val type: FieldType,
     val required: Boolean = false,
     val options: List<String>? = null, // For select/multiselect
-    val inputType: String? = null // For text fields: "text", "number", etc.
+    val inputType: String? = null, // For text fields: "text", "number", etc.
+    val rows: List<String>? = null, // For table: row names
+    val columns: List<String>? = null // For table: column names
 ) {
     enum class FieldType {
         TEXT,
@@ -24,7 +26,8 @@ data class FormFieldConfig(
         GPS,
         PHOTO,
         BARCODE,
-        SECTION // Section header (display only, not collected)
+        SECTION, // Section header (display only, not collected)
+        TABLE // Table with rows and columns
     }
 }
 
@@ -123,6 +126,7 @@ object FormConfigLoader {
                     "photo" -> FormFieldConfig.FieldType.PHOTO
                     "barcode" -> FormFieldConfig.FieldType.BARCODE
                     "section" -> FormFieldConfig.FieldType.SECTION
+                    "table" -> FormFieldConfig.FieldType.TABLE
                     else -> {
                         android.util.Log.w("FormConfigLoader", "Unknown field type: $typeString, defaulting to TEXT")
                         FormFieldConfig.FieldType.TEXT
@@ -136,6 +140,20 @@ object FormConfigLoader {
                     null
                 }
                 
+                val rows = if (fieldObj.has("rows") && !fieldObj.isNull("rows")) {
+                    val rowsArray = fieldObj.getJSONArray("rows")
+                    (0 until rowsArray.length()).map { rowsArray.getString(it) }
+                } else {
+                    null
+                }
+                
+                val columns = if (fieldObj.has("columns") && !fieldObj.isNull("columns")) {
+                    val columnsArray = fieldObj.getJSONArray("columns")
+                    (0 until columnsArray.length()).map { columnsArray.getString(it) }
+                } else {
+                    null
+                }
+                
                 // Section headers don't need options, inputType, or required flag
                 fields.add(
                     FormFieldConfig(
@@ -144,7 +162,9 @@ object FormConfigLoader {
                         type = fieldType,
                         required = if (fieldType == FormFieldConfig.FieldType.SECTION) false else fieldObj.optBoolean("required", false),
                         options = if (fieldType == FormFieldConfig.FieldType.SECTION) null else options,
-                        inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType", null)
+                        inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType", null),
+                        rows = if (fieldType == FormFieldConfig.FieldType.TABLE) rows else null,
+                        columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null
                     )
                 )
             }
