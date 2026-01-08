@@ -257,6 +257,25 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun valuesEqual(v1: FormFieldValue, v2: FormFieldValue): Boolean {
+        // Compare tableData
+        val tableData1 = v1.tableData ?: emptyMap()
+        val tableData2 = v2.tableData ?: emptyMap()
+        if (tableData1.size != tableData2.size) {
+            return false
+        }
+        for ((row, rowData1) in tableData1) {
+            val rowData2 = tableData2[row] ?: return false
+            if (rowData1.size != rowData2.size) {
+                return false
+            }
+            for ((col, value1) in rowData1) {
+                val value2 = rowData2[col] ?: return false
+                if (value1 != value2) {
+                    return false
+                }
+            }
+        }
+        
         return v1.value == v2.value &&
                v1.values == v2.values &&
                v1.gpsLatitude == v2.gpsLatitude &&
@@ -1079,11 +1098,13 @@ class FormEditActivity : AppCompatActivity() {
                         isFocusableInTouchMode = false
                         isClickable = false
                     } else {
-                        // Mark form as changed when text changes
+                        // Mark form as changed and update fieldValues when text changes
                         addTextChangedListener(object : android.text.TextWatcher {
                             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                             override fun afterTextChanged(s: android.text.Editable?) {
+                                // Update fieldValues with current table data
+                                updateTableFieldValue(fieldConfig.id, tableLayout)
                                 markFormChanged()
                             }
                         })
@@ -1095,6 +1116,56 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         return container
+    }
+    
+    /**
+     * Helper method to collect table data from a TableLayout and update fieldValues
+     */
+    private fun updateTableFieldValue(fieldId: String, tableLayout: android.widget.TableLayout) {
+        val tableData = mutableMapOf<String, MutableMap<String, String>>()
+        
+        // Iterate through table rows (skip header row at index 0)
+        for (i in 1 until tableLayout.childCount) {
+            val row = tableLayout.getChildAt(i) as? android.widget.TableRow ?: continue
+            // First child is row header, rest are data cells
+            val rowHeader = row.getChildAt(0) as? TextView
+            val rowName = rowHeader?.text?.toString() ?: continue
+            
+            val rowData = mutableMapOf<String, String>()
+            // Get column names from header row
+            val headerRow = tableLayout.getChildAt(0) as? android.widget.TableRow
+            val columnNames = mutableListOf<String>()
+            if (headerRow != null) {
+                for (j in 1 until headerRow.childCount) {
+                    val colHeader = headerRow.getChildAt(j) as? TextView
+                    colHeader?.text?.toString()?.let { columnNames.add(it) }
+                }
+            }
+            
+            // Collect cell values
+            for (j in 1 until row.childCount) {
+                val cell = row.getChildAt(j) as? com.google.android.material.textfield.TextInputEditText
+                val cellValue = cell?.text?.toString()?.trim() ?: ""
+                val columnIndex = j - 1
+                if (columnIndex < columnNames.size) {
+                    val columnName = columnNames[columnIndex]
+                    if (cellValue.isNotEmpty()) {
+                        rowData[columnName] = cellValue
+                    }
+                }
+            }
+            
+            if (rowData.isNotEmpty()) {
+                tableData[rowName] = rowData
+            }
+        }
+        
+        // Update fieldValues
+        if (tableData.isNotEmpty()) {
+            fieldValues[fieldId] = FormFieldValue(fieldId, tableData = tableData)
+        } else {
+            fieldValues.remove(fieldId)
+        }
     }
     
     private fun startBarcodeScanning() {
