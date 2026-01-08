@@ -138,7 +138,7 @@ data class FormData(
         
         val xmlString = writer.toString()
         // Log the XML for debugging (only for dynamic fields)
-        if (fieldValues.any { it.dynamicData != null && it.dynamicData!!.isNotEmpty() }) {
+        if (fieldValues.any { it.dynamicData?.isNotEmpty() == true }) {
             android.util.Log.d("FormData", "Generated XML with dynamic data: ${xmlString.take(500)}...")
         }
         return xmlString
@@ -314,7 +314,7 @@ data class FormData(
                             when (parser.name) {
                                 "subField" -> {
                                     if (currentSubFieldId != null && currentInstance != null) {
-                                        currentInstance!![currentSubFieldId] = FormFieldValue(
+                                        currentInstance[currentSubFieldId] = FormFieldValue(
                                             fieldId = currentSubFieldId,
                                             value = currentSubFieldValue,
                                             values = currentSubFieldValues,
@@ -334,8 +334,8 @@ data class FormData(
                                     }
                                 }
                                 "instance" -> {
-                                    if (currentInstance != null && currentInstance!!.isNotEmpty()) {
-                                        dynamicInstancesList.add(currentInstance!!)
+                                    if (currentInstance != null && currentInstance.isNotEmpty()) {
+                                        dynamicInstancesList.add(currentInstance)
                                         currentInstance = null
                                     }
                                 }
