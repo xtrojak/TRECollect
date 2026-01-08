@@ -464,13 +464,15 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         if (fieldConfig.inputType == "number") {
             editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         // Store field ID in tag for retrieval
@@ -514,7 +516,7 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         editText.minLines = 3
         editText.maxLines = 5
         
@@ -530,6 +532,8 @@ class FormEditActivity : AppCompatActivity() {
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = fieldConfig.id
@@ -564,10 +568,12 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = fieldConfig.id
@@ -600,10 +606,12 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = fieldConfig.id
@@ -636,10 +644,12 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = fieldConfig.id
@@ -1432,13 +1442,15 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         if (fieldConfig.inputType == "number") {
             editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = uniqueFieldId
@@ -1465,12 +1477,14 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         editText.minLines = 3
         editText.maxLines = 5
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = uniqueFieldId
@@ -1497,12 +1511,14 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         editText.isFocusable = false
         editText.isClickable = true
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = uniqueFieldId
@@ -1529,12 +1545,14 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         editText.isFocusable = false
         editText.isClickable = true
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = uniqueFieldId
@@ -1561,12 +1579,14 @@ class FormEditActivity : AppCompatActivity() {
         ) as TextInputLayout
         
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        editText.hint = fieldConfig.label
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         editText.isFocusable = false
         editText.isClickable = true
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
         }
         
         textInputLayout.tag = uniqueFieldId
