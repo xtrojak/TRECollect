@@ -14,7 +14,9 @@ data class FormFieldConfig(
     val options: List<String>? = null, // For select/multiselect
     val inputType: String? = null, // For text fields: "text", "number", etc.
     val rows: List<String>? = null, // For table: row names
-    val columns: List<String>? = null // For table: column names
+    val columns: List<String>? = null, // For table: column names
+    val subFields: List<FormFieldConfig>? = null, // For dynamic: sub-widgets to repeat
+    val instanceName: String? = null // For dynamic: custom name for instances (e.g., "Sample" instead of "Instance")
 ) {
     enum class FieldType {
         TEXT,
@@ -27,7 +29,8 @@ data class FormFieldConfig(
         PHOTO,
         BARCODE,
         SECTION, // Section header (display only, not collected)
-        TABLE // Table with rows and columns
+        TABLE, // Table with rows and columns
+        DYNAMIC // Dynamic/repeatable widget with sub-fields
     }
 }
 
@@ -127,6 +130,7 @@ object FormConfigLoader {
                     "barcode" -> FormFieldConfig.FieldType.BARCODE
                     "section" -> FormFieldConfig.FieldType.SECTION
                     "table" -> FormFieldConfig.FieldType.TABLE
+                    "dynamic" -> FormFieldConfig.FieldType.DYNAMIC
                     else -> {
                         android.util.Log.w("FormConfigLoader", "Unknown field type: $typeString, defaulting to TEXT")
                         FormFieldConfig.FieldType.TEXT
@@ -154,6 +158,18 @@ object FormConfigLoader {
                     null
                 }
                 
+                val subFields = if (fieldType == FormFieldConfig.FieldType.DYNAMIC && fieldObj.has("subFields") && !fieldObj.isNull("subFields")) {
+                    parseFields(fieldObj.getJSONArray("subFields"))
+                } else {
+                    null
+                }
+                
+                val instanceName = if (fieldType == FormFieldConfig.FieldType.DYNAMIC) {
+                    fieldObj.optString("instance_name", null)
+                } else {
+                    null
+                }
+                
                 // Section headers don't need options, inputType, or required flag
                 fields.add(
                     FormFieldConfig(
@@ -164,7 +180,9 @@ object FormConfigLoader {
                         options = if (fieldType == FormFieldConfig.FieldType.SECTION) null else options,
                         inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType", null),
                         rows = if (fieldType == FormFieldConfig.FieldType.TABLE) rows else null,
-                        columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null
+                        columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null,
+                        subFields = subFields,
+                        instanceName = instanceName
                     )
                 )
             }

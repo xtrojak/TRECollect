@@ -426,6 +426,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeField(fieldConfig)
                 FormFieldConfig.FieldType.SECTION -> createSectionHeader(fieldConfig)
                 FormFieldConfig.FieldType.TABLE -> createTableField(fieldConfig)
+                FormFieldConfig.FieldType.DYNAMIC -> createDynamicField(fieldConfig)
             }
         } catch (e: Exception) {
             android.util.Log.e("FormEditActivity", "Error creating field view for ${fieldConfig.id}: ${e.message}", e)
@@ -1192,6 +1193,624 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
+    private fun createDynamicField(fieldConfig: FormFieldConfig): View {
+        return try {
+            val inflater = LayoutInflater.from(this)
+            val container = inflater.inflate(
+                R.layout.field_dynamic,
+                containerFields,
+                false
+            ) as LinearLayout
+            
+            val textLabel = container.findViewById<TextView>(R.id.textLabel)
+            val containerInstances = container.findViewById<LinearLayout>(R.id.containerInstances)
+            val buttonAdd = container.findViewById<MaterialButton>(R.id.buttonAdd)
+            
+            if (textLabel == null || containerInstances == null || buttonAdd == null) {
+                android.util.Log.e("FormEditActivity", "Failed to find views in field_dynamic layout")
+                throw IllegalStateException("Failed to find required views in dynamic field layout")
+            }
+            
+            // Set label
+            textLabel.text = if (fieldConfig.required) {
+                "${fieldConfig.label} *"
+            } else {
+                fieldConfig.label
+            }
+        
+        container.tag = fieldConfig.id
+        // Store dynamic field ID in containerInstances for easy access
+        containerInstances.tag = fieldConfig.id
+        
+        val subFields = fieldConfig.subFields ?: emptyList()
+        if (subFields.isEmpty()) {
+            android.util.Log.w("FormEditActivity", "Dynamic field ${fieldConfig.id} has no subFields")
+            return container
+        }
+        
+        // Load existing dynamic data
+        val existingValue = fieldValues[fieldConfig.id]
+        val existingInstances = existingValue?.dynamicData ?: emptyList()
+        
+        // Create initial instance if none exist
+        val instancesToCreate = if (existingInstances.isEmpty()) {
+            listOf(emptyMap<String, FormFieldValue>())
+        } else {
+            existingInstances
+        }
+        
+        // Create instances
+        for ((index, instanceData) in instancesToCreate.withIndex()) {
+            createDynamicInstance(containerInstances, fieldConfig.id, index, subFields, instanceData, isReadOnly)
+        }
+        
+        if (!isReadOnly) {
+            // Update add button state
+            updateAddButtonState(buttonAdd, containerInstances, subFields)
+            
+            buttonAdd.setOnClickListener {
+                val newInstanceIndex = containerInstances.childCount
+                createDynamicInstance(containerInstances, fieldConfig.id, newInstanceIndex, subFields, emptyMap(), isReadOnly)
+                updateAddButtonState(buttonAdd, containerInstances, subFields)
+                markFormChanged()
+            }
+        } else {
+            buttonAdd.isEnabled = false
+        }
+        
+        return container
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error creating dynamic field ${fieldConfig.id}: ${e.message}", e)
+            e.printStackTrace()
+            // Return error view
+            TextView(this).apply {
+                text = "Error: ${fieldConfig.label} - ${e.message}"
+                setTextColor(android.graphics.Color.RED)
+            }
+        }
+    }
+    
+    private fun createDynamicInstance(
+        containerInstances: LinearLayout,
+        dynamicFieldId: String,
+        instanceIndex: Int,
+        subFields: List<FormFieldConfig>,
+        instanceData: Map<String, FormFieldValue>,
+        isReadOnly: Boolean
+    ) {
+        try {
+            val inflater = LayoutInflater.from(this)
+            val instanceView = inflater.inflate(
+                R.layout.item_dynamic_instance,
+                containerInstances,
+                false
+            ) as com.google.android.material.card.MaterialCardView
+            
+            val textInstanceNumber = instanceView.findViewById<TextView>(R.id.textInstanceNumber)
+            val buttonDelete = instanceView.findViewById<MaterialButton>(R.id.buttonDelete)
+            val containerSubFields = instanceView.findViewById<LinearLayout>(R.id.containerSubFields)
+            
+            if (textInstanceNumber == null || buttonDelete == null || containerSubFields == null) {
+                android.util.Log.e("FormEditActivity", "Failed to find views in item_dynamic_instance layout")
+                throw IllegalStateException("Failed to find required views in instance layout")
+            }
+            
+            // Use custom instance name if provided, otherwise default to "Instance"
+            val instanceName = formConfig.fields.firstOrNull { it.id == dynamicFieldId }?.instanceName ?: "Instance"
+            textInstanceNumber.text = "$instanceName ${instanceIndex + 1}"
+            
+            // Store instance index in tag
+            instanceView.tag = instanceIndex
+            
+            // Create sub-fields for this instance
+            for (subFieldConfig in subFields) {
+                try {
+                    val subFieldView = createSubFieldView(
+                        dynamicFieldId,
+                        instanceIndex,
+                        subFieldConfig,
+                        instanceData[subFieldConfig.id],
+                        isReadOnly
+                    )
+                    containerSubFields.addView(subFieldView)
+                } catch (e: Exception) {
+                    android.util.Log.e("FormEditActivity", "Error creating sub-field ${subFieldConfig.id} in instance $instanceIndex: ${e.message}", e)
+                    // Add error view for this sub-field
+                    val errorView = TextView(this).apply {
+                        text = "Error: ${subFieldConfig.label} - ${e.message}"
+                        setTextColor(android.graphics.Color.RED)
+                    }
+                    containerSubFields.addView(errorView)
+                }
+            }
+        
+        if (!isReadOnly) {
+            buttonDelete.setOnClickListener {
+                containerInstances.removeView(instanceView)
+                // Update instance numbers, delete button states, and add button state
+                updateInstanceNumbers(containerInstances)
+                updateDeleteButtonStates(containerInstances)
+                val parent = containerInstances.parent as? View
+                val buttonAdd = parent?.findViewById<MaterialButton>(R.id.buttonAdd)
+                if (buttonAdd != null) {
+                    updateAddButtonState(buttonAdd, containerInstances, subFields)
+                }
+                markFormChanged()
+            }
+        } else {
+            buttonDelete.isEnabled = false
+        }
+        
+        containerInstances.addView(instanceView)
+        
+            // Update delete button states after adding
+            if (!isReadOnly) {
+                updateDeleteButtonStates(containerInstances)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error creating dynamic instance $instanceIndex: ${e.message}", e)
+            e.printStackTrace()
+            // Add error view to container
+            val errorView = TextView(this).apply {
+                text = "Error creating instance ${instanceIndex + 1}: ${e.message}"
+                setTextColor(android.graphics.Color.RED)
+                setPadding(16, 16, 16, 16)
+            }
+            containerInstances.addView(errorView)
+        }
+    }
+    
+    private fun createSubFieldView(
+        dynamicFieldId: String,
+        instanceIndex: Int,
+        subFieldConfig: FormFieldConfig,
+        existingValue: FormFieldValue?,
+        isReadOnly: Boolean
+    ): View {
+        // Create a unique field ID for this sub-field in this instance
+        val uniqueFieldId = "${dynamicFieldId}_instance${instanceIndex}_${subFieldConfig.id}"
+        
+        // Temporarily store the existing value with the unique ID
+        if (existingValue != null) {
+            fieldValues[uniqueFieldId] = existingValue.copy(fieldId = uniqueFieldId)
+        }
+        
+        // Create the sub-field view using helper methods that accept a parent parameter
+        val subFieldView = try {
+            when (subFieldConfig.type) {
+                FormFieldConfig.FieldType.TEXT -> createTextFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.TEXTAREA -> createTextAreaFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.DATE -> createDateFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.TIME -> createTimeFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.SELECT -> createSelectFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.BARCODE -> createBarcodeFieldForSubField(subFieldConfig, uniqueFieldId)
+                else -> {
+                    android.util.Log.w("FormEditActivity", "Unsupported sub-field type: ${subFieldConfig.type} in dynamic widget")
+                    TextView(this).apply {
+                        text = "Unsupported field type: ${subFieldConfig.label}"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error creating sub-field ${subFieldConfig.id}: ${e.message}", e)
+            TextView(this).apply {
+                text = "Error: ${subFieldConfig.label}"
+                setTextColor(android.graphics.Color.RED)
+            }
+        }
+        
+        // Update the tag to include the unique ID and instance info
+        // Store metadata in a custom data class since we can't use system resource IDs
+        subFieldView.tag = uniqueFieldId
+        // Store additional metadata in view's tag as a Pair or use a data class
+        // We'll extract dynamicFieldId and instanceIndex from uniqueFieldId when needed
+        
+        // Store in fieldViews for later collection
+        fieldViews[uniqueFieldId] = subFieldView
+        
+        // Set existing value if available
+        if (existingValue != null) {
+            setFieldValue(subFieldView, subFieldConfig, existingValue)
+        }
+        
+        // Add TextWatcher or change listener to update add button state and fieldValues
+        if (!isReadOnly) {
+            addSubFieldChangeListener(subFieldView, subFieldConfig, uniqueFieldId, dynamicFieldId, instanceIndex)
+        }
+        
+        return subFieldView
+    }
+    
+    // Helper methods to create sub-fields for dynamic widgets (using null as parent)
+    private fun createTextFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            null,
+            false
+        ) as TextInputLayout
+        
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        editText.hint = fieldConfig.label
+        if (fieldConfig.inputType == "number") {
+            editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        }
+        
+        textInputLayout.tag = uniqueFieldId
+        
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        }
+        // Note: TextWatcher will be added in addSubFieldChangeListener
+        
+        return textInputLayout
+    }
+    
+    private fun createTextAreaFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            null,
+            false
+        ) as TextInputLayout
+        
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        editText.hint = fieldConfig.label
+        editText.minLines = 3
+        editText.maxLines = 5
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        }
+        
+        textInputLayout.tag = uniqueFieldId
+        
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        }
+        // Note: TextWatcher will be added in addSubFieldChangeListener
+        
+        return textInputLayout
+    }
+    
+    private fun createDateFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            null,
+            false
+        ) as TextInputLayout
+        
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        editText.hint = fieldConfig.label
+        editText.isFocusable = false
+        editText.isClickable = true
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        }
+        
+        textInputLayout.tag = uniqueFieldId
+        
+        if (!isReadOnly) {
+            editText.setOnClickListener {
+                showDatePickerForSubField(uniqueFieldId, editText)
+            }
+        } else {
+            editText.isEnabled = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+        }
+        
+        return textInputLayout
+    }
+    
+    private fun createTimeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            null,
+            false
+        ) as TextInputLayout
+        
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        editText.hint = fieldConfig.label
+        editText.isFocusable = false
+        editText.isClickable = true
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        }
+        
+        textInputLayout.tag = uniqueFieldId
+        
+        if (!isReadOnly) {
+            editText.setOnClickListener {
+                showTimePickerForSubField(uniqueFieldId, editText)
+            }
+        } else {
+            editText.isEnabled = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+        }
+        
+        return textInputLayout
+    }
+    
+    private fun createSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            null,
+            false
+        ) as TextInputLayout
+        
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        editText.hint = fieldConfig.label
+        editText.isFocusable = false
+        editText.isClickable = true
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        }
+        
+        textInputLayout.tag = uniqueFieldId
+        
+        if (!isReadOnly) {
+            editText.setOnClickListener {
+                showSelectDialogForSubField(fieldConfig, editText, uniqueFieldId)
+            }
+        } else {
+            editText.isEnabled = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+        }
+        
+        return textInputLayout
+    }
+    
+    private fun createMultiSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_multiselect,
+            null,
+            false
+        ) as? LinearLayout ?: throw IllegalStateException("Failed to inflate field_multiselect layout")
+        
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val textSelected = container.findViewById<TextView>(R.id.textSelected)
+        
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = uniqueFieldId
+        
+        if (!isReadOnly) {
+            container.setOnClickListener {
+                showMultiSelectDialogForSubField(fieldConfig, textSelected, uniqueFieldId)
+            }
+        } else {
+            container.isClickable = false
+        }
+        
+        return container
+    }
+    
+    private fun createBarcodeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_barcode,
+            null,
+            false
+        ) as LinearLayout
+        
+        val textInputLayout = container.findViewById<TextInputLayout>(R.id.textInputLayout)
+        val editText = container.findViewById<TextInputEditText>(R.id.editText)
+        val buttonScan = container.findViewById<MaterialButton>(R.id.buttonScan)
+        
+        if (textInputLayout == null || editText == null || buttonScan == null) {
+            android.util.Log.e("FormEditActivity", "Failed to find views in field_barcode layout")
+            throw IllegalStateException("Failed to find required views in barcode field layout")
+        }
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
+        }
+        
+        container.tag = uniqueFieldId
+        
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+            buttonScan.isEnabled = false
+        } else {
+            buttonScan.setOnClickListener {
+                currentBarcodeFieldId = uniqueFieldId
+                startBarcodeScanning()
+            }
+            // Note: TextWatcher will be added in addSubFieldChangeListener
+        }
+        
+        return container
+    }
+    
+    private fun addSubFieldChangeListener(
+        subFieldView: View,
+        subFieldConfig: FormFieldConfig,
+        uniqueFieldId: String,
+        dynamicFieldId: String,
+        instanceIndex: Int
+    ) {
+        when (subFieldConfig.type) {
+            FormFieldConfig.FieldType.TEXT,
+            FormFieldConfig.FieldType.TEXTAREA,
+            FormFieldConfig.FieldType.DATE,
+            FormFieldConfig.FieldType.TIME,
+            FormFieldConfig.FieldType.SELECT,
+            FormFieldConfig.FieldType.BARCODE -> {
+                val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
+                editText?.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        val value = s?.toString()?.trim() ?: ""
+                        if (value.isNotEmpty()) {
+                            fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = value)
+                        } else {
+                            fieldValues.remove(uniqueFieldId)
+                        }
+                        markFormChanged()
+                        updateAddButtonForDynamicField(dynamicFieldId)
+                    }
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                })
+            }
+            else -> {
+                // For other types, we'll handle in their respective change handlers
+            }
+        }
+    }
+    
+    private fun updateAddButtonForDynamicField(dynamicFieldId: String) {
+        val dynamicFieldView = fieldViews[dynamicFieldId] ?: return
+        val containerInstances = dynamicFieldView.findViewById<LinearLayout>(R.id.containerInstances)
+        val buttonAdd = dynamicFieldView.findViewById<MaterialButton>(R.id.buttonAdd)
+        val fieldConfig = formConfig.fields.firstOrNull { it.id == dynamicFieldId }
+        if (fieldConfig != null && fieldConfig.subFields != null) {
+            updateAddButtonState(buttonAdd, containerInstances, fieldConfig.subFields!!)
+        }
+    }
+    
+    private fun updateAddButtonState(
+        buttonAdd: MaterialButton,
+        containerInstances: LinearLayout,
+        subFields: List<FormFieldConfig>
+    ) {
+        if (containerInstances.childCount == 0) {
+            buttonAdd.isEnabled = true
+            return
+        }
+        
+        // Check if last instance is non-empty
+        val lastInstance = containerInstances.getChildAt(containerInstances.childCount - 1) as? View
+        val lastInstanceIndex = lastInstance?.tag as? Int ?: -1
+        
+        var hasNonEmptyField = false
+        for (subFieldConfig in subFields) {
+            val uniqueFieldId = "${containerInstances.tag}_instance${lastInstanceIndex}_${subFieldConfig.id}"
+            val subFieldView = fieldViews[uniqueFieldId]
+            if (subFieldView != null && isSubFieldNonEmpty(subFieldView, subFieldConfig)) {
+                hasNonEmptyField = true
+                break
+            }
+        }
+        
+        buttonAdd.isEnabled = hasNonEmptyField
+    }
+    
+    private fun isSubFieldNonEmpty(subFieldView: View, subFieldConfig: FormFieldConfig): Boolean {
+        return when (subFieldConfig.type) {
+            FormFieldConfig.FieldType.TEXT,
+            FormFieldConfig.FieldType.TEXTAREA,
+            FormFieldConfig.FieldType.DATE,
+            FormFieldConfig.FieldType.TIME,
+            FormFieldConfig.FieldType.SELECT,
+            FormFieldConfig.FieldType.BARCODE -> {
+                val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
+                editText?.text?.toString()?.trim()?.isNotEmpty() ?: false
+            }
+            FormFieldConfig.FieldType.MULTISELECT -> {
+                val uniqueFieldId = subFieldView.tag as? String
+                val fieldValue = uniqueFieldId?.let { fieldValues[it] }
+                fieldValue?.values?.isNotEmpty() ?: false
+            }
+            else -> false
+        }
+    }
+    
+    private fun updateDeleteButtonStates(containerInstances: LinearLayout) {
+        val instanceCount = containerInstances.childCount
+        for (i in 0 until instanceCount) {
+            val instanceView = containerInstances.getChildAt(i) as? View
+            val buttonDelete = instanceView?.findViewById<MaterialButton>(R.id.buttonDelete)
+            buttonDelete?.isEnabled = instanceCount > 1
+        }
+    }
+    
+    private fun updateInstanceNumbers(containerInstances: LinearLayout) {
+        for (i in 0 until containerInstances.childCount) {
+            val instanceView = containerInstances.getChildAt(i) as? View
+            val textInstanceNumber = instanceView?.findViewById<TextView>(R.id.textInstanceNumber)
+            // Get instance name from the dynamic field config
+            val dynamicFieldId = containerInstances.tag as? String
+            val instanceName = if (dynamicFieldId != null) {
+                formConfig.fields.firstOrNull { it.id == dynamicFieldId }?.instanceName ?: "Instance"
+            } else {
+                "Instance"
+            }
+            textInstanceNumber?.text = "$instanceName ${i + 1}"
+            instanceView?.tag = i
+            
+            // Update tags in sub-fields
+            val containerSubFields = instanceView?.findViewById<LinearLayout>(R.id.containerSubFields)
+            if (containerSubFields != null) {
+                for (j in 0 until containerSubFields.childCount) {
+                    val subFieldView = containerSubFields.getChildAt(j)
+                    val oldUniqueFieldId = subFieldView.tag as? String
+                    if (oldUniqueFieldId != null) {
+                        // Parse the uniqueFieldId to extract dynamicFieldId and subFieldId
+                        // Format: "${dynamicFieldId}_instance${oldInstanceIndex}_${subFieldId}"
+                        val parts = oldUniqueFieldId.split("_instance")
+                        if (parts.size == 2) {
+                            val dynamicFieldId = parts[0]
+                            val rest = parts[1]
+                            val subFieldParts = rest.split("_", limit = 2)
+                            if (subFieldParts.size == 2) {
+                                val subFieldId = subFieldParts[1]
+                                val newUniqueFieldId = "${dynamicFieldId}_instance${i}_${subFieldId}"
+                                if (oldUniqueFieldId != newUniqueFieldId) {
+                                    // Update fieldViews mapping
+                                    fieldViews.remove(oldUniqueFieldId)
+                                    fieldViews[newUniqueFieldId] = subFieldView
+                                    subFieldView.tag = newUniqueFieldId
+                                    
+                                    // Update fieldValues mapping
+                                    val oldValue = fieldValues.remove(oldUniqueFieldId)
+                                    if (oldValue != null) {
+                                        fieldValues[newUniqueFieldId] = oldValue.copy(fieldId = newUniqueFieldId)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     private fun startBarcodeScanning() {
         // For now, use a simple approach: take a photo and scan it
         // In a full implementation, you'd use CameraX with ML Kit overlay
@@ -1293,6 +1912,71 @@ class FormEditActivity : AppCompatActivity() {
         editText?.setSelection(barcodeValue.length)
     }
     
+    private fun showDatePickerForSubField(fieldId: String, editText: TextInputEditText) {
+        val calendar = Calendar.getInstance()
+        // If there's an existing value, parse it
+        val existingValue = fieldValues[fieldId]?.value
+        if (existingValue != null) {
+            try {
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val date = dateFormat.parse(existingValue)
+                if (date != null) {
+                    calendar.time = date
+                }
+            } catch (e: Exception) {
+                // Ignore parsing errors
+            }
+        }
+        
+        DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                val selectedDate = Calendar.getInstance().apply {
+                    set(year, month, dayOfMonth)
+                }
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val dateString = dateFormat.format(selectedDate.time)
+                editText.setText(dateString)
+                fieldValues[fieldId] = FormFieldValue(fieldId, value = dateString)
+                markFormChanged()
+                updateAddButtonForDynamicField(fieldId.substringBefore("_instance"))
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+    
+    private fun showTimePickerForSubField(fieldId: String, editText: TextInputEditText) {
+        val calendar = Calendar.getInstance()
+        val existingValue = fieldValues[fieldId]?.value
+        if (existingValue != null) {
+            try {
+                val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+                val time = timeFormat.parse(existingValue)
+                if (time != null) {
+                    calendar.time = time
+                }
+            } catch (e: Exception) {
+                // Ignore parsing errors
+            }
+        }
+        
+        TimePickerDialog(
+            this,
+            { _, hourOfDay, minute ->
+                val timeString = String.format("%02d:%02d", hourOfDay, minute)
+                editText.setText(timeString)
+                fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
+                markFormChanged()
+                updateAddButtonForDynamicField(fieldId.substringBefore("_instance"))
+            },
+            calendar.get(Calendar.HOUR_OF_DAY),
+            calendar.get(Calendar.MINUTE),
+            true // 24-hour format
+        ).show()
+    }
+    
     private fun showDatePicker(fieldId: String, editText: TextInputEditText) {
         val calendar = Calendar.getInstance()
         // If there's an existing value, parse it
@@ -1370,6 +2054,57 @@ class FormEditActivity : AppCompatActivity() {
             .show()
     }
     
+    private fun showSelectDialogForSubField(fieldConfig: FormFieldConfig, editText: TextInputEditText, uniqueFieldId: String) {
+        val options = fieldConfig.options ?: return
+        
+        AlertDialog.Builder(this)
+            .setTitle(fieldConfig.label)
+            .setItems(options.toTypedArray()) { _, which ->
+                val selectedValue = options[which]
+                editText.setText(selectedValue)
+                fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = selectedValue)
+                markFormChanged()
+                updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
+            }
+            .show()
+    }
+    
+    private fun showMultiSelectDialogForSubField(fieldConfig: FormFieldConfig, textView: TextView, uniqueFieldId: String) {
+        val options = fieldConfig.options ?: return
+        val currentValues = fieldValues[uniqueFieldId]?.values?.toMutableSet() ?: mutableSetOf()
+        val checkedItems = BooleanArray(options.size) { i ->
+            currentValues.contains(options[i])
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle(fieldConfig.label)
+            .setMultiChoiceItems(
+                options.toTypedArray(),
+                checkedItems
+            ) { _, which, isChecked ->
+                if (isChecked) {
+                    currentValues.add(options[which])
+                } else {
+                    currentValues.remove(options[which])
+                }
+            }
+            .setPositiveButton("OK") { _, _ ->
+                if (currentValues.isNotEmpty()) {
+                    textView.text = currentValues.joinToString(", ")
+                    fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, values = currentValues.toList())
+                    markFormChanged()
+                    updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
+                } else {
+                    textView.text = "Tap to select options"
+                    fieldValues.remove(uniqueFieldId)
+                    markFormChanged()
+                    updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
     private fun setFieldValue(fieldView: View, fieldConfig: FormFieldConfig, fieldValue: FormFieldValue) {
         when (fieldConfig.type) {
             FormFieldConfig.FieldType.TEXT,
@@ -1386,6 +2121,10 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
+            }
+            FormFieldConfig.FieldType.DYNAMIC -> {
+                // Dynamic fields are handled during creation, not here
+                // The data is already loaded when createDynamicField is called
             }
             else -> {
                 // Handle other types later
@@ -1481,6 +2220,38 @@ class FormEditActivity : AppCompatActivity() {
                     values.add(FormFieldValue(fieldId, tableData = tableData))
                 }
             }
+            FormFieldConfig.FieldType.DYNAMIC -> {
+                // Collect dynamic data from all instances
+                val containerInstances = fieldView.findViewById<LinearLayout>(R.id.containerInstances)
+                val dynamicInstances = mutableListOf<Map<String, FormFieldValue>>()
+                
+                for (i in 0 until containerInstances.childCount) {
+                    val instanceView = containerInstances.getChildAt(i) as? View
+                    val containerSubFields = instanceView?.findViewById<LinearLayout>(R.id.containerSubFields)
+                    if (containerSubFields != null) {
+                        val instanceData = mutableMapOf<String, FormFieldValue>()
+                        val fieldConfig = formConfig.fields.firstOrNull { it.id == fieldId }
+                        val subFields = fieldConfig?.subFields ?: emptyList()
+                        
+                        for (subFieldConfig in subFields) {
+                            val uniqueFieldId = "${fieldId}_instance${i}_${subFieldConfig.id}"
+                            val subFieldValue = fieldValues[uniqueFieldId]
+                            if (subFieldValue != null) {
+                                // Create a copy with the original sub-field ID
+                                instanceData[subFieldConfig.id] = subFieldValue.copy(fieldId = subFieldConfig.id)
+                            }
+                        }
+                        
+                        if (instanceData.isNotEmpty()) {
+                            dynamicInstances.add(instanceData)
+                        }
+                    }
+                }
+                
+                if (dynamicInstances.isNotEmpty()) {
+                    values.add(FormFieldValue(fieldId, dynamicData = dynamicInstances))
+                }
+            }
             else -> {
                 // Use existing value if available
                 fieldValues[fieldId]?.let { values.add(it) }
@@ -1562,6 +2333,51 @@ class FormEditActivity : AppCompatActivity() {
                             return false
                         }
                     }
+                    FormFieldConfig.FieldType.DYNAMIC -> {
+                        // For dynamic widgets, check if at least one instance exists and all mandatory sub-fields are filled
+                        val dynamicData = fieldValue?.dynamicData
+                        if (dynamicData == null || dynamicData.isEmpty()) {
+                            Toast.makeText(
+                                this,
+                                "${fieldConfig.label} requires at least one instance",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return false
+                        }
+                        
+                        // Check mandatory sub-fields in each instance
+                        val subFields = fieldConfig.subFields ?: emptyList()
+                        for ((instanceIndex, instanceData) in dynamicData.withIndex()) {
+                            for (subFieldConfig in subFields) {
+                                if (subFieldConfig.required) {
+                                    val subFieldValue = instanceData[subFieldConfig.id]
+                                    val isEmpty = when (subFieldConfig.type) {
+                                        FormFieldConfig.FieldType.TEXT,
+                                        FormFieldConfig.FieldType.TEXTAREA,
+                                        FormFieldConfig.FieldType.DATE,
+                                        FormFieldConfig.FieldType.TIME,
+                                        FormFieldConfig.FieldType.SELECT,
+                                        FormFieldConfig.FieldType.BARCODE -> {
+                                            subFieldValue?.value?.trim()?.isEmpty() ?: true
+                                        }
+                                        FormFieldConfig.FieldType.MULTISELECT -> {
+                                            subFieldValue?.values.isNullOrEmpty()
+                                        }
+                                        else -> false
+                                    }
+                                    if (isEmpty) {
+                                        val instanceName = fieldConfig.instanceName ?: "Instance"
+                                        Toast.makeText(
+                                            this,
+                                            "${fieldConfig.label} - $instanceName ${instanceIndex + 1}: ${subFieldConfig.label} is required",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return false
+                                    }
+                                }
+                            }
+                        }
+                    }
                     FormFieldConfig.FieldType.SECTION -> {
                         // Section headers are display-only and don't need validation
                         // This case should never be reached due to the continue statement above,
@@ -1589,10 +2405,34 @@ class FormEditActivity : AppCompatActivity() {
             // Collect current field values from UI
             val currentValues = collectFieldValues()
             
+            // Identify which fields are dynamic widgets (to exclude their sub-fields)
+            val dynamicFieldIds = formConfig.fields
+                .filter { it.type == FormFieldConfig.FieldType.DYNAMIC }
+                .map { it.id }
+                .toSet()
+            
             // Merge with existing values (for fields like GPS, photo, barcode that might not be in UI yet)
+            // But exclude sub-field values from dynamic widgets (they're already included in dynamicData)
             val allValues = mutableMapOf<String, FormFieldValue>()
-            fieldValues.forEach { (id, value) -> allValues[id] = value }
+            
+            // First, add all current values (these include properly structured dynamic data)
             currentValues.forEach { allValues[it.fieldId] = it }
+            
+            // Then, add other field values that aren't sub-fields of dynamic widgets
+            // (sub-fields have IDs like "${dynamicFieldId}_instance${i}_${subFieldId}")
+            fieldValues.forEach { (id, value) ->
+                // Check if this is a sub-field of a dynamic widget
+                val isSubField = dynamicFieldIds.any { dynamicFieldId ->
+                    id.startsWith("${dynamicFieldId}_instance")
+                }
+                
+                if (!isSubField) {
+                    // Only add if not already in currentValues (currentValues takes precedence)
+                    if (!allValues.containsKey(id)) {
+                        allValues[id] = value
+                    }
+                }
+            }
             
             val formData = FormData(
                 formId = formId,
