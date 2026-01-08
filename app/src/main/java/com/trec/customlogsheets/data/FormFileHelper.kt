@@ -199,6 +199,59 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
+     * Gets all forms with draft versions for a site
+     * @param siteName The name of the site
+     * @param checkFinished If true, also checks the finished folder (for finalized sites)
+     */
+    fun getDraftForms(siteName: String, checkFinished: Boolean = true): List<String> {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        val formIds = mutableSetOf<String>()
+        
+        // Check ongoing folder
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
+        if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
+            val files = ongoingSiteFolder.listFiles() ?: emptyArray()
+            files
+                .filter { file ->
+                    val fileName = file.name
+                    file.isFile && 
+                    fileName != null && 
+                    fileName.endsWith("_draft.xml")
+                }
+                .mapNotNull { 
+                    val name = it.name ?: return@mapNotNull null
+                    name.removeSuffix("_draft.xml")
+                }
+                .forEach { formIds.add(it) }
+        }
+        
+        // Check finished folder if requested
+        if (checkFinished) {
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+            val finishedSiteFolder = finishedFolder?.findFile(siteName)
+            if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
+                val files = finishedSiteFolder.listFiles() ?: emptyArray()
+                files
+                    .filter { file ->
+                        val fileName = file.name
+                        file.isFile && 
+                        fileName != null && 
+                        fileName.endsWith("_draft.xml")
+                    }
+                    .mapNotNull { 
+                        val name = it.name ?: return@mapNotNull null
+                        name.removeSuffix("_draft.xml")
+                    }
+                    .forEach { formIds.add(it) }
+            }
+        }
+        
+        return formIds.toList()
+    }
+    
+    /**
      * Deletes a form file (draft or submitted)
      * @param siteName The name of the site
      * @param formId The ID of the form

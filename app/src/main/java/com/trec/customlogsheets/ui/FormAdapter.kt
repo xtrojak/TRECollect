@@ -16,9 +16,15 @@ class FormAdapter(
 ) : ListAdapter<Form, FormAdapter.FormViewHolder>(FormDiffCallback()) {
 
     private var completedFormIds: Set<String> = emptySet()
+    private var draftFormIds: Set<String> = emptySet()
 
     fun setCompletedFormIds(completedIds: Set<String>) {
         completedFormIds = completedIds
+        notifyDataSetChanged()
+    }
+    
+    fun setDraftFormIds(draftIds: Set<String>) {
+        draftFormIds = draftIds
         notifyDataSetChanged()
     }
 
@@ -29,7 +35,12 @@ class FormAdapter(
     }
 
     override fun onBindViewHolder(holder: FormViewHolder, position: Int) {
-        holder.bind(getItem(position), completedFormIds.contains(getItem(position).id))
+        val form = getItem(position)
+        holder.bind(
+            form, 
+            completedFormIds.contains(form.id),
+            draftFormIds.contains(form.id)
+        )
     }
 
     inner class FormViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -37,13 +48,19 @@ class FormAdapter(
         private val formDescriptionText: TextView = itemView.findViewById(R.id.textFormDescription)
         private val statusIcon: ImageView = itemView.findViewById(R.id.iconStatus)
 
-        fun bind(form: Form, isCompleted: Boolean) {
+        fun bind(form: Form, isCompleted: Boolean, isDraft: Boolean) {
             // Show mandatory indicator
-            val formNameDisplay = if (form.mandatory) {
+            var formNameDisplay = if (form.mandatory) {
                 "${form.name} *"
             } else {
                 form.name
             }
+            
+            // Add draft indicator (only if not completed)
+            if (isDraft && !isCompleted) {
+                formNameDisplay = "$formNameDisplay (Draft)"
+            }
+            
             formNameText.text = formNameDisplay
             
             // Make mandatory forms visually distinct
@@ -63,11 +80,18 @@ class FormAdapter(
                 statusIcon.setImageResource(android.R.drawable.checkbox_on_background)
                 itemView.setBackgroundColor(0xFFE8F5E9.toInt()) // Light green for completed
             } else {
-                statusIcon.setImageResource(android.R.drawable.checkbox_off_background)
-                if (form.mandatory) {
-                    itemView.setBackgroundColor(0xFFFFEBEE.toInt()) // Light red for mandatory incomplete
+                if (isDraft) {
+                    // Show draft icon (edit icon or similar)
+                    statusIcon.setImageResource(android.R.drawable.ic_menu_edit)
+                    // Light yellow/orange background for drafts
+                    itemView.setBackgroundColor(0xFFFFF3E0.toInt()) // Light orange for drafts
                 } else {
-                    itemView.setBackgroundColor(0xFFFFFFFF.toInt()) // White for not completed
+                    statusIcon.setImageResource(android.R.drawable.checkbox_off_background)
+                    if (form.mandatory) {
+                        itemView.setBackgroundColor(0xFFFFEBEE.toInt()) // Light red for mandatory incomplete
+                    } else {
+                        itemView.setBackgroundColor(0xFFFFFFFF.toInt()) // White for not completed
+                    }
                 }
             }
 
