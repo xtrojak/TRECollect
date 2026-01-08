@@ -4,6 +4,8 @@ import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlSerializer
 import java.io.StringWriter
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 
 /**
  * Represents the value of a form field
@@ -26,7 +28,8 @@ data class FormData(
     val formId: String,
     val siteName: String,
     val isSubmitted: Boolean, // true = submitted, false = draft
-    val submittedAt: Long? = null, // Timestamp when submitted
+    val createdAt: String? = null, // ISO 8601 UTC timestamp when form was first created (draft or submit)
+    val submittedAt: String? = null, // ISO 8601 UTC timestamp when submitted (only set when actually submitted)
     val fieldValues: List<FormFieldValue>
 ) {
     /**
@@ -42,6 +45,9 @@ data class FormData(
         serializer.attribute(null, "formId", formId)
         serializer.attribute(null, "siteName", siteName)
         serializer.attribute(null, "isSubmitted", isSubmitted.toString())
+        if (createdAt != null) {
+            serializer.attribute(null, "createdAt", createdAt.toString())
+        }
         if (submittedAt != null) {
             serializer.attribute(null, "submittedAt", submittedAt.toString())
         }
@@ -140,6 +146,13 @@ data class FormData(
     
     companion object {
         /**
+         * Gets current time as ISO 8601 UTC string
+         */
+        fun getCurrentTimestamp(): String {
+            return Instant.now().toString()
+        }
+        
+        /**
          * Deserializes XML to form data
          */
         fun fromXml(xmlString: String): FormData? {
@@ -151,7 +164,8 @@ data class FormData(
                 var formId = ""
                 var siteName = ""
                 var isSubmitted = false
-                var submittedAt: Long? = null
+                var createdAt: String? = null
+                var submittedAt: String? = null
                 val fieldValues = mutableListOf<FormFieldValue>()
                 
                 var eventType = parser.eventType
@@ -182,7 +196,40 @@ data class FormData(
                                     formId = parser.getAttributeValue(null, "formId") ?: ""
                                     siteName = parser.getAttributeValue(null, "siteName") ?: ""
                                     isSubmitted = parser.getAttributeValue(null, "isSubmitted")?.toBoolean() ?: false
-                                    submittedAt = parser.getAttributeValue(null, "submittedAt")?.toLongOrNull()
+                                    
+                                    // Read createdAt - handle both ISO 8601 string and legacy Long format
+                                    val createdAtAttr = parser.getAttributeValue(null, "createdAt")
+                                    createdAt = if (createdAtAttr != null) {
+                                        // Try to parse as ISO 8601 first, fall back to Long conversion if needed
+                                        try {
+                                            // If it's already a valid ISO 8601 string, use it
+                                            Instant.parse(createdAtAttr).toString()
+                                        } catch (e: Exception) {
+                                            // Legacy format: convert Long to ISO 8601
+                                            createdAtAttr.toLongOrNull()?.let { 
+                                                Instant.ofEpochMilli(it).toString()
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    }
+                                    
+                                    // Read submittedAt - handle both ISO 8601 string and legacy Long format
+                                    val submittedAtAttr = parser.getAttributeValue(null, "submittedAt")
+                                    submittedAt = if (submittedAtAttr != null) {
+                                        // Try to parse as ISO 8601 first, fall back to Long conversion if needed
+                                        try {
+                                            // If it's already a valid ISO 8601 string, use it
+                                            Instant.parse(submittedAtAttr).toString()
+                                        } catch (e: Exception) {
+                                            // Legacy format: convert Long to ISO 8601
+                                            submittedAtAttr.toLongOrNull()?.let { 
+                                                Instant.ofEpochMilli(it).toString()
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    }
                                 }
                                 "field" -> {
                                     if (!inDynamicInstances) {
@@ -331,6 +378,7 @@ data class FormData(
                     formId = formId,
                     siteName = siteName,
                     isSubmitted = isSubmitted,
+                    createdAt = createdAt,
                     submittedAt = submittedAt,
                     fieldValues = fieldValues
                 )

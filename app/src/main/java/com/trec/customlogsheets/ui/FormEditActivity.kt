@@ -362,13 +362,15 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
+    private var existingFormData: FormData? = null
+    
     private fun loadExistingData() {
         // Try to load draft first, then submitted version
-        val existingData = formFileHelper.loadFormData(siteName, formId, loadDraft = true)
+        existingFormData = formFileHelper.loadFormData(siteName, formId, loadDraft = true)
             ?: formFileHelper.loadFormData(siteName, formId, loadDraft = false)
         
-        if (existingData != null) {
-            for (fieldValue in existingData.fieldValues) {
+        if (existingFormData != null) {
+            for (fieldValue in existingFormData!!.fieldValues) {
                 fieldValues[fieldValue.fieldId] = fieldValue
                 // Store initial state for comparison
                 initialFieldValues[fieldValue.fieldId] = fieldValue
@@ -2454,11 +2456,26 @@ class FormEditActivity : AppCompatActivity() {
                 }
             }
             
+            // Preserve createdAt from existing data, or set to current time if new form
+            // Check both draft and submitted versions to find the earliest createdAt
+            var createdAt: String? = null
+            
+            // Always check both draft and submitted versions to find the best createdAt
+            val existingDraft = formFileHelper.loadFormData(siteName, formId, loadDraft = true)
+            val existingSubmitted = formFileHelper.loadFormData(siteName, formId, loadDraft = false)
+            
+            // Priority: submitted version's createdAt > draft's createdAt > new timestamp
+            // (submitted version's createdAt is the original creation time if it exists)
+            createdAt = existingSubmitted?.createdAt
+                ?: existingDraft?.createdAt
+                ?: FormData.getCurrentTimestamp()
+            
             val formData = FormData(
                 formId = formId,
                 siteName = siteName,
                 isSubmitted = !isDraft,
-                submittedAt = if (!isDraft) System.currentTimeMillis() else null,
+                createdAt = createdAt,
+                submittedAt = if (!isDraft) FormData.getCurrentTimestamp() else null,
                 fieldValues = allValues.values.toList()
             )
             
