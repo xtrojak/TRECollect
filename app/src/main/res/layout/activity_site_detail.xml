@@ -41,14 +41,6 @@
                 android:layout_marginBottom="16dp"
                 android:text="Site Name" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Forms"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="16dp" />
-
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recyclerViewFormSections"
                 android:layout_width="match_parent"
