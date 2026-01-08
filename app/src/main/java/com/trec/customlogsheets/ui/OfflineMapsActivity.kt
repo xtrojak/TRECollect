@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.trec.customlogsheets.ui
 
 import android.app.ProgressDialog
@@ -305,6 +307,7 @@ class OfflineMapsActivity : AppCompatActivity() {
     }
     
     
+    @Suppress("DEPRECATION")
     private fun deleteRegions(regions: List<OfflineMapRegion>) {
         val progressDialog = ProgressDialog.show(this, "Deleting", "Please wait...", true, false)
         
@@ -364,7 +367,7 @@ class RegionAdapter(
         private val imageExpired: android.widget.ImageView = itemView.findViewById(R.id.imageExpired)
         private val checkboxSelect: CheckBox = itemView.findViewById(R.id.checkboxSelect)
         
-        fun bind(region: OfflineMapRegion, position: Int) {
+        fun bind(region: OfflineMapRegion, @Suppress("UNUSED_PARAMETER") position: Int) {
             textRegionName.text = region.name
             textRegionBounds.text = "Bounds: ${String.format("%.4f", region.minLatitude)}, ${String.format("%.4f", region.minLongitude)} to ${String.format("%.4f", region.maxLatitude)}, ${String.format("%.4f", region.maxLongitude)}"
             textZoomLevels.text = "Zoom: ${region.minZoom} - ${region.maxZoom}"
@@ -407,7 +410,7 @@ class RegionAdapter(
             
             // Use OnCheckedChangeListener - but we need to sync with actual selection state
             // The checkbox state might be out of sync, so we check the actual selection state
-            checkboxSelect.setOnCheckedChangeListener { buttonView, isChecked ->
+            checkboxSelect.setOnCheckedChangeListener { _, isChecked ->
                 // Check the actual current selection state
                 val actuallySelected = isSelected(region)
                 // Only toggle if the checkbox state doesn't match the actual selection state

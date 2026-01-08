@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.trec.customlogsheets.ui
 
 import android.app.ProgressDialog
@@ -159,7 +161,9 @@ class DownloadRegionActivity : AppCompatActivity() {
         
         boundingBoxOverlay = Polyline().apply {
             setPoints(points)
+            @Suppress("DEPRECATION")
             color = android.graphics.Color.RED
+            @Suppress("DEPRECATION")
             width = 5.0f
         }
         mapView.overlays.add(boundingBoxOverlay)
@@ -235,6 +239,7 @@ class DownloadRegionActivity : AppCompatActivity() {
         return total
     }
     
+    @Suppress("DEPRECATION")
     private fun startDownload(region: OfflineMapRegion) {
         val progressDialog = ProgressDialog(this).apply {
             setTitle("Downloading Map Region")
@@ -246,7 +251,6 @@ class DownloadRegionActivity : AppCompatActivity() {
         progressDialog.show()
         
         lifecycleScope.launch {
-            var lastProgress = 0
             val success = mapsManager.downloadRegion(region) { downloaded, total ->
                 runOnUiThread {
                     if (total > 0) {

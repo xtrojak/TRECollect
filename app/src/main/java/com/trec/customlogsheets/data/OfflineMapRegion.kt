@@ -82,7 +82,6 @@ data class OfflineMapRegion(
     fun getAreaKm2(): Double {
         // Rough calculation using Haversine formula for center points
         val centerLat = (minLatitude + maxLatitude) / 2.0
-        val centerLon = (minLongitude + maxLongitude) / 2.0
         
         // Calculate distance from center to corners
         val latDiff = maxLatitude - minLatitude

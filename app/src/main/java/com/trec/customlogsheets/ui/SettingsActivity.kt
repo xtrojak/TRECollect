@@ -160,6 +160,7 @@ class SettingsActivity : AppCompatActivity() {
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         }
+        @Suppress("DEPRECATION")
         startActivityForResult(intent, REQUEST_CODE_OPEN_FOLDER)
     }
     

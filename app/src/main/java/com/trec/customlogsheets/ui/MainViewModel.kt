@@ -60,7 +60,7 @@ class MainViewModel(
             }
             
             val ongoingSitesList = if (ongoingFolder != null && ongoingFolder.exists() && ongoingFolder.canRead()) {
-                val folders = ongoingFolder.listFiles() ?: emptyArray()
+                val folders = ongoingFolder.listFiles()
                 folders.filter { it.isDirectory && it.name != null }
                     .map { folder ->
                         SamplingSite(
@@ -84,7 +84,7 @@ class MainViewModel(
             }
             
             val finishedSitesList = if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
-                val folders = finishedFolder.listFiles() ?: emptyArray()
+                val folders = finishedFolder.listFiles()
                 folders.filter { it.isDirectory && it.name != null }
                     .map { folder ->
                         SamplingSite(
@@ -581,7 +581,7 @@ class MainViewModel(
     private fun copyFolderRecursive(source: androidx.documentfile.provider.DocumentFile, destination: androidx.documentfile.provider.DocumentFile): Boolean {
         try {
             val files = source.listFiles()
-            if (files == null) {
+            if (files.isEmpty()) {
                 android.util.Log.w("MainViewModel", "Could not list files in source folder")
                 return true // Empty folder, consider it success
             }

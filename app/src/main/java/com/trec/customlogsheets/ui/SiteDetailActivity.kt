@@ -51,6 +51,7 @@ class SiteDetailActivity : AppCompatActivity() {
             navigateToHome()
         }
         
+        @Suppress("DEPRECATION")
         val siteExtra = intent.getParcelableExtra<SamplingSite>("site")
         if (siteExtra == null) {
             finish()
@@ -168,6 +169,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 .setMessage("Are you sure you want to finalize \"${site.name}\"? This will move the site to finished sites and cannot be undone.")
                 .setPositiveButton("Finalize") { _, _ ->
                     // Show loading indicator
+                    @Suppress("DEPRECATION")
                     val progressDialog = android.app.ProgressDialog.show(
                         this@SiteDetailActivity,
                         "Finalizing",
@@ -211,6 +213,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 val newName = editText.text.toString().trim()
                 if (newName.isNotBlank() && newName != site.name) {
                     // Show loading indicator
+                    @Suppress("DEPRECATION")
                     val progressDialog = android.app.ProgressDialog.show(
                         this,
                         "Renaming",
@@ -250,6 +253,7 @@ class SiteDetailActivity : AppCompatActivity() {
             .setMessage("Are you sure you want to delete \"${site.name}\"? The site folder will be moved to the deleted folder. This action cannot be undone and will also delete all associated form data.")
             .setPositiveButton("Delete") { _, _ ->
                 // Show loading indicator
+                @Suppress("DEPRECATION")
                 val progressDialog = android.app.ProgressDialog.show(
                     this,
                     "Deleting",

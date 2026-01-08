@@ -157,7 +157,7 @@ class FormFileHelper(private val context: Context) {
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
         val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
         if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
-            val files = ongoingSiteFolder.listFiles() ?: emptyArray()
+            val files = ongoingSiteFolder.listFiles()
             files
                 .filter { file ->
                     val fileName = file.name
@@ -178,7 +178,7 @@ class FormFileHelper(private val context: Context) {
             val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
             val finishedSiteFolder = finishedFolder?.findFile(siteName)
             if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
-                val files = finishedSiteFolder.listFiles() ?: emptyArray()
+                val files = finishedSiteFolder.listFiles()
                 files
                     .filter { file ->
                         val fileName = file.name
@@ -212,7 +212,7 @@ class FormFileHelper(private val context: Context) {
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
         val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
         if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
-            val files = ongoingSiteFolder.listFiles() ?: emptyArray()
+            val files = ongoingSiteFolder.listFiles()
             files
                 .filter { file ->
                     val fileName = file.name
@@ -232,7 +232,7 @@ class FormFileHelper(private val context: Context) {
             val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
             val finishedSiteFolder = finishedFolder?.findFile(siteName)
             if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
-                val files = finishedSiteFolder.listFiles() ?: emptyArray()
+                val files = finishedSiteFolder.listFiles()
                 files
                     .filter { file ->
                         val fileName = file.name
