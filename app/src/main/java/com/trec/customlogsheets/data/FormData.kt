@@ -15,7 +15,8 @@ data class FormFieldValue(
     val gpsLatitude: Double? = null, // For GPS
     val gpsLongitude: Double? = null, // For GPS
     val photoFileName: String? = null, // For photo (just filename, not full path)
-    val tableData: Map<String, Map<String, String>>? = null // For table: Map<rowName, Map<columnName, value>>
+    val tableData: Map<String, Map<String, String>>? = null, // For table: Map<rowName, Map<columnName, value>>
+    val dynamicData: List<Map<String, FormFieldValue>>? = null // For dynamic: List of instances, each instance is Map<subFieldId, FormFieldValue>
 )
 
 /**
@@ -80,13 +81,61 @@ data class FormData(
                 serializer.attribute(null, "tableData", tableJson.toString())
             }
             
+            if (fieldValue.dynamicData != null && fieldValue.dynamicData.isNotEmpty()) {
+                // Serialize dynamic data: nested structure with instances, using instance numbers
+                serializer.startTag(null, "dynamicInstances")
+                for ((instanceIndex, instance) in fieldValue.dynamicData.withIndex()) {
+                    serializer.startTag(null, "instance")
+                    // Set number attribute - must be set after startTag but before child elements
+                    serializer.attribute(null, "number", instanceIndex.toString())
+                    for ((subFieldId, subFieldValue) in instance) {
+                        serializer.startTag(null, "subField")
+                        serializer.attribute(null, "id", subFieldId)
+                        
+                        if (subFieldValue.value != null) {
+                            serializer.attribute(null, "value", subFieldValue.value)
+                        }
+                        if (subFieldValue.values != null && subFieldValue.values.isNotEmpty()) {
+                            serializer.attribute(null, "values", subFieldValue.values.joinToString(","))
+                        }
+                        if (subFieldValue.gpsLatitude != null && subFieldValue.gpsLongitude != null) {
+                            serializer.attribute(null, "gpsLatitude", subFieldValue.gpsLatitude.toString())
+                            serializer.attribute(null, "gpsLongitude", subFieldValue.gpsLongitude.toString())
+                        }
+                        if (subFieldValue.photoFileName != null) {
+                            serializer.attribute(null, "photoFileName", subFieldValue.photoFileName)
+                        }
+                        if (subFieldValue.tableData != null && subFieldValue.tableData.isNotEmpty()) {
+                            val tableJson = org.json.JSONObject()
+                            for ((row, columns) in subFieldValue.tableData) {
+                                val rowJson = org.json.JSONObject()
+                                for ((col, value) in columns) {
+                                    rowJson.put(col, value)
+                                }
+                                tableJson.put(row, rowJson)
+                            }
+                            serializer.attribute(null, "tableData", tableJson.toString())
+                        }
+                        
+                        serializer.endTag(null, "subField")
+                    }
+                    serializer.endTag(null, "instance")
+                }
+                serializer.endTag(null, "dynamicInstances")
+            }
+            
             serializer.endTag(null, "field")
         }
         serializer.endTag(null, "fields")
         serializer.endTag(null, "form")
         serializer.endDocument()
         
-        return writer.toString()
+        val xmlString = writer.toString()
+        // Log the XML for debugging (only for dynamic fields)
+        if (fieldValues.any { it.dynamicData != null && it.dynamicData!!.isNotEmpty() }) {
+            android.util.Log.d("FormData", "Generated XML with dynamic data: ${xmlString.take(500)}...")
+        }
+        return xmlString
     }
     
     companion object {
@@ -113,6 +162,17 @@ data class FormData(
                 var currentGpsLon: Double? = null
                 var currentPhotoFileName: String? = null
                 var currentTableData: Map<String, Map<String, String>>? = null
+                var currentDynamicData: List<Map<String, FormFieldValue>>? = null
+                var inDynamicInstances = false
+                var currentInstance: MutableMap<String, FormFieldValue>? = null
+                var currentSubFieldId: String? = null
+                var currentSubFieldValue: String? = null
+                var currentSubFieldValues: List<String>? = null
+                var currentSubFieldGpsLat: Double? = null
+                var currentSubFieldGpsLon: Double? = null
+                var currentSubFieldPhotoFileName: String? = null
+                var currentSubFieldTableData: Map<String, Map<String, String>>? = null
+                val dynamicInstancesList = mutableListOf<Map<String, FormFieldValue>>()
                 
                 while (eventType != XmlPullParser.END_DOCUMENT) {
                     when (eventType) {
@@ -125,15 +185,58 @@ data class FormData(
                                     submittedAt = parser.getAttributeValue(null, "submittedAt")?.toLongOrNull()
                                 }
                                 "field" -> {
-                                    currentFieldId = parser.getAttributeValue(null, "id")
-                                    currentValue = parser.getAttributeValue(null, "value")
+                                    if (!inDynamicInstances) {
+                                        currentFieldId = parser.getAttributeValue(null, "id")
+                                        currentValue = parser.getAttributeValue(null, "value")
+                                        val valuesStr = parser.getAttributeValue(null, "values")
+                                        currentValues = valuesStr?.split(",")?.map { it.trim() }
+                                        currentGpsLat = parser.getAttributeValue(null, "gpsLatitude")?.toDoubleOrNull()
+                                        currentGpsLon = parser.getAttributeValue(null, "gpsLongitude")?.toDoubleOrNull()
+                                        currentPhotoFileName = parser.getAttributeValue(null, "photoFileName")
+                                        val tableDataStr = parser.getAttributeValue(null, "tableData")
+                                        currentTableData = if (tableDataStr != null) {
+                                            try {
+                                                val tableJson = org.json.JSONObject(tableDataStr)
+                                                val tableMap = mutableMapOf<String, Map<String, String>>()
+                                                val keys = tableJson.keys()
+                                                while (keys.hasNext()) {
+                                                    val row = keys.next()
+                                                    val rowJson = tableJson.getJSONObject(row)
+                                                    val rowMap = mutableMapOf<String, String>()
+                                                    val colKeys = rowJson.keys()
+                                                    while (colKeys.hasNext()) {
+                                                        val col = colKeys.next()
+                                                        rowMap[col] = rowJson.getString(col)
+                                                    }
+                                                    tableMap[row] = rowMap
+                                                }
+                                                tableMap
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("FormData", "Error parsing table data: ${e.message}", e)
+                                                null
+                                            }
+                                        } else {
+                                            null
+                                        }
+                                    }
+                                }
+                                "dynamicInstances" -> {
+                                    inDynamicInstances = true
+                                    dynamicInstancesList.clear()
+                                }
+                                "instance" -> {
+                                    currentInstance = mutableMapOf()
+                                }
+                                "subField" -> {
+                                    currentSubFieldId = parser.getAttributeValue(null, "id")
+                                    currentSubFieldValue = parser.getAttributeValue(null, "value")
                                     val valuesStr = parser.getAttributeValue(null, "values")
-                                    currentValues = valuesStr?.split(",")?.map { it.trim() }
-                                    currentGpsLat = parser.getAttributeValue(null, "gpsLatitude")?.toDoubleOrNull()
-                                    currentGpsLon = parser.getAttributeValue(null, "gpsLongitude")?.toDoubleOrNull()
-                                    currentPhotoFileName = parser.getAttributeValue(null, "photoFileName")
+                                    currentSubFieldValues = valuesStr?.split(",")?.map { it.trim() }
+                                    currentSubFieldGpsLat = parser.getAttributeValue(null, "gpsLatitude")?.toDoubleOrNull()
+                                    currentSubFieldGpsLon = parser.getAttributeValue(null, "gpsLongitude")?.toDoubleOrNull()
+                                    currentSubFieldPhotoFileName = parser.getAttributeValue(null, "photoFileName")
                                     val tableDataStr = parser.getAttributeValue(null, "tableData")
-                                    currentTableData = if (tableDataStr != null) {
+                                    currentSubFieldTableData = if (tableDataStr != null) {
                                         try {
                                             val tableJson = org.json.JSONObject(tableDataStr)
                                             val tableMap = mutableMapOf<String, Map<String, String>>()
@@ -151,7 +254,7 @@ data class FormData(
                                             }
                                             tableMap
                                         } catch (e: Exception) {
-                                            android.util.Log.e("FormData", "Error parsing table data: ${e.message}", e)
+                                            android.util.Log.e("FormData", "Error parsing sub-field table data: ${e.message}", e)
                                             null
                                         }
                                     } else {
@@ -161,26 +264,63 @@ data class FormData(
                             }
                         }
                         XmlPullParser.END_TAG -> {
-                            if (parser.name == "field" && currentFieldId != null) {
-                                fieldValues.add(
-                                    FormFieldValue(
-                                        fieldId = currentFieldId,
-                                        value = currentValue,
-                                        values = currentValues,
-                                        gpsLatitude = currentGpsLat,
-                                        gpsLongitude = currentGpsLon,
-                                        photoFileName = currentPhotoFileName,
-                                        tableData = currentTableData
-                                    )
-                                )
-                                // Reset for next field
-                                currentFieldId = null
-                                currentValue = null
-                                currentValues = null
-                                currentGpsLat = null
-                                currentGpsLon = null
-                                currentPhotoFileName = null
-                                currentTableData = null
+                            when (parser.name) {
+                                "subField" -> {
+                                    if (currentSubFieldId != null && currentInstance != null) {
+                                        currentInstance!![currentSubFieldId] = FormFieldValue(
+                                            fieldId = currentSubFieldId,
+                                            value = currentSubFieldValue,
+                                            values = currentSubFieldValues,
+                                            gpsLatitude = currentSubFieldGpsLat,
+                                            gpsLongitude = currentSubFieldGpsLon,
+                                            photoFileName = currentSubFieldPhotoFileName,
+                                            tableData = currentSubFieldTableData
+                                        )
+                                        // Reset for next sub-field
+                                        currentSubFieldId = null
+                                        currentSubFieldValue = null
+                                        currentSubFieldValues = null
+                                        currentSubFieldGpsLat = null
+                                        currentSubFieldGpsLon = null
+                                        currentSubFieldPhotoFileName = null
+                                        currentSubFieldTableData = null
+                                    }
+                                }
+                                "instance" -> {
+                                    if (currentInstance != null && currentInstance!!.isNotEmpty()) {
+                                        dynamicInstancesList.add(currentInstance!!)
+                                        currentInstance = null
+                                    }
+                                }
+                                "dynamicInstances" -> {
+                                    currentDynamicData = dynamicInstancesList.toList()
+                                    inDynamicInstances = false
+                                }
+                                "field" -> {
+                                    if (currentFieldId != null && !inDynamicInstances) {
+                                        fieldValues.add(
+                                            FormFieldValue(
+                                                fieldId = currentFieldId,
+                                                value = currentValue,
+                                                values = currentValues,
+                                                gpsLatitude = currentGpsLat,
+                                                gpsLongitude = currentGpsLon,
+                                                photoFileName = currentPhotoFileName,
+                                                tableData = currentTableData,
+                                                dynamicData = currentDynamicData
+                                            )
+                                        )
+                                        // Reset for next field
+                                        currentFieldId = null
+                                        currentValue = null
+                                        currentValues = null
+                                        currentGpsLat = null
+                                        currentGpsLon = null
+                                        currentPhotoFileName = null
+                                        currentTableData = null
+                                        currentDynamicData = null
+                                    }
+                                }
                             }
                         }
                     }

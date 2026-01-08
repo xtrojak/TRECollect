@@ -201,6 +201,69 @@
           "required": false
         }
       ]
+    },
+    {
+      "id": "sample_measurements",
+      "name": "Sample Measurements",
+      "section": "Testing",
+      "description": "Dynamic widget example - add multiple sample measurements",
+      "mandatory": false,
+      "fields": [
+        {
+          "id": "sample_measurements_dynamic",
+          "label": "Sample Measurements",
+          "type": "dynamic",
+          "required": false,
+          "instance_name": "Sample",
+          "subFields": [
+            {
+              "id": "sample_id",
+              "label": "Sample ID / Barcode",
+              "type": "barcode",
+              "required": true
+            },
+            {
+              "id": "measurement_date",
+              "label": "Measurement Date",
+              "type": "date",
+              "required": true
+            },
+            {
+              "id": "measurement_time",
+              "label": "Measurement Time",
+              "type": "time",
+              "required": false
+            },
+            {
+              "id": "sample_type",
+              "label": "Sample Type",
+              "type": "select",
+              "options": ["Water", "Soil", "Air", "Biological"],
+              "required": true
+            },
+            {
+              "id": "temperature",
+              "label": "Temperature (°C)",
+              "type": "text",
+              "inputType": "number",
+              "required": false
+            },
+            {
+              "id": "ph_value",
+              "label": "pH Value",
+              "type": "text",
+              "inputType": "number",
+              "required": false
+            },
+            {
+              "id": "notes",
+              "label": "Notes",
+              "type": "textarea",
+              "required": false
+            }
+          ]
+        }
+      ]
     }
   ]
 }
