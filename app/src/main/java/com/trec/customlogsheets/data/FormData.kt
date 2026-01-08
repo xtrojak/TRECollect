@@ -14,7 +14,8 @@ data class FormFieldValue(
     val values: List<String>? = null, // For multiselect
     val gpsLatitude: Double? = null, // For GPS
     val gpsLongitude: Double? = null, // For GPS
-    val photoFileName: String? = null // For photo (just filename, not full path)
+    val photoFileName: String? = null, // For photo (just filename, not full path)
+    val tableData: Map<String, Map<String, String>>? = null // For table: Map<rowName, Map<columnName, value>>
 )
 
 /**
@@ -66,6 +67,19 @@ data class FormData(
                 serializer.attribute(null, "photoFileName", fieldValue.photoFileName)
             }
             
+            if (fieldValue.tableData != null && fieldValue.tableData.isNotEmpty()) {
+                // Serialize table data as JSON string
+                val tableJson = org.json.JSONObject()
+                for ((row, columns) in fieldValue.tableData) {
+                    val rowJson = org.json.JSONObject()
+                    for ((col, value) in columns) {
+                        rowJson.put(col, value)
+                    }
+                    tableJson.put(row, rowJson)
+                }
+                serializer.attribute(null, "tableData", tableJson.toString())
+            }
+            
             serializer.endTag(null, "field")
         }
         serializer.endTag(null, "fields")
@@ -98,6 +112,7 @@ data class FormData(
                 var currentGpsLat: Double? = null
                 var currentGpsLon: Double? = null
                 var currentPhotoFileName: String? = null
+                var currentTableData: Map<String, Map<String, String>>? = null
                 
                 while (eventType != XmlPullParser.END_DOCUMENT) {
                     when (eventType) {
@@ -117,6 +132,31 @@ data class FormData(
                                     currentGpsLat = parser.getAttributeValue(null, "gpsLatitude")?.toDoubleOrNull()
                                     currentGpsLon = parser.getAttributeValue(null, "gpsLongitude")?.toDoubleOrNull()
                                     currentPhotoFileName = parser.getAttributeValue(null, "photoFileName")
+                                    val tableDataStr = parser.getAttributeValue(null, "tableData")
+                                    currentTableData = if (tableDataStr != null) {
+                                        try {
+                                            val tableJson = org.json.JSONObject(tableDataStr)
+                                            val tableMap = mutableMapOf<String, Map<String, String>>()
+                                            val keys = tableJson.keys()
+                                            while (keys.hasNext()) {
+                                                val row = keys.next()
+                                                val rowJson = tableJson.getJSONObject(row)
+                                                val rowMap = mutableMapOf<String, String>()
+                                                val colKeys = rowJson.keys()
+                                                while (colKeys.hasNext()) {
+                                                    val col = colKeys.next()
+                                                    rowMap[col] = rowJson.getString(col)
+                                                }
+                                                tableMap[row] = rowMap
+                                            }
+                                            tableMap
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("FormData", "Error parsing table data: ${e.message}", e)
+                                            null
+                                        }
+                                    } else {
+                                        null
+                                    }
                                 }
                             }
                         }
@@ -129,7 +169,8 @@ data class FormData(
                                         values = currentValues,
                                         gpsLatitude = currentGpsLat,
                                         gpsLongitude = currentGpsLon,
-                                        photoFileName = currentPhotoFileName
+                                        photoFileName = currentPhotoFileName,
+                                        tableData = currentTableData
                                     )
                                 )
                                 // Reset for next field
@@ -139,6 +180,7 @@ data class FormData(
                                 currentGpsLat = null
                                 currentGpsLon = null
                                 currentPhotoFileName = null
+                                currentTableData = null
                             }
                         }
                     }
