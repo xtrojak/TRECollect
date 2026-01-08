@@ -815,6 +815,7 @@ class FormEditActivity : AppCompatActivity() {
                 putExtra("longitude", existingValue.gpsLongitude)
             }
         }
+        @Suppress("DEPRECATION")
         startActivityForResult(intent, REQUEST_CODE_GPS_PICKER)
     }
     
@@ -875,6 +876,7 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
+    @Suppress("UNUSED_PARAMETER")
     private fun capturePhoto(fieldId: String) {
         try {
             // Create a file to store the photo
@@ -1685,7 +1687,7 @@ class FormEditActivity : AppCompatActivity() {
         subFieldConfig: FormFieldConfig,
         uniqueFieldId: String,
         dynamicFieldId: String,
-        instanceIndex: Int
+        @Suppress("UNUSED_PARAMETER") instanceIndex: Int
     ) {
         when (subFieldConfig.type) {
             FormFieldConfig.FieldType.TEXT,
@@ -1721,8 +1723,8 @@ class FormEditActivity : AppCompatActivity() {
         val containerInstances = dynamicFieldView.findViewById<LinearLayout>(R.id.containerInstances)
         val buttonAdd = dynamicFieldView.findViewById<MaterialButton>(R.id.buttonAdd)
         val fieldConfig = formConfig.fields.firstOrNull { it.id == dynamicFieldId }
-        if (fieldConfig != null && fieldConfig.subFields != null) {
-            updateAddButtonState(buttonAdd, containerInstances, fieldConfig.subFields!!)
+        fieldConfig?.subFields?.let { subFields ->
+            updateAddButtonState(buttonAdd, containerInstances, subFields)
         }
     }
     
@@ -1737,7 +1739,7 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         // Check if last instance is non-empty
-        val lastInstance = containerInstances.getChildAt(containerInstances.childCount - 1) as? View
+        val lastInstance = containerInstances.getChildAt(containerInstances.childCount - 1)
         val lastInstanceIndex = lastInstance?.tag as? Int ?: -1
         
         var hasNonEmptyField = false
@@ -1776,7 +1778,7 @@ class FormEditActivity : AppCompatActivity() {
     private fun updateDeleteButtonStates(containerInstances: LinearLayout) {
         val instanceCount = containerInstances.childCount
         for (i in 0 until instanceCount) {
-            val instanceView = containerInstances.getChildAt(i) as? View
+            val instanceView = containerInstances.getChildAt(i)
             val buttonDelete = instanceView?.findViewById<MaterialButton>(R.id.buttonDelete)
             buttonDelete?.isEnabled = instanceCount > 1
         }
@@ -1784,7 +1786,7 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun updateInstanceNumbers(containerInstances: LinearLayout) {
         for (i in 0 until containerInstances.childCount) {
-            val instanceView = containerInstances.getChildAt(i) as? View
+            val instanceView = containerInstances.getChildAt(i)
             val textInstanceNumber = instanceView?.findViewById<TextView>(R.id.textInstanceNumber)
             // Get instance name from the dynamic field config
             val dynamicFieldId = containerInstances.tag as? String
@@ -1807,12 +1809,12 @@ class FormEditActivity : AppCompatActivity() {
                         // Format: "${dynamicFieldId}_instance${oldInstanceIndex}_${subFieldId}"
                         val parts = oldUniqueFieldId.split("_instance")
                         if (parts.size == 2) {
-                            val dynamicFieldId = parts[0]
+                            val parsedDynamicFieldId = parts[0]
                             val rest = parts[1]
                             val subFieldParts = rest.split("_", limit = 2)
                             if (subFieldParts.size == 2) {
                                 val subFieldId = subFieldParts[1]
-                                val newUniqueFieldId = "${dynamicFieldId}_instance${i}_${subFieldId}"
+                                val newUniqueFieldId = "${parsedDynamicFieldId}_instance${i}_${subFieldId}"
                                 if (oldUniqueFieldId != newUniqueFieldId) {
                                     // Update fieldViews mapping
                                     fieldViews.remove(oldUniqueFieldId)
@@ -2248,12 +2250,12 @@ class FormEditActivity : AppCompatActivity() {
                 val dynamicInstances = mutableListOf<Map<String, FormFieldValue>>()
                 
                 for (i in 0 until containerInstances.childCount) {
-                    val instanceView = containerInstances.getChildAt(i) as? View
-                    val containerSubFields = instanceView?.findViewById<LinearLayout>(R.id.containerSubFields)
+                    val instanceView = containerInstances.getChildAt(i)
+                    val containerSubFields = instanceView.findViewById<LinearLayout>(R.id.containerSubFields)
                     if (containerSubFields != null) {
                         val instanceData = mutableMapOf<String, FormFieldValue>()
-                        val fieldConfig = formConfig.fields.firstOrNull { it.id == fieldId }
-                        val subFields = fieldConfig?.subFields ?: emptyList()
+                        val dynamicFieldConfig = formConfig.fields.firstOrNull { it.id == fieldId }
+                        val subFields = dynamicFieldConfig?.subFields ?: emptyList()
                         
                         for (subFieldConfig in subFields) {
                             val uniqueFieldId = "${fieldId}_instance${i}_${subFieldConfig.id}"
@@ -2458,15 +2460,13 @@ class FormEditActivity : AppCompatActivity() {
             
             // Preserve createdAt from existing data, or set to current time if new form
             // Check both draft and submitted versions to find the earliest createdAt
-            var createdAt: String? = null
-            
             // Always check both draft and submitted versions to find the best createdAt
             val existingDraft = formFileHelper.loadFormData(siteName, formId, loadDraft = true)
             val existingSubmitted = formFileHelper.loadFormData(siteName, formId, loadDraft = false)
             
             // Priority: submitted version's createdAt > draft's createdAt > new timestamp
             // (submitted version's createdAt is the original creation time if it exists)
-            createdAt = existingSubmitted?.createdAt
+            val createdAt = existingSubmitted?.createdAt
                 ?: existingDraft?.createdAt
                 ?: FormData.getCurrentTimestamp()
             

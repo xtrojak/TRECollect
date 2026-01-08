@@ -93,7 +93,7 @@ object FormConfigLoader {
                             id = formObj.getString("id"),
                             name = formObj.getString("name"),
                             section = formObj.getString("section"),
-                            description = formObj.optString("description", null),
+                            description = formObj.optString("description").takeIf { it.isNotEmpty() },
                             mandatory = formObj.optBoolean("mandatory", false),
                             fields = fields
                         )
@@ -165,7 +165,7 @@ object FormConfigLoader {
                 }
                 
                 val instanceName = if (fieldType == FormFieldConfig.FieldType.DYNAMIC) {
-                    fieldObj.optString("instance_name", null)
+                    fieldObj.optString("instance_name").takeIf { it.isNotEmpty() }
                 } else {
                     null
                 }
@@ -178,7 +178,7 @@ object FormConfigLoader {
                         type = fieldType,
                         required = if (fieldType == FormFieldConfig.FieldType.SECTION) false else fieldObj.optBoolean("required", false),
                         options = if (fieldType == FormFieldConfig.FieldType.SECTION) null else options,
-                        inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType", null),
+                        inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType").takeIf { it.isNotEmpty() },
                         rows = if (fieldType == FormFieldConfig.FieldType.TABLE) rows else null,
                         columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null,
                         subFields = subFields,

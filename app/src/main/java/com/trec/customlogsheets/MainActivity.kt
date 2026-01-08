@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                             // Show offline maps prompt
-                            showOfflineMapsPrompt(siteName)
+                            showOfflineMapsPrompt()
                         }
                         is MainViewModel.CreateSiteResult.Error -> {
                             android.widget.Toast.makeText(
@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
     
-    private fun showOfflineMapsPrompt(siteName: String) {
+    private fun showOfflineMapsPrompt() {
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Offline Maps")
             .setMessage("In order to use GPS widgets in offline mode, please download offline maps for this site.")
