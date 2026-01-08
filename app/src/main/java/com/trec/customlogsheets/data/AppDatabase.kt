@@ -17,9 +17,9 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
         
         private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // Create form_completions table
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS form_completions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         siteId INTEGER NOT NULL,
@@ -30,7 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
                 
                 // Create unique index
-                database.execSQL("""
+                db.execSQL("""
                     CREATE UNIQUE INDEX IF NOT EXISTS index_form_completions_siteId_formId 
                     ON form_completions(siteId, formId)
                 """.trimIndent())
@@ -38,10 +38,10 @@ abstract class AppDatabase : RoomDatabase() {
         }
         
         private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // Migrate form_completions to use siteName instead of siteId
                 // First, create new table with siteName
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS form_completions_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         siteName TEXT NOT NULL,
@@ -51,7 +51,7 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
                 
                 // Copy data from old table to new table, joining with sampling_sites to get site names
-                database.execSQL("""
+                db.execSQL("""
                     INSERT INTO form_completions_new (id, siteName, formId, completedAt)
                     SELECT fc.id, ss.name, fc.formId, fc.completedAt
                     FROM form_completions fc
@@ -59,13 +59,13 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
                 
                 // Drop old table
-                database.execSQL("DROP TABLE IF EXISTS form_completions")
+                db.execSQL("DROP TABLE IF EXISTS form_completions")
                 
                 // Rename new table
-                database.execSQL("ALTER TABLE form_completions_new RENAME TO form_completions")
+                db.execSQL("ALTER TABLE form_completions_new RENAME TO form_completions")
                 
                 // Create new unique index
-                database.execSQL("""
+                db.execSQL("""
                     CREATE UNIQUE INDEX IF NOT EXISTS index_form_completions_siteName_formId 
                     ON form_completions(siteName, formId)
                 """.trimIndent())

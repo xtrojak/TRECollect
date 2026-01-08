@@ -173,12 +173,12 @@ class OfflineMapsManager(private val context: Context) {
                 
                 // Download tiles for each zoom level
                 for (zoom in region.minZoom..region.maxZoom) {
-                    val tiles = downloadTilesForZoom(
+                    downloadTilesForZoom(
                         boundingBox,
                         zoom,
                         TileSourceFactory.MAPNIK,
                         tileCache
-                    ) { downloaded ->
+                    ) { _ ->
                         downloadedTiles++
                         progressCallback?.invoke(downloadedTiles, totalTiles)
                     }
@@ -301,6 +301,7 @@ class OfflineMapsManager(private val context: Context) {
      * doesn't easily allow deleting specific regions. We'll mark the region as deleted
      * and let OSMDroid manage its own cache cleanup.
      */
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun deleteRegionTiles(region: OfflineMapRegion) {
         // OSMDroid manages its own cache, so we can't easily delete specific tiles
         // The region metadata deletion is sufficient - OSMDroid will handle cache size limits

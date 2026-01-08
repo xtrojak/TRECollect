@@ -98,7 +98,9 @@ class MapPreviewActivity : androidx.appcompat.app.AppCompatActivity() {
         
         boundingBoxOverlay = Polyline().apply {
             setPoints(points)
+            @Suppress("DEPRECATION")
             color = android.graphics.Color.RED
+            @Suppress("DEPRECATION")
             width = 8.0f
         }
         mapView.overlays.add(boundingBoxOverlay)
