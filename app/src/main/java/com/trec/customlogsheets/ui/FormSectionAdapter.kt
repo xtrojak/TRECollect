@@ -14,11 +14,13 @@ class FormSectionAdapter(
     private var sections: List<String> = emptyList()
     private var formsBySection: Map<String, List<Form>> = emptyMap()
     private var completedFormIds: Set<String> = emptySet()
+    private var draftFormIds: Set<String> = emptySet()
 
-    fun setData(sections: List<String>, formsBySection: Map<String, List<Form>>, completedFormIds: Set<String>) {
+    fun setData(sections: List<String>, formsBySection: Map<String, List<Form>>, completedFormIds: Set<String>, draftFormIds: Set<String> = emptySet()) {
         this.sections = sections
         this.formsBySection = formsBySection
         this.completedFormIds = completedFormIds
+        this.draftFormIds = draftFormIds
         notifyDataSetChanged()
     }
 
@@ -31,7 +33,7 @@ class FormSectionAdapter(
     override fun onBindViewHolder(holder: SectionViewHolder, position: Int) {
         val section = sections[position]
         val forms = formsBySection[section] ?: emptyList()
-        holder.bind(section, forms, completedFormIds)
+        holder.bind(section, forms, completedFormIds, draftFormIds)
     }
 
     override fun getItemCount(): Int = sections.size
@@ -50,10 +52,11 @@ class FormSectionAdapter(
             formsRecyclerView.isNestedScrollingEnabled = false // Disable nested scrolling for better performance
         }
 
-        fun bind(section: String, forms: List<Form>, completedFormIds: Set<String>) {
+        fun bind(section: String, forms: List<Form>, completedFormIds: Set<String>, draftFormIds: Set<String>) {
             sectionTitleText.text = section
             formAdapter.submitList(forms)
             formAdapter.setCompletedFormIds(completedFormIds)
+            formAdapter.setDraftFormIds(draftFormIds)
         }
     }
 }

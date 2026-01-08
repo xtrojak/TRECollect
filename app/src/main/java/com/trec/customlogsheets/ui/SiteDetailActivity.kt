@@ -292,20 +292,23 @@ class SiteDetailActivity : AppCompatActivity() {
         val formsBySection = sections.associateWith { section ->
             PredefinedForms.getFormsBySection(this, section)
         }
-        formSectionAdapter.setData(sections, formsBySection, emptySet())
+        formSectionAdapter.setData(sections, formsBySection, emptySet(), emptySet())
     }
     
     private fun loadFormCompletions() {
         lifecycleScope.launch {
-            // Check which forms are submitted using FormFileHelper
+            // Check which forms are submitted and which have drafts using FormFileHelper
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
             val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
+            val allDraftFormIds = formFileHelper.getDraftForms(site.name).toSet()
+            // Only show drafts for forms that are not submitted
+            val draftFormIds = allDraftFormIds.filter { !submittedFormIds.contains(it) }.toSet()
             
             val sections = PredefinedForms.getSections(this@SiteDetailActivity)
             val formsBySection = sections.associateWith { section ->
                 PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
             }
-            formSectionAdapter.setData(sections, formsBySection, submittedFormIds)
+            formSectionAdapter.setData(sections, formsBySection, submittedFormIds, draftFormIds)
             
             // Update canFinalize flag
             canFinalize = checkAllMandatoryFormsSubmitted()
