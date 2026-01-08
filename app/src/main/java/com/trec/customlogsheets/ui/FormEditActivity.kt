@@ -930,14 +930,15 @@ class FormEditActivity : AppCompatActivity() {
             false
         ) as LinearLayout
         
-        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val textInputLayout = container.findViewById<TextInputLayout>(R.id.textInputLayout)
+        val editText = container.findViewById<TextInputEditText>(R.id.editText)
         val buttonScan = container.findViewById<MaterialButton>(R.id.buttonScan)
-        val textBarcodeValue = container.findViewById<TextView>(R.id.textBarcodeValue)
         
-        textLabel.text = if (fieldConfig.required) {
-            "${fieldConfig.label} *"
+        // Set hint/label
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
         } else {
-            fieldConfig.label
+            textInputLayout.hint = fieldConfig.label
         }
         
         container.tag = fieldConfig.id
@@ -945,17 +946,40 @@ class FormEditActivity : AppCompatActivity() {
         // Load existing barcode value
         val existingValue = fieldValues[fieldConfig.id]
         if (existingValue?.value != null) {
-            textBarcodeValue.text = "Barcode: ${existingValue.value}"
-            textBarcodeValue.visibility = View.VISIBLE
+            editText.setText(existingValue.value)
         }
         
-        if (!isReadOnly) {
+        // Make read-only if needed
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+            buttonScan.isEnabled = false
+        } else {
+            // Update fieldValues as user types
+            editText.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val value = s?.toString()?.trim() ?: ""
+                    if (value.isNotEmpty()) {
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                        markFormChanged()
+                    } else {
+                        fieldValues.remove(fieldConfig.id)
+                        markFormChanged()
+                    }
+                }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+            
+            // Set up scan button
             buttonScan.setOnClickListener {
                 currentBarcodeFieldId = fieldConfig.id
                 startBarcodeScanning()
             }
-        } else {
-            buttonScan.isEnabled = false
         }
         
         return container
@@ -1263,9 +1287,10 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun updateBarcodeFieldView(fieldId: String, barcodeValue: String) {
         val fieldView = fieldViews[fieldId] ?: return
-        val textBarcodeValue = fieldView.findViewById<TextView>(R.id.textBarcodeValue)
-        textBarcodeValue?.text = "Barcode: $barcodeValue"
-        textBarcodeValue?.visibility = View.VISIBLE
+        val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+        editText?.setText(barcodeValue)
+        // Move cursor to end
+        editText?.setSelection(barcodeValue.length)
     }
     
     private fun showDatePicker(fieldId: String, editText: TextInputEditText) {
@@ -1358,6 +1383,10 @@ class FormEditActivity : AppCompatActivity() {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
             }
+            FormFieldConfig.FieldType.BARCODE -> {
+                val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                editText?.setText(fieldValue.value)
+            }
             else -> {
                 // Handle other types later
             }
@@ -1401,8 +1430,11 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues[fieldId]?.let { values.add(it) }
             }
             FormFieldConfig.FieldType.BARCODE -> {
-                // Barcode value is stored when scanned
-                fieldValues[fieldId]?.let { values.add(it) }
+                val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                val value = editText?.text?.toString()?.trim() ?: ""
+                if (value.isNotEmpty()) {
+                    values.add(FormFieldValue(fieldId, value = value))
+                }
             }
             FormFieldConfig.FieldType.TABLE -> {
                 // Collect table data from all cells

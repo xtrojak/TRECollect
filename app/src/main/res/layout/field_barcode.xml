@@ -3,32 +3,33 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
     android:layout_marginBottom="16dp">
 
-    <TextView
-        android:id="@+id/textLabel"
-        android:layout_width="wrap_content"
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/textInputLayout"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="8dp" />
+        android:layout_weight="1"
+        app:boxStrokeWidth="1dp"
+        app:boxStrokeWidthFocused="2dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:inputType="text" />
+
+    </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/buttonScan"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Scan Barcode"
-        android:icon="@android:drawable/ic_menu_view" />
-
-    <TextView
-        android:id="@+id/textBarcodeValue"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textSize="12sp"
-        android:textColor="?android:attr/textColorSecondary"
-        android:visibility="gone" />
+        android:layout_marginStart="8dp"
+        android:text="Scan"
+        android:icon="@android:drawable/ic_menu_camera" />
 
 </LinearLayout>
-
