@@ -1,5 +1,8 @@
 package com.trec.customlogsheets.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -18,6 +21,7 @@ import com.trec.customlogsheets.MainActivity
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SettingsPreferences
+import com.trec.customlogsheets.util.AppLogger
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var settingsPreferences: SettingsPreferences
@@ -27,6 +31,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var selectFolderButton: MaterialButton
     private lateinit var teamSpinner: Spinner
     private lateinit var buttonOfflineMaps: MaterialButton
+    private lateinit var buttonViewLogs: MaterialButton
+    private lateinit var buttonCopyUuid: MaterialButton
     private val teams = arrayOf(SettingsPreferences.DEFAULT_TEAM)
     
     companion object {
@@ -76,6 +82,21 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(intent)
         }
         
+        buttonViewLogs = findViewById(R.id.buttonViewLogs)
+        buttonViewLogs.setOnClickListener {
+            val intent = Intent(this, LogsActivity::class.java)
+            startActivity(intent)
+        }
+        
+        buttonCopyUuid = findViewById(R.id.buttonCopyUuid)
+        buttonCopyUuid.setOnClickListener {
+            val appUuid = settingsPreferences.getAppUuid()
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("App UUID", appUuid)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "UUID copied to clipboard", Toast.LENGTH_SHORT).show()
+        }
+        
         teamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                 val selectedTeam = teams[position]
@@ -119,6 +140,11 @@ class SettingsActivity : AppCompatActivity() {
         if (teamIndex >= 0) {
             teamSpinner.setSelection(teamIndex)
         }
+        
+        // Load and display app UUID
+        val appUuid = settingsPreferences.getAppUuid()
+        val uuidText = findViewById<TextView>(R.id.textAppUuid)
+        uuidText.text = appUuid
     }
     
     private fun resetFolderVisualState() {

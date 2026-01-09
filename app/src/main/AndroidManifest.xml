@@ -57,6 +57,10 @@
                android:name=".ui.MapPreviewActivity"
                android:parentActivityName=".ui.OfflineMapsActivity"
                android:label="Map Preview" />
+           <activity
+               android:name=".ui.LogsActivity"
+               android:parentActivityName=".ui.SettingsActivity"
+               android:label="App Logs" />
         
         <!-- FileProvider for photo capture -->
         <provider

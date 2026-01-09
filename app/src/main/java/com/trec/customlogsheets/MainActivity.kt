@@ -20,6 +20,9 @@ import com.trec.customlogsheets.ui.SamplingSiteAdapter
 import com.trec.customlogsheets.ui.SettingsActivity
 import com.trec.customlogsheets.ui.SiteDetailActivity
 import com.trec.customlogsheets.ui.DownloadRegionActivity
+import com.trec.customlogsheets.data.SettingsPreferences
+import com.trec.customlogsheets.data.OwnCloudManager
+import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -55,6 +58,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // Reload sites from folders when returning to this activity
         viewModel.loadSitesFromFolders()
+        
+        // Retry ownCloud folder creation if it wasn't verified yet
+        retryOwnCloudFolderCreation()
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -159,6 +165,70 @@ class MainActivity : AppCompatActivity() {
                 // Do nothing, user dismissed the prompt
             }
             .show()
+    }
+    
+    private fun initializeAppUuidAndOwnCloud() {
+        lifecycleScope.launch {
+            try {
+                val settingsPreferences = SettingsPreferences(this@MainActivity)
+                val appUuid = settingsPreferences.getAppUuid()
+                AppLogger.i("MainActivity", "App UUID: $appUuid")
+                android.util.Log.d("MainActivity", "App UUID: $appUuid")
+                
+                // Check if folder was already verified
+                if (settingsPreferences.isOwnCloudFolderVerified()) {
+                    AppLogger.d("MainActivity", "OwnCloud folder already verified: $appUuid")
+                    android.util.Log.d("MainActivity", "OwnCloud folder already verified: $appUuid")
+                    return@launch
+                }
+                
+                // Ensure ownCloud folder exists
+                AppLogger.i("MainActivity", "Ensuring ownCloud folder exists for UUID: $appUuid")
+                val ownCloudManager = OwnCloudManager(this@MainActivity)
+                val folderCreated = ownCloudManager.ensureFolderExists(appUuid)
+                
+                if (folderCreated) {
+                    settingsPreferences.setOwnCloudFolderVerified(true)
+                    AppLogger.i("MainActivity", "OwnCloud folder ensured successfully: $appUuid")
+                    android.util.Log.d("MainActivity", "OwnCloud folder ensured: $appUuid")
+                } else {
+                    AppLogger.w("MainActivity", "Failed to ensure ownCloud folder: $appUuid (will retry later)")
+                    android.util.Log.w("MainActivity", "Failed to ensure ownCloud folder: $appUuid (will retry later)")
+                }
+            } catch (e: Exception) {
+                AppLogger.e("MainActivity", "Error initializing UUID/ownCloud: ${e.message}", e)
+                android.util.Log.e("MainActivity", "Error initializing UUID/ownCloud: ${e.message}", e)
+            }
+        }
+    }
+    
+    private fun retryOwnCloudFolderCreation() {
+        lifecycleScope.launch {
+            try {
+                val settingsPreferences = SettingsPreferences(this@MainActivity)
+                
+                // Only retry if folder hasn't been verified yet
+                if (settingsPreferences.isOwnCloudFolderVerified()) {
+                    return@launch
+                }
+                
+                val appUuid = settingsPreferences.getAppUuid()
+                AppLogger.d("MainActivity", "Retrying ownCloud folder creation for UUID: $appUuid")
+                val ownCloudManager = OwnCloudManager(this@MainActivity)
+                val folderCreated = ownCloudManager.ensureFolderExists(appUuid)
+                
+                if (folderCreated) {
+                    settingsPreferences.setOwnCloudFolderVerified(true)
+                    AppLogger.i("MainActivity", "OwnCloud folder verified on retry: $appUuid")
+                    android.util.Log.d("MainActivity", "OwnCloud folder verified on retry: $appUuid")
+                } else {
+                    AppLogger.w("MainActivity", "OwnCloud folder creation retry failed: $appUuid")
+                }
+            } catch (e: Exception) {
+                AppLogger.e("MainActivity", "Error retrying ownCloud folder creation: ${e.message}", e)
+                android.util.Log.e("MainActivity", "Error retrying ownCloud folder creation: ${e.message}", e)
+            }
+        }
     }
 }
 
