@@ -14,11 +14,19 @@ class Converters {
         return try {
             val result = SiteStatus.values().getOrElse(ordinal) { SiteStatus.ONGOING }
             if (ordinal < 0 || ordinal >= SiteStatus.values().size) {
-                AppLogger.w("Converters", "Invalid SiteStatus ordinal: $ordinal, defaulting to ONGOING")
+                try {
+                    AppLogger.w("Converters", "Invalid SiteStatus ordinal: $ordinal, defaulting to ONGOING")
+                } catch (e: Exception) {
+                    // Ignore logging errors in test environments
+                }
             }
             result
         } catch (e: Exception) {
-            AppLogger.e("Converters", "Error converting SiteStatus from ordinal $ordinal", e)
+            try {
+                AppLogger.e("Converters", "Error converting SiteStatus from ordinal $ordinal", e)
+            } catch (logError: Exception) {
+                // Ignore logging errors in test environments
+            }
             SiteStatus.ONGOING
         }
     }
@@ -33,11 +41,19 @@ class Converters {
         return try {
             val result = UploadStatus.values().getOrElse(ordinal) { UploadStatus.NOT_UPLOADED }
             if (ordinal < 0 || ordinal >= UploadStatus.values().size) {
-                AppLogger.w("Converters", "Invalid UploadStatus ordinal: $ordinal, defaulting to NOT_UPLOADED")
+                try {
+                    AppLogger.w("Converters", "Invalid UploadStatus ordinal: $ordinal, defaulting to NOT_UPLOADED")
+                } catch (e: Exception) {
+                    // Ignore logging errors in test environments
+                }
             }
             result
         } catch (e: Exception) {
-            AppLogger.e("Converters", "Error converting UploadStatus from ordinal $ordinal", e)
+            try {
+                AppLogger.e("Converters", "Error converting UploadStatus from ordinal $ordinal", e)
+            } catch (logError: Exception) {
+                // Ignore logging errors in test environments
+            }
             UploadStatus.NOT_UPLOADED
         }
     }
