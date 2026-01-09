@@ -77,15 +77,20 @@ class SiteDetailActivity : AppCompatActivity() {
         textViewUploadStatus = findViewById(R.id.textViewUploadStatus)
         buttonRetryUpload = findViewById(R.id.buttonRetryUpload)
         
-        setupUploadStatus()
+        // Hide upload status section for finished sites (upload is handled from main list)
+        if (site.status == com.trec.customlogsheets.data.SiteStatus.FINISHED) {
+            cardUploadStatus.visibility = android.view.View.GONE
+        } else {
+            setupUploadStatus()
+        }
         setupFormsList()
         loadFormCompletions()
     }
     
     override fun onResume() {
         super.onResume()
-        // Reload site data to get updated upload status (only if site has valid ID)
-        if (site.id > 0) {
+        // Reload site data to get updated upload status (only if site has valid ID and not finished)
+        if (site.id > 0 && site.status != com.trec.customlogsheets.data.SiteStatus.FINISHED) {
             lifecycleScope.launch {
                 try {
                     val updatedSite = database.samplingSiteDao().getSiteById(site.id)
