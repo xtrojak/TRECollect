@@ -30,11 +30,11 @@ android {
     }
     
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '11'
     }
 }
 
@@ -83,5 +83,7 @@ dependencies {
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
     testImplementation 'app.cash.turbine:turbine:1.0.0'
     testImplementation 'org.assertj:assertj-core:3.24.2'
+    // org.json for unit tests (Android's org.json is not available in JVM tests)
+    testImplementation 'org.json:json:20231013'
 }
 
