@@ -85,7 +85,8 @@ class MainActivity : AppCompatActivity() {
         )
         
         finishedAdapter = SamplingSiteAdapter(
-            onItemClick = { site -> navigateToDetail(site) }
+            onItemClick = { site -> navigateToDetail(site) },
+            onUploadClick = { site -> uploadSite(site) }
         )
         
         findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOngoing).apply {
@@ -152,6 +153,41 @@ class MainActivity : AppCompatActivity() {
             putExtra("site", site)
         }
         startActivity(intent)
+    }
+    
+    private fun uploadSite(site: SamplingSite) {
+        lifecycleScope.launch {
+            AppLogger.i("MainActivity", "Starting manual upload for site: name='${site.name}'")
+            
+            // Show upload start message
+            android.widget.Toast.makeText(
+                this@MainActivity,
+                "Uploading ${site.name}...",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            
+            val result = viewModel.uploadSiteToOwnCloud(site)
+            when (result) {
+                is MainViewModel.UploadSiteResult.Success -> {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        "${site.name} uploaded successfully",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    // Reload sites to update the checkbox
+                    viewModel.loadSitesFromFolders()
+                }
+                is MainViewModel.UploadSiteResult.Error -> {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        "Upload failed for ${site.name}: ${result.message}",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                    // Reload sites to update the checkbox
+                    viewModel.loadSitesFromFolders()
+                }
+            }
+        }
     }
     
     private fun showOfflineMapsPrompt() {
