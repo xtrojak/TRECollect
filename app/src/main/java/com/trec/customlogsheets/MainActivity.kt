@@ -57,7 +57,8 @@ class MainActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
-        // Reload sites from folders when returning to this activity
+        // Only reload if we've been away for a while (not on initial load)
+        // This prevents unnecessary reloads when just pausing/resuming quickly
         viewModel.loadSitesFromFolders()
         
         // Retry ownCloud folder creation if it wasn't verified yet
@@ -112,7 +113,7 @@ class MainActivity : AppCompatActivity() {
                     when (result) {
                         is MainViewModel.CreateSiteResult.Success -> {
                             AppLogger.i("MainActivity", "Site creation completed successfully: name='$siteName'")
-                            editText.text?.clear()
+                editText.text?.clear()
                             android.widget.Toast.makeText(
                                 this@MainActivity,
                                 "Site created successfully",

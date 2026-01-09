@@ -52,17 +52,18 @@ class MainViewModel(
             val folderUriString = settingsPreferences.getFolderUri()
             
             if (folderUriString.isEmpty()) {
-                // No storage configured, set empty lists
-                _ongoingSites.value = emptyList()
-                _finishedSites.value = emptyList()
+                // No storage configured, set empty lists immediately
+                withContext(Dispatchers.Main) {
+                    _ongoingSites.value = emptyList()
+                    _finishedSites.value = emptyList()
+                }
                 return@launch
             }
             
             val folderHelper = FolderStructureHelper(context)
             
             // Load all sites from database ONCE (optimization: avoid querying for each folder)
-            // Add a small delay to ensure any pending database writes are committed
-            kotlinx.coroutines.delay(100)
+            // Removed delay - not needed, database operations are already async
             val allDbSites = try {
                 database.samplingSiteDao().getAllSites().first()
             } catch (e: Exception) {
@@ -73,7 +74,7 @@ class MainViewModel(
             val dbSitesByName = allDbSites.associateBy { it.name }
             AppLogger.d("MainViewModel", "Loaded ${allDbSites.size} sites from database for folder loading")
             
-            // Load ongoing sites
+            // Load ongoing sites first (simpler, no DB operations needed)
             val ongoingFolder = try {
                 folderHelper.getOngoingFolder(settingsPreferences)
             } catch (e: Exception) {
@@ -82,23 +83,33 @@ class MainViewModel(
             }
             
             val ongoingSitesList = if (ongoingFolder != null && ongoingFolder.exists() && ongoingFolder.canRead()) {
-                val folders = ongoingFolder.listFiles()
-                folders.filter { it.isDirectory && it.name != null }
-                    .map { folder ->
-                        SamplingSite(
-                            id = 0, // ID not used when loading from folders
-                            name = folder.name!!,
-                            status = SiteStatus.ONGOING,
-                            uploadStatus = UploadStatus.NOT_UPLOADED, // Ongoing sites are not uploaded
-                            createdAt = 0 // We don't have creation time from folders
-                        )
-                    }
-                    .sortedBy { it.name }
+                try {
+                    val folders = ongoingFolder.listFiles()
+                    folders.filter { it.isDirectory && it.name != null }
+                        .map { folder ->
+                            SamplingSite(
+                                id = 0, // ID not used when loading from folders
+                                name = folder.name!!,
+                                status = SiteStatus.ONGOING,
+                                uploadStatus = UploadStatus.NOT_UPLOADED, // Ongoing sites are not uploaded
+                                createdAt = 0 // We don't have creation time from folders
+                            )
+                        }
+                        .sortedBy { it.name }
+                } catch (e: Exception) {
+                    AppLogger.e("MainViewModel", "Error listing ongoing folders: ${e.message}", e)
+                    emptyList()
+                }
             } else {
                 emptyList()
             }
             
-            // Load finished sites
+            // Update ongoing sites immediately for faster UI response
+            withContext(Dispatchers.Main) {
+                _ongoingSites.value = ongoingSitesList
+            }
+            
+            // Load finished sites (more complex, involves DB operations)
             val finishedFolder = try {
                 folderHelper.getFinishedFolder(settingsPreferences)
             } catch (e: Exception) {
@@ -107,59 +118,101 @@ class MainViewModel(
             }
             
             val finishedSitesList = if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
-                val folders = finishedFolder.listFiles()
-                val folderSites = folders.filter { it.isDirectory && it.name != null }
-                    .map { folder ->
-                        // Try to find existing site in database to preserve upload status
-                        // Use the pre-loaded map for O(1) lookup instead of querying for each folder
-                        val dbSite = dbSitesByName[folder.name]
-                        
-                        if (dbSite != null) {
-                            // Use database record, but ensure status is FINISHED (since it's in finished folder)
-                            val siteWithCorrectStatus = if (dbSite.status != SiteStatus.FINISHED) {
-                                // Update status in database if it changed
-                                try {
-                                    database.samplingSiteDao().updateSite(dbSite.copy(status = SiteStatus.FINISHED))
-                                } catch (e: Exception) {
-                                    AppLogger.e("MainViewModel", "Error updating site status: ${e.message}", e)
+                try {
+                    val folders = finishedFolder.listFiles()
+                    // Batch database operations: collect all sites to insert/update first
+                    val sitesToInsert = mutableListOf<SamplingSite>()
+                    val sitesToUpdate = mutableListOf<SamplingSite>()
+                    
+                    val folderSites = folders.filter { it.isDirectory && it.name != null }
+                        .mapNotNull { folder ->
+                            // Try to find existing site in database to preserve upload status
+                            // Use the pre-loaded map for O(1) lookup instead of querying for each folder
+                            val dbSite = dbSitesByName[folder.name]
+                            
+                            if (dbSite != null) {
+                                // Use database record, but ensure status is FINISHED (since it's in finished folder)
+                                if (dbSite.status != SiteStatus.FINISHED) {
+                                    // Queue for batch update
+                                    sitesToUpdate.add(dbSite.copy(status = SiteStatus.FINISHED))
                                 }
-                                dbSite.copy(status = SiteStatus.FINISHED)
+                                val siteWithCorrectStatus = if (dbSite.status != SiteStatus.FINISHED) {
+                                    dbSite.copy(status = SiteStatus.FINISHED)
+                                } else {
+                                    dbSite
+                                }
+                                AppLogger.d("MainViewModel", "Found site in database: name='${folder.name}', id=${siteWithCorrectStatus.id}, status=${siteWithCorrectStatus.status}, uploadStatus=${siteWithCorrectStatus.uploadStatus}")
+                                siteWithCorrectStatus
                             } else {
-                                dbSite
-                            }
-                            AppLogger.d("MainViewModel", "Found site in database: name='${folder.name}', id=${siteWithCorrectStatus.id}, status=${siteWithCorrectStatus.status}, uploadStatus=${siteWithCorrectStatus.uploadStatus}")
-                            siteWithCorrectStatus
-                        } else {
-                            AppLogger.d("MainViewModel", "Site not found in database, creating new: name='${folder.name}'")
-                            // Create new site record with default upload status
-                            val newSite = SamplingSite(
-                                id = 0,
-                                name = folder.name!!,
-                                status = SiteStatus.FINISHED,
-                                uploadStatus = UploadStatus.NOT_UPLOADED,
-                                createdAt = System.currentTimeMillis()
-                            )
-                            // Insert into database
-                            try {
-                                val insertedId = database.samplingSiteDao().insertSite(newSite)
-                                val insertedSite = newSite.copy(id = insertedId)
-                                AppLogger.d("MainViewModel", "Inserted new site: name='${folder.name}', id=$insertedId, uploadStatus=${insertedSite.uploadStatus}")
-                                insertedSite
-                            } catch (e: Exception) {
-                                AppLogger.e("MainViewModel", "Error inserting new site: ${e.message}", e)
+                                AppLogger.d("MainViewModel", "Site not found in database, will create: name='${folder.name}'")
+                                // Create new site record with default upload status
+                                val newSite = SamplingSite(
+                                    id = 0,
+                                    name = folder.name!!,
+                                    status = SiteStatus.FINISHED,
+                                    uploadStatus = UploadStatus.NOT_UPLOADED,
+                                    createdAt = System.currentTimeMillis()
+                                )
+                                // Queue for batch insert
+                                sitesToInsert.add(newSite)
+                                // Return temporary site for immediate UI update
                                 newSite
                             }
                         }
+                        .sortedBy { it.name }
+                    
+                    // Batch insert new sites and track inserted IDs
+                    val insertedSitesMap = mutableMapOf<String, SamplingSite>()
+                    if (sitesToInsert.isNotEmpty()) {
+                        try {
+                            sitesToInsert.forEach { site ->
+                                val insertedId = database.samplingSiteDao().insertSite(site)
+                                val insertedSite = site.copy(id = insertedId)
+                                insertedSitesMap[site.name] = insertedSite
+                                AppLogger.d("MainViewModel", "Inserted new site: name='${site.name}', id=$insertedId")
+                            }
+                        } catch (e: Exception) {
+                            AppLogger.e("MainViewModel", "Error batch inserting sites: ${e.message}", e)
+                        }
                     }
-                    .sortedBy { it.name }
-                folderSites
+                    
+                    // Batch update sites with status changes
+                    if (sitesToUpdate.isNotEmpty()) {
+                        try {
+                            sitesToUpdate.forEach { site ->
+                                database.samplingSiteDao().updateSite(site)
+                            }
+                        } catch (e: Exception) {
+                            AppLogger.e("MainViewModel", "Error batch updating sites: ${e.message}", e)
+                        }
+                    }
+                    
+                    // Map folder sites to database sites with correct IDs (use inserted sites map for new ones)
+                    folderSites.map { folderSite ->
+                        // First check if it was just inserted
+                        insertedSitesMap[folderSite.name] 
+                            // Then check original database map
+                            ?: dbSitesByName[folderSite.name]?.let { dbSite ->
+                                // Update status if needed
+                                if (dbSite.status != SiteStatus.FINISHED) {
+                                    dbSite.copy(status = SiteStatus.FINISHED)
+                                } else {
+                                    dbSite
+                                }
+                            }
+                            // Fallback to folder site
+                            ?: folderSite
+                    }.sortedBy { it.name }
+                } catch (e: Exception) {
+                    AppLogger.e("MainViewModel", "Error processing finished folders: ${e.message}", e)
+                    emptyList()
+                }
             } else {
                 emptyList()
             }
             
-            // Update StateFlow on main thread to ensure UI updates
+            // Update finished sites StateFlow on main thread
             withContext(Dispatchers.Main) {
-                _ongoingSites.value = ongoingSitesList
                 _finishedSites.value = finishedSitesList
             }
         }
