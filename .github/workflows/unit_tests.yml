@@ -9,6 +9,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      statuses: read
     
     steps:
     - uses: actions/checkout@v4
@@ -52,4 +57,5 @@ jobs:
           app/build/test-results/testReleaseUnitTest/**/*.xml
         check_name: Unit Test Results
         comment_mode: always
-        report_individual_runs: true
+        report_individual_runs: false
+        compare_to_previous_run: false
