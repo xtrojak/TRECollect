@@ -109,6 +109,7 @@ class MainActivity : AppCompatActivity() {
                     val result = viewModel.createSite(siteName)
                     when (result) {
                         is MainViewModel.CreateSiteResult.Success -> {
+                            AppLogger.i("MainActivity", "Site creation completed successfully: name='$siteName'")
                             editText.text?.clear()
                             android.widget.Toast.makeText(
                                 this@MainActivity,
@@ -119,6 +120,7 @@ class MainActivity : AppCompatActivity() {
                             showOfflineMapsPrompt()
                         }
                         is MainViewModel.CreateSiteResult.Error -> {
+                            AppLogger.w("MainActivity", "Site creation failed: name='$siteName', error='${result.message}'")
                             android.widget.Toast.makeText(
                                 this@MainActivity,
                                 result.message,

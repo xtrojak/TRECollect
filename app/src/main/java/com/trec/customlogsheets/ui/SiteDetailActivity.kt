@@ -23,6 +23,7 @@ import com.trec.customlogsheets.data.PredefinedForms
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.ui.MainViewModel
 import com.trec.customlogsheets.ui.MainViewModelFactory
+import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -268,11 +269,13 @@ class SiteDetailActivity : AppCompatActivity() {
                     
                     when (result) {
                         is MainViewModel.DeleteSiteResult.Success -> {
+                            AppLogger.i("SiteDetailActivity", "Site deletion completed: name='${site.name}'")
                             Toast.makeText(this@SiteDetailActivity, "Site deleted", Toast.LENGTH_SHORT).show()
                             // Navigate back to main activity
                             navigateToHome()
                         }
                         is MainViewModel.DeleteSiteResult.Error -> {
+                            AppLogger.w("SiteDetailActivity", "Site deletion failed: name='${site.name}', error='${result.message}'")
                             Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
                         }
                     }

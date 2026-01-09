@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.documentfile.provider.DocumentFile
 import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SettingsPreferences
+import com.trec.customlogsheets.util.AppLogger
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -40,11 +41,15 @@ class FormFileHelper(private val context: Context) {
         // Check if draft exists and delete it when submitting
         if (!isDraft) {
             val draftFile = siteFolder.findFile("${formData.formId}_draft.xml")
-            draftFile?.delete()
+            if (draftFile != null && draftFile.exists()) {
+                draftFile.delete()
+                AppLogger.d("FormFileHelper", "Deleted draft file when submitting: site=${formData.siteName}, form=${formData.formId}")
+            }
         }
         
         // Create or update the XML file
         val existingFile = siteFolder.findFile(fileName)
+        val isNewFile = existingFile == null || !existingFile.exists()
         val file = if (existingFile != null && existingFile.exists()) {
             existingFile
         } else {
@@ -52,6 +57,7 @@ class FormFileHelper(private val context: Context) {
         }
         
         if (file == null || !file.exists()) {
+            AppLogger.e("FormFileHelper", "Failed to create/access file: $fileName for site=${formData.siteName}, form=${formData.formId}")
             return false
         }
         
@@ -60,8 +66,17 @@ class FormFileHelper(private val context: Context) {
             val xmlContent = formData.toXml()
             val outputStream: OutputStream? = context.contentResolver.openOutputStream(file.uri)
             outputStream?.use { it.write(xmlContent.toByteArray()) }
-            outputStream != null
+            val success = outputStream != null
+            if (success) {
+                if (isNewFile) {
+                    AppLogger.i("FormFileHelper", "Created ${if (isDraft) "draft" else "submitted"} form: site=${formData.siteName}, form=${formData.formId}, file=$fileName")
+                } else {
+                    AppLogger.i("FormFileHelper", "Updated ${if (isDraft) "draft" else "submitted"} form: site=${formData.siteName}, form=${formData.formId}, file=$fileName")
+                }
+            }
+            success
         } catch (e: Exception) {
+            AppLogger.e("FormFileHelper", "Error saving form: site=${formData.siteName}, form=${formData.formId}, file=$fileName", e)
             android.util.Log.e("FormFileHelper", "Error saving form: ${e.message}", e)
             false
         }
@@ -281,13 +296,21 @@ class FormFileHelper(private val context: Context) {
         val file = siteFolder.findFile(fileName)
         return if (file != null && file.exists()) {
             try {
-                file.delete()
+                val deleted = file.delete()
+                if (deleted) {
+                    AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
+                } else {
+                    AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
+                }
+                deleted
             } catch (e: Exception) {
+                AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
                 android.util.Log.e("FormFileHelper", "Error deleting form: ${e.message}", e)
                 false
             }
         } else {
             // File doesn't exist, consider it already deleted
+            AppLogger.d("FormFileHelper", "Form file not found (already deleted?): site=$siteName, form=$formId, file=$fileName")
             true
         }
     }

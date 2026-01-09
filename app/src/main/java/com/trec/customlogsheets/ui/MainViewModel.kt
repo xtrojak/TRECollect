@@ -9,6 +9,7 @@ import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.data.SiteStatus
+import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -106,7 +107,9 @@ class MainViewModel(
     
     suspend fun createSite(name: String): CreateSiteResult {
         val trimmedName = name.trim()
+        AppLogger.i("MainViewModel", "Creating site: name='$trimmedName'")
         if (trimmedName.isBlank()) {
+            AppLogger.w("MainViewModel", "Site creation failed: name is empty")
             return CreateSiteResult.Error("Site name cannot be empty")
         }
         
@@ -233,8 +236,11 @@ class MainViewModel(
         // Create the site folder inside TREC_logsheets/ongoing/
         val createdFolder = ongoingFolder.createDirectory(siteName)
         if (createdFolder == null) {
+            AppLogger.e("MainViewModel", "Failed to create site folder: name='$siteName'")
             return CreateSiteResult.Error("Could not create site folder in TREC_logsheets/ongoing/")
         }
+        
+        AppLogger.i("MainViewModel", "Site created successfully: name='$siteName'")
         
         // Give the file system a moment to update, then reload sites from folders to update the UI
         // Using a small delay to ensure the folder is visible in the file system
@@ -337,11 +343,13 @@ class MainViewModel(
     }
     
     suspend fun finalizeSite(site: SamplingSite): FinalizeSiteResult {
+        AppLogger.i("MainViewModel", "Finalizing site: name='${site.name}', id=${site.id}")
         // Get storage settings
         val settingsPreferences = SettingsPreferences(context)
         val folderUriString = settingsPreferences.getFolderUri()
         
         if (folderUriString.isEmpty()) {
+            AppLogger.w("MainViewModel", "Site finalization failed: storage not configured, site='${site.name}'")
             return FinalizeSiteResult.Error("Storage not configured. Please configure storage in settings.")
         }
         
@@ -408,6 +416,7 @@ class MainViewModel(
         // Reload sites from folders to update the UI
         loadSitesFromFolders()
         
+        AppLogger.i("MainViewModel", "Site finalized successfully: name='${site.name}', id=${site.id}")
         return FinalizeSiteResult.Success
     }
     
@@ -417,6 +426,7 @@ class MainViewModel(
     }
     
     suspend fun deleteSite(site: SamplingSite): DeleteSiteResult {
+        AppLogger.i("MainViewModel", "Deleting site: name='${site.name}', id=${site.id}")
         // Get storage settings
         val settingsPreferences = SettingsPreferences(context)
         val folderUriString = settingsPreferences.getFolderUri()
@@ -522,6 +532,7 @@ class MainViewModel(
         // Reload sites from folders to update the UI
         loadSitesFromFolders()
         
+        AppLogger.i("MainViewModel", "Site deleted successfully: name='${site.name}', id=${site.id}")
         return DeleteSiteResult.Success
     }
     

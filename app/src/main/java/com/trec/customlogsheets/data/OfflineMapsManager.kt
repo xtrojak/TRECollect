@@ -2,6 +2,7 @@ package com.trec.customlogsheets.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
@@ -89,6 +90,7 @@ class OfflineMapsManager(private val context: Context) {
      * Deletes a region and its tiles
      */
     suspend fun deleteRegion(region: OfflineMapRegion): Boolean {
+        AppLogger.i("OfflineMapsManager", "Deleting map region: name='${region.name}', id=${region.id}")
         return withContext(Dispatchers.IO) {
             try {
                 // Delete tiles for this region
@@ -102,8 +104,10 @@ class OfflineMapsManager(private val context: Context) {
                 regionIds.remove(region.id)
                 saveRegionIds(regionIds.toList())
                 
+                AppLogger.i("OfflineMapsManager", "Map region deleted successfully: name='${region.name}', id=${region.id}")
                 true
             } catch (e: Exception) {
+                AppLogger.e("OfflineMapsManager", "Error deleting map region: name='${region.name}', id=${region.id}", e)
                 android.util.Log.e("OfflineMapsManager", "Error deleting region: ${e.message}", e)
                 false
             }
@@ -138,6 +142,7 @@ class OfflineMapsManager(private val context: Context) {
         region: OfflineMapRegion,
         progressCallback: ((Int, Int) -> Unit)? = null
     ): Boolean {
+        AppLogger.i("OfflineMapsManager", "Starting map download: region='${region.name}', zoom=${region.minZoom}-${region.maxZoom}, bounds=(${region.minLatitude},${region.minLongitude}) to (${region.maxLatitude},${region.maxLongitude})")
         return withContext(Dispatchers.IO) {
             try {
                 // Ensure OSMDroid is configured
@@ -197,9 +202,11 @@ class OfflineMapsManager(private val context: Context) {
                 val regionWithExpiry = region.copy(expiresAt = expiresAt)
                 saveRegion(regionWithExpiry)
                 
+                AppLogger.i("OfflineMapsManager", "Map download completed: region='${region.name}', tiles=$downloadedTiles/$totalTiles")
                 android.util.Log.d("OfflineMapsManager", "Downloaded $downloadedTiles tiles for region ${region.name}")
                 true
             } catch (e: Exception) {
+                AppLogger.e("OfflineMapsManager", "Error downloading map region: region='${region.name}'", e)
                 android.util.Log.e("OfflineMapsManager", "Error downloading region: ${e.message}", e)
                 false
             }
