@@ -2480,7 +2480,7 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues = allValues.values.toList()
             )
             
-            val success = formFileHelper.saveFormData(formData, isDraft = isDraft)
+            val success = formFileHelper.saveFormData(formData)
             
             if (success) {
                 // Update initial state to match current state
