@@ -146,7 +146,7 @@ The GitHub Actions workflow (`.github/workflows/unit_tests.yml`):
 1. Runs `./gradlew test --console=plain` - **This will fail the CI job if any test fails**
 2. Shows a test summary using `test-summary.sh`
 3. Uploads HTML reports as artifacts
-4. Publishes test results to GitHub (using `publish-unit-test-result-action`)
+4. Publishes test results to GitHub (comments on PRs and annotations)
 
 ### Understanding CI Output
 
@@ -174,8 +174,8 @@ The CI job will show as **failed** (red X) if any test fails.
    - See the "Show test summary" step for detailed counts
    - Download "test-report" artifact to view HTML report
 
-2. **Test Results Comment (if enabled):**
-   - The `publish-unit-test-result-action` will post a comment on PRs
+2. **PR Comments (if enabled):**
+   - The `publish-unit-test-result-action` posts a comment on PRs
    - Shows pass/fail status for each test class
    - Clickable links to see details
 
