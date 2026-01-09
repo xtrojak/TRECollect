@@ -12,8 +12,14 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import androidx.lifecycle.lifecycleScope
 import com.trec.customlogsheets.R
+import com.trec.customlogsheets.data.OwnCloudManager
+import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.util.AppLogger
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
 class LogsActivity : AppCompatActivity() {
     private lateinit var editTextLogFilter: TextInputEditText
@@ -22,7 +28,7 @@ class LogsActivity : AppCompatActivity() {
     private lateinit var scrollViewLogs: ScrollView
     private lateinit var buttonClearLogs: MaterialButton
     private lateinit var buttonCopyLogs: MaterialButton
-    private lateinit var buttonScrollToBottom: MaterialButton
+    private lateinit var buttonReport: MaterialButton
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +55,7 @@ class LogsActivity : AppCompatActivity() {
         scrollViewLogs = findViewById(R.id.scrollViewLogs)
         buttonClearLogs = findViewById(R.id.buttonClearLogs)
         buttonCopyLogs = findViewById(R.id.buttonCopyLogs)
-        buttonScrollToBottom = findViewById(R.id.buttonScrollToBottom)
+        buttonReport = findViewById(R.id.buttonReport)
         
         // Filter text change listener
         editTextLogFilter.addTextChangedListener(object : TextWatcher {
@@ -92,11 +98,9 @@ class LogsActivity : AppCompatActivity() {
             }
         }
         
-        // Scroll to bottom button
-        buttonScrollToBottom.setOnClickListener {
-            scrollViewLogs.post {
-                scrollViewLogs.fullScroll(ScrollView.FOCUS_DOWN)
-            }
+        // Report button - upload logs to ownCloud
+        buttonReport.setOnClickListener {
+            uploadLogsReport()
         }
     }
     
@@ -134,6 +138,62 @@ class LogsActivity : AppCompatActivity() {
             // Auto-scroll to bottom to show most recent logs
             scrollViewLogs.post {
                 scrollViewLogs.fullScroll(ScrollView.FOCUS_DOWN)
+            }
+        }
+    }
+    
+    private fun uploadLogsReport() {
+        val filter = editTextLogFilter.text?.toString()?.trim()
+        val logs = if (filter.isNullOrEmpty()) {
+            AppLogger.getAllLogs()
+        } else {
+            // Filter by tag or search in message (same logic as updateLogs)
+            AppLogger.getAllLogs()
+                .split("\n")
+                .filter { line ->
+                    line.contains(filter, ignoreCase = true)
+                }
+                .joinToString("\n")
+        }
+        
+        if (logs.isEmpty()) {
+            Toast.makeText(this, "No logs to upload", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        lifecycleScope.launch {
+            try {
+                // Get UUID from settings
+                val settingsPreferences = SettingsPreferences(this@LogsActivity)
+                val appUuid = settingsPreferences.getAppUuid()
+                
+                // Generate filename with datetime stamp
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
+                val timestamp = dateFormat.format(Date())
+                val fileName = "logs_$timestamp.txt"
+                
+                // Show progress
+                Toast.makeText(this@LogsActivity, "Uploading log report...", Toast.LENGTH_SHORT).show()
+                
+                // Upload to ownCloud
+                val ownCloudManager = OwnCloudManager(this@LogsActivity)
+                val success = ownCloudManager.uploadTextFile(
+                    uuidFolder = appUuid,
+                    subfolder = "logs",
+                    fileName = fileName,
+                    content = logs
+                )
+                
+                if (success) {
+                    AppLogger.i("LogsActivity", "Log report uploaded successfully: $fileName")
+                    Toast.makeText(this@LogsActivity, "Log report uploaded successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    AppLogger.e("LogsActivity", "Failed to upload log report: $fileName")
+                    Toast.makeText(this@LogsActivity, "Failed to upload log report. Check logs for details.", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                AppLogger.e("LogsActivity", "Error uploading log report", e)
+                Toast.makeText(this@LogsActivity, "Error uploading log report: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }

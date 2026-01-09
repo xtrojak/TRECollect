@@ -30,6 +30,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.android.gms.tasks.Tasks
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.*
+import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -2488,8 +2489,10 @@ class FormEditActivity : AppCompatActivity() {
                 isFormSaved = true
                 
                 if (isDraft) {
+                    AppLogger.i("FormEditActivity", "Draft saved: site=$siteName, form=$formId")
                     Toast.makeText(this@FormEditActivity, "Draft saved", Toast.LENGTH_SHORT).show()
                 } else {
+                    AppLogger.i("FormEditActivity", "Form submitted: site=$siteName, form=$formId")
                     Toast.makeText(this@FormEditActivity, "Form submitted", Toast.LENGTH_SHORT).show()
                     // Mark as completed in database
                     val database = com.trec.customlogsheets.data.AppDatabase.getDatabase(this@FormEditActivity)
@@ -2503,6 +2506,7 @@ class FormEditActivity : AppCompatActivity() {
                     finish()
                 }
             } else {
+                AppLogger.e("FormEditActivity", "Failed to save form: site=$siteName, form=$formId, isDraft=$isDraft")
                 Toast.makeText(
                     this@FormEditActivity,
                     "Error saving form",

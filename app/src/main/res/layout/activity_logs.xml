@@ -57,8 +57,7 @@
                 android:id="@+id/buttonClearLogs"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Clear"
-                style="@style/Widget.MaterialComponents.Button.TextButton" />
+                android:text="Clear" />
 
         </LinearLayout>
 
@@ -101,25 +100,22 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:padding="16dp"
-            android:gravity="end"
             android:background="?attr/colorSurface">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonCopyLogs"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Copy All"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_marginEnd="8dp" />
+                android:layout_marginBottom="8dp" />
 
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/buttonScrollToBottom"
-                android:layout_width="wrap_content"
+                android:id="@+id/buttonReport"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Scroll to Bottom"
-                style="@style/Widget.MaterialComponents.Button.TextButton" />
+                android:text="Report" />
 
         </LinearLayout>
 

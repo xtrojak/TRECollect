@@ -16,6 +16,7 @@ import com.google.android.material.button.MaterialButton
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.OfflineMapRegion
 import com.trec.customlogsheets.data.OfflineMapsManager
+import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.launch
 import org.osmdroid.api.IMapController
 import org.osmdroid.config.Configuration
@@ -267,9 +268,11 @@ class DownloadRegionActivity : AppCompatActivity() {
             progressDialog.dismiss()
             
             if (success) {
+                AppLogger.i("DownloadRegionActivity", "Map region download completed successfully: name='${region.name}'")
                 Toast.makeText(this@DownloadRegionActivity, "Region downloaded successfully", Toast.LENGTH_SHORT).show()
                 finish()
             } else {
+                AppLogger.e("DownloadRegionActivity", "Map region download failed: name='${region.name}'")
                 Toast.makeText(this@DownloadRegionActivity, "Error downloading region. Please check your internet connection.", Toast.LENGTH_LONG).show()
             }
         }

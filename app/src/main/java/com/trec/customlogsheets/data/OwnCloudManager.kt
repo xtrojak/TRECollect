@@ -332,5 +332,100 @@ class OwnCloudManager(private val context: Context) {
         // If it doesn't exist, try to create it
         return createFolder(folderName, retries)
     }
+    
+    /**
+     * Ensures a subfolder exists within a UUID folder (creates if it doesn't)
+     */
+    suspend fun ensureSubfolderExists(uuidFolder: String, subfolderName: String, retries: Int = MAX_RETRIES): Boolean {
+        val subfolderUrl = "$targetFolderUrl/$uuidFolder/$subfolderName"
+        val exists = checkPathExists(subfolderUrl)
+        if (exists) {
+            return true
+        }
+        return createPath(subfolderUrl)
+    }
+    
+    /**
+     * Uploads a text file to ownCloud
+     * @param uuidFolder The UUID folder name
+     * @param subfolder The subfolder name (e.g., "logs")
+     * @param fileName The filename
+     * @param content The file content as string
+     * @return true if successful, false otherwise
+     */
+    suspend fun uploadTextFile(uuidFolder: String, subfolder: String, fileName: String, content: String, retries: Int = MAX_RETRIES): Boolean = withContext(Dispatchers.IO) {
+        if (!isNetworkAvailable()) {
+            AppLogger.w(TAG, "No network connectivity, cannot upload file")
+            return@withContext false
+        }
+        
+        // Ensure UUID folder exists
+        if (!ensureFolderExists(uuidFolder, retries)) {
+            AppLogger.e(TAG, "Failed to ensure UUID folder exists: $uuidFolder")
+            return@withContext false
+        }
+        
+        // Ensure subfolder exists
+        if (!ensureSubfolderExists(uuidFolder, subfolder, retries)) {
+            AppLogger.e(TAG, "Failed to ensure subfolder exists: $uuidFolder/$subfolder")
+            return@withContext false
+        }
+        
+        var lastException: Exception? = null
+        var delayMs = INITIAL_RETRY_DELAY_MS
+        
+        val filePath = "$uuidFolder/$subfolder/$fileName"
+        val fileUrl = "$targetFolderUrl/$filePath"
+        
+        repeat(retries) { attempt ->
+            try {
+                AppLogger.d(TAG, "Uploading file: $filePath (attempt ${attempt + 1}/$retries)")
+                
+                val requestBody = content.toRequestBody("text/plain".toMediaType())
+                val request = Request.Builder()
+                    .url(fileUrl)
+                    .put(requestBody)
+                    .addHeader("Authorization", createAuthHeader())
+                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .build()
+                
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+                val success = response.isSuccessful && (response.code == 201 || response.code == 204)
+                
+                AppLogger.d(TAG, "PUT file response: code=${response.code}, success=$success")
+                AppLogger.d(TAG, "Response headers: ${response.headers}")
+                if (responseBody != null) {
+                    AppLogger.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
+                }
+                response.close()
+                
+                if (success) {
+                    AppLogger.i(TAG, "File uploaded successfully: $filePath")
+                    return@withContext true
+                }
+                
+                AppLogger.w(TAG, "File upload failed. Response code: ${response.code}")
+            } catch (e: SocketTimeoutException) {
+                lastException = e
+                AppLogger.w(TAG, "Timeout uploading file (attempt ${attempt + 1}/$retries): ${e.message}", e)
+            } catch (e: IOException) {
+                lastException = e
+                AppLogger.w(TAG, "Network error uploading file (attempt ${attempt + 1}/$retries): ${e.message}", e)
+            } catch (e: Exception) {
+                lastException = e
+                AppLogger.e(TAG, "Error uploading file (attempt ${attempt + 1}/$retries): ${e.message}", e)
+            }
+            
+            // Wait before retrying (exponential backoff)
+            if (attempt < retries - 1) {
+                delay(delayMs)
+                delayMs = (delayMs * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
+            }
+        }
+        
+        AppLogger.e(TAG, "Failed to upload file after $retries attempts: $filePath", lastException)
+        false
+    }
 }
 

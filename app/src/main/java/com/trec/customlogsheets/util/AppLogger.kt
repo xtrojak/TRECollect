@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 object AppLogger {
     private val logQueue = ConcurrentLinkedQueue<LogEntry>()
     private const val MAX_LOGS = 500 // Keep last 500 log entries
-    private val dateFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
     
     data class LogEntry(
         val timestamp: Long,
@@ -21,7 +21,7 @@ object AppLogger {
         val throwable: Throwable? = null
     ) {
         fun format(): String {
-            val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date(timestamp))
+            val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(timestamp))
             val throwableStr = throwable?.let { "\n${it.stackTraceToString()}" } ?: ""
             return "[$time] $level/$tag: $message$throwableStr"
         }
