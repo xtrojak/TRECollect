@@ -206,4 +206,307 @@ class FormDataTest {
         assertEquals(fieldValue1, fieldValue2)
         assertEquals(fieldValue1.hashCode(), fieldValue2.hashCode())
     }
+
+    @Test
+    fun `FormFieldValue with empty text value`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "text_field",
+            value = ""
+        )
+
+        assertEquals("text_field", fieldValue.fieldId)
+        assertEquals("", fieldValue.value)
+    }
+
+    @Test
+    fun `FormFieldValue with null text value`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "text_field",
+            value = null
+        )
+
+        assertEquals("text_field", fieldValue.fieldId)
+        assertNull(fieldValue.value)
+    }
+
+    @Test
+    fun `FormFieldValue with empty multiselect values`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "multiselect_field",
+            values = emptyList()
+        )
+
+        assertEquals("multiselect_field", fieldValue.fieldId)
+        assertNotNull(fieldValue.values)
+        assertTrue(fieldValue.values!!.isEmpty())
+    }
+
+    @Test
+    fun `FormFieldValue with single multiselect value`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "multiselect_field",
+            values = listOf("Single Option")
+        )
+
+        assertEquals("multiselect_field", fieldValue.fieldId)
+        assertEquals(1, fieldValue.values?.size)
+        assertEquals("Single Option", fieldValue.values?.get(0))
+    }
+
+    @Test
+    fun `FormFieldValue with GPS coordinates at zero`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "gps_field",
+            gpsLatitude = 0.0,
+            gpsLongitude = 0.0
+        )
+
+        assertNotNull(fieldValue.gpsLatitude)
+        assertNotNull(fieldValue.gpsLongitude)
+        assertEquals(0.0, fieldValue.gpsLatitude!!, 0.0001)
+        assertEquals(0.0, fieldValue.gpsLongitude!!, 0.0001)
+    }
+
+    @Test
+    fun `FormFieldValue with GPS coordinates at negative values`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "gps_field",
+            gpsLatitude = -90.0,
+            gpsLongitude = -180.0
+        )
+
+        assertNotNull(fieldValue.gpsLatitude)
+        assertNotNull(fieldValue.gpsLongitude)
+        assertEquals(-90.0, fieldValue.gpsLatitude!!, 0.0001)
+        assertEquals(-180.0, fieldValue.gpsLongitude!!, 0.0001)
+    }
+
+    @Test
+    fun `FormFieldValue with empty table data`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "table_field",
+            tableData = emptyMap()
+        )
+
+        assertEquals("table_field", fieldValue.fieldId)
+        assertNotNull(fieldValue.tableData)
+        assertTrue(fieldValue.tableData!!.isEmpty())
+    }
+
+    @Test
+    fun `FormFieldValue with single row table data`() {
+        val tableData = mapOf(
+            "Row1" to mapOf("Column1" to "Value1")
+        )
+        val fieldValue = FormFieldValue(
+            fieldId = "table_field",
+            tableData = tableData
+        )
+
+        assertEquals(1, fieldValue.tableData?.size)
+        assertEquals("Value1", fieldValue.tableData?.get("Row1")?.get("Column1"))
+    }
+
+    @Test
+    fun `FormFieldValue with empty dynamic data`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "dynamic_field",
+            dynamicData = emptyList()
+        )
+
+        assertEquals("dynamic_field", fieldValue.fieldId)
+        assertNotNull(fieldValue.dynamicData)
+        assertTrue(fieldValue.dynamicData!!.isEmpty())
+    }
+
+    @Test
+    fun `FormFieldValue with single instance dynamic data`() {
+        val dynamicData = listOf(
+            mapOf(
+                "subField1" to FormFieldValue("subField1", value = "Value1")
+            )
+        )
+        val fieldValue = FormFieldValue(
+            fieldId = "dynamic_field",
+            dynamicData = dynamicData
+        )
+
+        assertEquals(1, fieldValue.dynamicData?.size)
+        assertEquals("Value1", fieldValue.dynamicData?.get(0)?.get("subField1")?.value)
+    }
+
+    @Test
+    fun `FormData with null createdAt`() {
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            createdAt = null,
+            fieldValues = emptyList()
+        )
+
+        assertNull(formData.createdAt)
+        assertFalse(formData.isSubmitted)
+    }
+
+    @Test
+    fun `FormData with null submittedAt for draft`() {
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            submittedAt = null,
+            fieldValues = emptyList()
+        )
+
+        assertFalse(formData.isSubmitted)
+        assertNull(formData.submittedAt)
+    }
+
+    @Test
+    fun `FormData with multiple field values`() {
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = listOf(
+                FormFieldValue("field1", value = "value1"),
+                FormFieldValue("field2", value = "value2"),
+                FormFieldValue("field3", value = "value3")
+            )
+        )
+
+        assertEquals(3, formData.fieldValues.size)
+        assertEquals("value1", formData.fieldValues[0].value)
+        assertEquals("value2", formData.fieldValues[1].value)
+        assertEquals("value3", formData.fieldValues[2].value)
+    }
+
+    @Test
+    fun `FormData with mixed field types`() {
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            fieldValues = listOf(
+                FormFieldValue("text_field", value = "text value"),
+                FormFieldValue("multiselect_field", values = listOf("opt1", "opt2")),
+                FormFieldValue("gps_field", gpsLatitude = 52.5, gpsLongitude = 13.4),
+                FormFieldValue("photo_field", photoFileName = "photo.jpg")
+            )
+        )
+
+        assertEquals(4, formData.fieldValues.size)
+        assertEquals("text value", formData.fieldValues[0].value)
+        assertEquals(2, formData.fieldValues[1].values?.size)
+        assertNotNull(formData.fieldValues[2].gpsLatitude)
+        assertEquals("photo.jpg", formData.fieldValues[3].photoFileName)
+    }
+
+    @Test
+    fun `FormFieldValue with different fieldIds are not equal`() {
+        val fieldValue1 = FormFieldValue(
+            fieldId = "field1",
+            value = "value1"
+        )
+        val fieldValue2 = FormFieldValue(
+            fieldId = "field2",
+            value = "value1"
+        )
+
+        assertNotEquals(fieldValue1, fieldValue2)
+    }
+
+    @Test
+    fun `FormFieldValue with different values are not equal`() {
+        val fieldValue1 = FormFieldValue(
+            fieldId = "field1",
+            value = "value1"
+        )
+        val fieldValue2 = FormFieldValue(
+            fieldId = "field1",
+            value = "value2"
+        )
+
+        assertNotEquals(fieldValue1, fieldValue2)
+    }
+
+    @Test
+    fun `FormData with different formIds are not equal`() {
+        val timestamp = FormData.getCurrentTimestamp()
+        val formData1 = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = emptyList()
+        )
+        val formData2 = FormData(
+            formId = "form2",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = emptyList()
+        )
+
+        assertNotEquals(formData1, formData2)
+    }
+
+    @Test
+    fun `FormData with different siteNames are not equal`() {
+        val timestamp = FormData.getCurrentTimestamp()
+        val formData1 = FormData(
+            formId = "form1",
+            siteName = "Site 1",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = emptyList()
+        )
+        val formData2 = FormData(
+            formId = "form1",
+            siteName = "Site 2",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = emptyList()
+        )
+
+        assertNotEquals(formData1, formData2)
+    }
+
+    @Test
+    fun `FormData with different isSubmitted are not equal`() {
+        val timestamp = FormData.getCurrentTimestamp()
+        val formData1 = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            createdAt = timestamp,
+            fieldValues = emptyList()
+        )
+        val formData2 = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = emptyList()
+        )
+
+        assertNotEquals(formData1, formData2)
+    }
+
+    @Test
+    fun `getCurrentTimestamp format is consistent`() {
+        val timestamp1 = FormData.getCurrentTimestamp()
+        val timestamp2 = FormData.getCurrentTimestamp()
+
+        // Both should be valid ISO 8601 format
+        val instant1 = Instant.parse(timestamp1)
+        val instant2 = Instant.parse(timestamp2)
+
+        assertNotNull(instant1)
+        assertNotNull(instant2)
+        // Format should be consistent (both end with 'Z' or have timezone)
+        assertTrue(timestamp1.contains("T"))
+        assertTrue(timestamp2.contains("T"))
+    }
 }

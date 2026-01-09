@@ -121,4 +121,193 @@ class SamplingSiteTest {
         assertEquals(0, SiteStatus.ONGOING.ordinal)
         assertEquals(1, SiteStatus.FINISHED.ordinal)
     }
+
+    @Test
+    fun `SamplingSite with different names are not equal`() {
+        val timestamp = System.currentTimeMillis()
+        val site1 = SamplingSite(
+            id = 1L,
+            name = "Site 1",
+            status = SiteStatus.ONGOING,
+            createdAt = timestamp
+        )
+        val site2 = SamplingSite(
+            id = 1L,
+            name = "Site 2",
+            status = SiteStatus.ONGOING,
+            createdAt = timestamp
+        )
+
+        assertNotEquals(site1, site2)
+    }
+
+    @Test
+    fun `SamplingSite with different status are not equal`() {
+        val timestamp = System.currentTimeMillis()
+        val site1 = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = timestamp
+        )
+        val site2 = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.FINISHED,
+            createdAt = timestamp
+        )
+
+        assertNotEquals(site1, site2)
+    }
+
+    @Test
+    fun `SamplingSite with different uploadStatus are not equal`() {
+        val timestamp = System.currentTimeMillis()
+        val site1 = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.FINISHED,
+            uploadStatus = UploadStatus.NOT_UPLOADED,
+            createdAt = timestamp
+        )
+        val site2 = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.FINISHED,
+            uploadStatus = UploadStatus.UPLOADED,
+            createdAt = timestamp
+        )
+
+        assertNotEquals(site1, site2)
+    }
+
+    @Test
+    fun `SamplingSite with different createdAt are not equal`() {
+        val site1 = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = 1000L
+        )
+        val site2 = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = 2000L
+        )
+
+        assertNotEquals(site1, site2)
+    }
+
+    @Test
+    fun `SamplingSite copy with all fields`() {
+        val original = SamplingSite(
+            id = 1L,
+            name = "Original Site",
+            status = SiteStatus.ONGOING,
+            uploadStatus = UploadStatus.NOT_UPLOADED,
+            createdAt = 1000L
+        )
+
+        val updated = original.copy(
+            id = 2L,
+            name = "Updated Site",
+            status = SiteStatus.FINISHED,
+            uploadStatus = UploadStatus.UPLOADED,
+            createdAt = 2000L
+        )
+
+        assertEquals(2L, updated.id)
+        assertEquals("Updated Site", updated.name)
+        assertEquals(SiteStatus.FINISHED, updated.status)
+        assertEquals(UploadStatus.UPLOADED, updated.uploadStatus)
+        assertEquals(2000L, updated.createdAt)
+    }
+
+    @Test
+    fun `SamplingSite with all upload statuses`() {
+        val statuses = listOf(
+            UploadStatus.NOT_UPLOADED,
+            UploadStatus.UPLOADING,
+            UploadStatus.UPLOADED,
+            UploadStatus.UPLOAD_FAILED
+        )
+
+        statuses.forEach { uploadStatus ->
+            val site = SamplingSite(
+                name = "Test Site",
+                status = SiteStatus.FINISHED,
+                uploadStatus = uploadStatus
+            )
+            assertEquals(uploadStatus, site.uploadStatus)
+        }
+    }
+
+    @Test
+    fun `SamplingSite with all site statuses`() {
+        val statuses = listOf(
+            SiteStatus.ONGOING,
+            SiteStatus.FINISHED
+        )
+
+        statuses.forEach { status ->
+            val site = SamplingSite(
+                name = "Test Site",
+                status = status
+            )
+            assertEquals(status, site.status)
+        }
+    }
+
+    @Test
+    fun `SamplingSite createdAt is set automatically`() {
+        val before = System.currentTimeMillis()
+        val site = SamplingSite(
+            name = "Test Site",
+            status = SiteStatus.ONGOING
+        )
+        val after = System.currentTimeMillis()
+
+        assertTrue("createdAt should be between before and after", 
+            site.createdAt >= before && site.createdAt <= after)
+    }
+
+    @Test
+    fun `SamplingSite with explicit createdAt`() {
+        val explicitTime = 1234567890L
+        val site = SamplingSite(
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = explicitTime
+        )
+
+        assertEquals(explicitTime, site.createdAt)
+    }
+
+    @Test
+    fun `SamplingSite hashCode is consistent`() {
+        val site = SamplingSite(
+            id = 1L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            uploadStatus = UploadStatus.NOT_UPLOADED,
+            createdAt = 1000L
+        )
+
+        val hashCode1 = site.hashCode()
+        val hashCode2 = site.hashCode()
+
+        assertEquals(hashCode1, hashCode2)
+    }
+
+    @Test
+    fun `SamplingSite with empty name`() {
+        val site = SamplingSite(
+            name = "",
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals("", site.name)
+        assertEquals(SiteStatus.ONGOING, site.status)
+    }
 }
