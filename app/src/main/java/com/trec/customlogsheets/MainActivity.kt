@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
         
         setupRecyclerViews()
         setupCreateButton()
+        setupUploadAllButton()
         observeData()
         
         // Cleanup expired offline maps on startup
@@ -117,8 +118,8 @@ class MainActivity : AppCompatActivity() {
                                 "Site created successfully",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
-                            // Show offline maps prompt
-                            showOfflineMapsPrompt()
+                            // Navigate to the newly created site (with flag to show offline maps prompt)
+                            navigateToDetail(result.site, showOfflineMapsPrompt = true)
                         }
                         is MainViewModel.CreateSiteResult.Error -> {
                             AppLogger.w("MainActivity", "Site creation failed: name='$siteName', error='${result.message}'")
@@ -148,9 +149,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun navigateToDetail(site: SamplingSite) {
+    private fun navigateToDetail(site: SamplingSite, showOfflineMapsPrompt: Boolean = false) {
         val intent = Intent(this, SiteDetailActivity::class.java).apply {
             putExtra("site", site)
+            putExtra("showOfflineMapsPrompt", showOfflineMapsPrompt)
         }
         startActivity(intent)
     }
@@ -168,6 +170,88 @@ class MainActivity : AppCompatActivity() {
                 .show()
         } else {
             performUpload(site)
+        }
+    }
+    
+    private fun setupUploadAllButton() {
+        findViewById<MaterialButton>(R.id.buttonUploadAll).setOnClickListener {
+            uploadAllSites()
+        }
+    }
+    
+    private fun uploadAllSites() {
+        lifecycleScope.launch {
+            // Get all finished sites that haven't been uploaded yet
+            val finishedSites = viewModel.finishedSites.value
+            val sitesToUpload = finishedSites.filter { 
+                it.uploadStatus != com.trec.customlogsheets.data.UploadStatus.UPLOADED 
+            }
+            
+            if (sitesToUpload.isEmpty()) {
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    "All sites have already been uploaded",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                return@launch
+            }
+            
+            // Show warning dialog
+            androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle("Upload All Sites")
+                .setMessage("This will upload ${sitesToUpload.size} site(s) that haven't been uploaded yet. This may take a while. Continue?")
+                .setPositiveButton("Upload All") { _, _ ->
+                    performUploadAll(sitesToUpload)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+    
+    private fun performUploadAll(sites: List<com.trec.customlogsheets.data.SamplingSite>) {
+        lifecycleScope.launch {
+            AppLogger.i("MainActivity", "Starting batch upload for ${sites.size} site(s)")
+            
+            var successCount = 0
+            var failCount = 0
+            
+            for ((index, site) in sites.withIndex()) {
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    "Uploading ${site.name} (${index + 1}/${sites.size})...",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                
+                val result = viewModel.uploadSiteToOwnCloud(site)
+                when (result) {
+                    is MainViewModel.UploadSiteResult.Success -> {
+                        successCount++
+                        AppLogger.i("MainActivity", "Uploaded ${site.name} successfully (${index + 1}/${sites.size})")
+                    }
+                    is MainViewModel.UploadSiteResult.Error -> {
+                        failCount++
+                        AppLogger.e("MainActivity", "Upload failed for ${site.name}: ${result.message}")
+                    }
+                }
+                
+                // Reload sites to update checkboxes after each upload
+                viewModel.loadSitesFromFolders()
+            }
+            
+            // Show final summary
+            val message = when {
+                failCount == 0 -> "All ${successCount} site(s) uploaded successfully"
+                successCount == 0 -> "All uploads failed"
+                else -> "$successCount site(s) uploaded successfully, $failCount failed"
+            }
+            
+            android.widget.Toast.makeText(
+                this@MainActivity,
+                message,
+                if (failCount > 0) android.widget.Toast.LENGTH_LONG else android.widget.Toast.LENGTH_SHORT
+            ).show()
+            
+            AppLogger.i("MainActivity", "Batch upload completed: $successCount success, $failCount failed")
         }
     }
     
@@ -204,21 +288,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-    
-    private fun showOfflineMapsPrompt() {
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Offline Maps")
-            .setMessage("In order to use GPS widgets in offline mode, please download offline maps for this site.")
-            .setPositiveButton("Download Maps") { _, _ ->
-                // Navigate to download region activity
-                val intent = Intent(this, DownloadRegionActivity::class.java)
-                startActivity(intent)
-            }
-            .setNegativeButton("Dismiss") { _, _ ->
-                // Do nothing, user dismissed the prompt
-            }
-            .show()
     }
     
     private fun initializeAppUuidAndOwnCloud() {

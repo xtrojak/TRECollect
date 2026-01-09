@@ -43,7 +43,9 @@ class SamplingSiteAdapter(
                 uploadButton.visibility = View.VISIBLE
                 
                 // Set checkbox checked state based on upload status
-                uploadStatusCheckBox.isChecked = site.uploadStatus == UploadStatus.UPLOADED
+                val shouldBeChecked = site.uploadStatus == UploadStatus.UPLOADED
+                android.util.Log.d("SamplingSiteAdapter", "Binding site: name='${site.name}', uploadStatus=${site.uploadStatus}, checkbox should be checked=$shouldBeChecked")
+                uploadStatusCheckBox.isChecked = shouldBeChecked
                 
                 // Prevent checkbox from getting focus/ripple on item click
                 uploadStatusCheckBox.isFocusable = false
@@ -67,7 +69,8 @@ class SamplingSiteAdapter(
 
     class SiteDiffCallback : DiffUtil.ItemCallback<SamplingSite>() {
         override fun areItemsTheSame(oldItem: SamplingSite, newItem: SamplingSite): Boolean {
-            return oldItem.id == newItem.id
+            // Use name as primary identifier since id might be 0 for newly created sites
+            return oldItem.name == newItem.name
         }
 
         override fun areContentsTheSame(oldItem: SamplingSite, newItem: SamplingSite): Boolean {

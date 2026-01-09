@@ -27,6 +27,7 @@ import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.UploadStatus
 import com.trec.customlogsheets.ui.MainViewModel
 import com.trec.customlogsheets.ui.MainViewModelFactory
+import com.trec.customlogsheets.ui.DownloadRegionActivity
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -85,6 +86,12 @@ class SiteDetailActivity : AppCompatActivity() {
         }
         setupFormsList()
         loadFormCompletions()
+        
+        // Show offline maps prompt if this is a newly created site
+        val showOfflineMapsPrompt = intent.getBooleanExtra("showOfflineMapsPrompt", false)
+        if (showOfflineMapsPrompt) {
+            showOfflineMapsPrompt()
+        }
     }
     
     override fun onResume() {
@@ -332,14 +339,14 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             
             AlertDialog.Builder(this@SiteDetailActivity)
-                .setTitle("Finalize Site")
-                .setMessage("Are you sure you want to finalize \"${site.name}\"? This will move the site to finished sites and cannot be undone.")
-                .setPositiveButton("Finalize") { _, _ ->
+                .setTitle("Submit Site")
+                .setMessage("Are you sure you want to submit \"${site.name}\"? This will move the site to finished sites and cannot be undone.")
+                .setPositiveButton("Submit") { _, _ ->
                     // Show loading indicator
                     @Suppress("DEPRECATION")
                     val progressDialog = android.app.ProgressDialog.show(
                         this@SiteDetailActivity,
-                        "Finalizing",
+                        "Submitting",
                         "Moving site to finished...",
                         true,
                         false
@@ -502,6 +509,21 @@ class SiteDetailActivity : AppCompatActivity() {
     override fun onSupportNavigateUp(): Boolean {
         navigateToHome()
         return true
+    }
+    
+    private fun showOfflineMapsPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("Offline Maps")
+            .setMessage("In order to use GPS widgets in offline mode, please download offline maps for this site.")
+            .setPositiveButton("Download Maps") { _, _ ->
+                // Navigate to download region activity
+                val intent = Intent(this, DownloadRegionActivity::class.java)
+                startActivity(intent)
+            }
+            .setNegativeButton("Dismiss") { _, _ ->
+                // Do nothing, user dismissed the prompt
+            }
+            .show()
     }
 }
 

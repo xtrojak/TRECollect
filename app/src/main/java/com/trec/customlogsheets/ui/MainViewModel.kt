@@ -1,6 +1,8 @@
 package com.trec.customlogsheets.ui
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -22,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -58,6 +61,8 @@ class MainViewModel(
             val folderHelper = FolderStructureHelper(context)
             
             // Load all sites from database ONCE (optimization: avoid querying for each folder)
+            // Add a small delay to ensure any pending database writes are committed
+            kotlinx.coroutines.delay(100)
             val allDbSites = try {
                 database.samplingSiteDao().getAllSites().first()
             } catch (e: Exception) {
@@ -66,6 +71,7 @@ class MainViewModel(
             }
             // Create a map for O(1) lookup by name
             val dbSitesByName = allDbSites.associateBy { it.name }
+            AppLogger.d("MainViewModel", "Loaded ${allDbSites.size} sites from database for folder loading")
             
             // Load ongoing sites
             val ongoingFolder = try {
@@ -151,8 +157,11 @@ class MainViewModel(
                 emptyList()
             }
             
-            _ongoingSites.value = ongoingSitesList
-            _finishedSites.value = finishedSitesList
+            // Update StateFlow on main thread to ensure UI updates
+            withContext(Dispatchers.Main) {
+                _ongoingSites.value = ongoingSitesList
+                _finishedSites.value = finishedSitesList
+            }
         }
     }
     
@@ -294,17 +303,26 @@ class MainViewModel(
         AppLogger.i("MainViewModel", "Site created successfully: name='$siteName'")
         
         // Insert site into database
-        try {
-            val newSite = SamplingSite(
+        val newSite = try {
+            val site = SamplingSite(
                 id = 0,
                 name = siteName,
                 status = SiteStatus.ONGOING,
                 uploadStatus = UploadStatus.NOT_UPLOADED,
                 createdAt = System.currentTimeMillis()
             )
-            database.samplingSiteDao().insertSite(newSite)
+            val insertedId = database.samplingSiteDao().insertSite(site)
+            site.copy(id = insertedId)
         } catch (e: Exception) {
             AppLogger.w("MainViewModel", "Could not insert site into database: ${e.message}")
+            // Return site without ID if database insert fails
+            SamplingSite(
+                id = 0,
+                name = siteName,
+                status = SiteStatus.ONGOING,
+                uploadStatus = UploadStatus.NOT_UPLOADED,
+                createdAt = System.currentTimeMillis()
+            )
         }
         
         // Give the file system a moment to update, then reload sites from folders to update the UI
@@ -312,11 +330,11 @@ class MainViewModel(
         kotlinx.coroutines.delay(100)
         loadSitesFromFolders()
         
-        return CreateSiteResult.Success
+        return CreateSiteResult.Success(newSite)
     }
     
     sealed class CreateSiteResult {
-        object Success : CreateSiteResult()
+        data class Success(val site: SamplingSite) : CreateSiteResult()
         data class Error(val message: String) : CreateSiteResult()
     }
     
@@ -478,40 +496,122 @@ class MainViewModel(
             }
         }
         
-        // Update site status to FINISHED with NOT_UPLOADED status (only if site has valid ID)
+        // Update site status to FINISHED with NOT_UPLOADED status
         val updatedSite = site.copy(status = SiteStatus.FINISHED, uploadStatus = UploadStatus.NOT_UPLOADED)
-        if (site.id > 0) {
+        
+        // Ensure site is in database and get the updated site with correct ID
+        val siteForUpload = if (site.id > 0) {
             try {
                 database.samplingSiteDao().updateSite(updatedSite)
+                // Reload from database to ensure we have the latest data
+                database.samplingSiteDao().getAllSites().first().find { it.name == site.name } ?: updatedSite
             } catch (e: Exception) {
                 AppLogger.e("MainViewModel", "Error updating site status to FINISHED: ${e.message}", e)
-                // Continue anyway - the folder move was successful
+                updatedSite
+            }
+        } else {
+            // Site not in database, try to find it or create it
+            try {
+                val foundSite = database.samplingSiteDao().getAllSites().first().find { it.name == site.name }
+                if (foundSite != null) {
+                    val siteWithStatus = foundSite.copy(status = SiteStatus.FINISHED, uploadStatus = UploadStatus.NOT_UPLOADED)
+                    database.samplingSiteDao().updateSite(siteWithStatus)
+                    database.samplingSiteDao().getAllSites().first().find { it.name == site.name } ?: siteWithStatus
+                } else {
+                    // Create new site record
+                    val newSite = SamplingSite(
+                        id = 0,
+                        name = site.name,
+                        status = SiteStatus.FINISHED,
+                        uploadStatus = UploadStatus.NOT_UPLOADED,
+                        createdAt = System.currentTimeMillis()
+                    )
+                    val insertedId = database.samplingSiteDao().insertSite(newSite)
+                    newSite.copy(id = insertedId)
+                }
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "Error ensuring site in database: ${e.message}", e)
+                updatedSite
             }
         }
         
         // Reload sites from folders to update the UI
         loadSitesFromFolders()
         
-        AppLogger.i("MainViewModel", "Site finalized successfully: name='${site.name}', id=${site.id}")
+        AppLogger.i("MainViewModel", "Site finalized successfully: name='${site.name}', id=${siteForUpload.id}")
         
         // Trigger upload in background using a scope that won't be cancelled when ViewModel is cleared
         // Use SupervisorJob to prevent cancellation of other uploads if one fails
         val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         uploadScope.launch {
             try {
-                uploadSiteToOwnCloud(updatedSite)
-            } catch (e: Exception) {
-                AppLogger.e("MainViewModel", "Site upload error: name='${updatedSite.name}'", e)
-                // Update status to UPLOAD_FAILED if upload fails
-                if (updatedSite.id > 0) {
-                    try {
-                        database.samplingSiteDao().updateSite(
-                            updatedSite.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
-                        )
-                        loadSitesFromFolders()
-                    } catch (dbException: Exception) {
-                        AppLogger.e("MainViewModel", "Error updating site upload status: ${dbException.message}", dbException)
+                AppLogger.i("MainViewModel", "Starting automatic upload for site: name='${siteForUpload.name}'")
+                
+                // Show upload start toast on main thread
+                Handler(Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        context.applicationContext,
+                        "Uploading ${siteForUpload.name}...",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+                
+                val result = uploadSiteToOwnCloud(siteForUpload)
+                
+                // Show upload completion toast on main thread
+                Handler(Looper.getMainLooper()).post {
+                    when (result) {
+                        is UploadSiteResult.Success -> {
+                            android.widget.Toast.makeText(
+                                context.applicationContext,
+                                "${siteForUpload.name} uploaded successfully",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        is UploadSiteResult.Error -> {
+                            android.widget.Toast.makeText(
+                                context.applicationContext,
+                                "Upload failed for ${siteForUpload.name}: ${result.message}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
+                }
+                
+                AppLogger.i("MainViewModel", "Automatic upload completed for site: name='${siteForUpload.name}', result=${result}")
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "Site upload error: name='${siteForUpload.name}'", e)
+                // Update status to UPLOAD_FAILED if upload fails
+                try {
+                    val siteToUpdate = if (siteForUpload.id > 0) {
+                        siteForUpload
+                    } else {
+                        database.samplingSiteDao().getAllSites().first().find { it.name == siteForUpload.name }
+                    }
+                    if (siteToUpdate != null) {
+                        val failedSite = siteToUpdate.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+                        database.samplingSiteDao().updateSite(failedSite)
+                        
+                        // Immediately update the StateFlow to reflect the change
+                        viewModelScope.launch(Dispatchers.Main) {
+                            val currentFinishedSites = _finishedSites.value.toMutableList()
+                            val index = currentFinishedSites.indexOfFirst { it.name == siteForUpload.name }
+                            if (index >= 0) {
+                                currentFinishedSites[index] = failedSite
+                                _finishedSites.value = currentFinishedSites
+                            } else {
+                                loadSitesFromFolders()
+                            }
+                        }
+                        
+                        // Also reload from database to ensure consistency
+                        viewModelScope.launch(Dispatchers.IO) {
+                            kotlinx.coroutines.delay(300)
+                            loadSitesFromFolders()
+                        }
+                    }
+                } catch (dbException: Exception) {
+                    AppLogger.e("MainViewModel", "Error updating site upload status: ${dbException.message}", dbException)
                 }
             }
         }
@@ -864,10 +964,15 @@ class MainViewModel(
                         }
                     }
                     
-                    database.samplingSiteDao().updateSite(
-                        siteToUpdate.copy(uploadStatus = UploadStatus.UPLOADED)
-                    )
+                    val updatedSite = siteToUpdate.copy(uploadStatus = UploadStatus.UPLOADED)
+                    database.samplingSiteDao().updateSite(updatedSite)
                     AppLogger.i("MainViewModel", "Updated site upload status to UPLOADED: name='${site.name}', id=${siteToUpdate.id}")
+                    
+                    // Reload sites from folders to update the UI
+                    // We're already in a background coroutine, so we can call loadSitesFromFolders() directly
+                    // Add delay to ensure database write is committed before querying
+                    kotlinx.coroutines.delay(500) // Give database time to commit the write
+                    AppLogger.d("MainViewModel", "Reloading sites after upload status update for: name='${site.name}'")
                     loadSitesFromFolders()
                 } catch (e: Exception) {
                     AppLogger.e("MainViewModel", "Error updating site upload status to UPLOADED: ${e.message}", e)
@@ -878,10 +983,26 @@ class MainViewModel(
                 // Update status to UPLOAD_FAILED (only if site has valid ID)
                 if (site.id > 0) {
                     try {
-                        database.samplingSiteDao().updateSite(
-                            site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
-                        )
-                        loadSitesFromFolders()
+                        val failedSite = site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+                        database.samplingSiteDao().updateSite(failedSite)
+                        
+                        // Immediately update the StateFlow to reflect the change
+                        viewModelScope.launch(Dispatchers.Main) {
+                            val currentFinishedSites = _finishedSites.value.toMutableList()
+                            val index = currentFinishedSites.indexOfFirst { it.name == site.name }
+                            if (index >= 0) {
+                                currentFinishedSites[index] = failedSite
+                                _finishedSites.value = currentFinishedSites
+                            } else {
+                                loadSitesFromFolders()
+                            }
+                        }
+                        
+                        // Also reload from database to ensure consistency
+                        viewModelScope.launch(Dispatchers.IO) {
+                            kotlinx.coroutines.delay(300)
+                            loadSitesFromFolders()
+                        }
                     } catch (e: Exception) {
                         AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${e.message}", e)
                     }
