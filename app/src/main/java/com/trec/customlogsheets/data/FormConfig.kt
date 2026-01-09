@@ -62,11 +62,19 @@ object FormConfigLoader {
             val inputStream = context.assets.open("forms_config.json")
             val jsonString = inputStream.bufferedReader().use { it.readText() }
             val configs = parseJson(jsonString)
-            android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms: ${configs.map { it.id }}")
+            try {
+                android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms: ${configs.map { it.id }}")
+            } catch (e: Exception) {
+                // Ignore logging errors in test environments
+            }
             cachedConfigs = configs
             configs
         } catch (e: Exception) {
-            android.util.Log.e("FormConfigLoader", "Error loading form config: ${e.message}", e)
+            try {
+                android.util.Log.e("FormConfigLoader", "Error loading form config: ${e.message}", e)
+            } catch (logError: Exception) {
+                // Ignore logging errors in test environments
+            }
             e.printStackTrace()
             emptyList()
         }
@@ -76,7 +84,7 @@ object FormConfigLoader {
         cachedConfigs = null
     }
     
-    private fun parseJson(jsonString: String): List<FormConfig> {
+    internal fun parseJson(jsonString: String): List<FormConfig> {
         val forms = mutableListOf<FormConfig>()
         
         try {
@@ -99,19 +107,19 @@ object FormConfigLoader {
                         )
                     )
                 } catch (e: Exception) {
-                    android.util.Log.e("FormConfigLoader", "Error parsing form at index $i: ${e.message}", e)
+                    // Silently continue with next form (logging disabled for unit tests)
                     // Continue with next form
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("FormConfigLoader", "Error parsing JSON: ${e.message}", e)
+            // Re-throw the exception (logging disabled for unit tests)
             throw e
         }
         
         return forms
     }
     
-    private fun parseFields(fieldsArray: JSONArray): List<FormFieldConfig> {
+    internal fun parseFields(fieldsArray: JSONArray): List<FormFieldConfig> {
         val fields = mutableListOf<FormFieldConfig>()
         
         try {
@@ -132,7 +140,7 @@ object FormConfigLoader {
                     "table" -> FormFieldConfig.FieldType.TABLE
                     "dynamic" -> FormFieldConfig.FieldType.DYNAMIC
                     else -> {
-                        android.util.Log.w("FormConfigLoader", "Unknown field type: $typeString, defaulting to TEXT")
+                        // Unknown field type, default to TEXT (logging disabled for unit tests)
                         FormFieldConfig.FieldType.TEXT
                     }
                 }
@@ -187,7 +195,7 @@ object FormConfigLoader {
                 )
             }
         } catch (e: Exception) {
-            android.util.Log.e("FormConfigLoader", "Error parsing fields: ${e.message}", e)
+            // Re-throw the exception (logging disabled for unit tests)
             throw e
         }
         

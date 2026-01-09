@@ -119,34 +119,6 @@ class MyClassTest {
 }
 ```
 
-### Future Test Additions
-
-Potential areas for additional unit tests:
-
-- **ViewModels** (with mocked dependencies)
-  - MainViewModel site creation logic
-  - Upload status management
-  - Site finalization flow
-
-- **Utility Functions**
-  - Folder path generation
-  - Timestamp formatting
-  - Data validation
-
-- **Business Logic**
-  - Upload retry logic (with mocked network)
-  - Form validation rules
-  - Data transformation functions
-
-### Test Coverage Goals
-
-- **Current**: ~15-20% (foundational tests)
-- **Target**: 70-80% coverage
-- **Focus Areas**:
-  - Business logic (ViewModels, Managers)
-  - Data transformations (Converters, FormData)
-  - Critical paths (site creation, upload, finalization)
-
 ### Troubleshooting
 
 #### Tests fail with "ClassNotFoundException"
