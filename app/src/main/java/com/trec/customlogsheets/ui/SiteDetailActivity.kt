@@ -165,7 +165,7 @@ class SiteDetailActivity : AppCompatActivity() {
         if (site.uploadStatus == UploadStatus.UPLOADED) {
             AlertDialog.Builder(this)
                 .setTitle("Re-upload Site")
-                .setMessage("This site has already been uploaded successfully. Re-uploading will overwrite the existing folder in ownCloud. Continue?")
+                .setMessage("This site has already been uploaded successfully. Re-uploading will overwrite the existing submission. Continue?")
                 .setPositiveButton("Re-upload") { _, _ ->
                     performUpload()
                 }

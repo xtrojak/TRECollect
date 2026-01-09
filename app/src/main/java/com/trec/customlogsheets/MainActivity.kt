@@ -156,6 +156,22 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun uploadSite(site: SamplingSite) {
+        // Check if already uploaded and show warning
+        if (site.uploadStatus == com.trec.customlogsheets.data.UploadStatus.UPLOADED) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Re-upload Site")
+                .setMessage("${site.name} has already been uploaded successfully. Re-uploading will overwrite the existing submission. Continue?")
+                .setPositiveButton("Re-upload") { _, _ ->
+                    performUpload(site)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            performUpload(site)
+        }
+    }
+    
+    private fun performUpload(site: SamplingSite) {
         lifecycleScope.launch {
             AppLogger.i("MainActivity", "Starting manual upload for site: name='${site.name}'")
             
