@@ -187,6 +187,107 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- App UUID Section -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="App Identifier (UUID)"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="This unique identifier is used to identify all submissions from this device."
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:layout_marginBottom="16dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/textAppUuid"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="12sp"
+                            android:fontFamily="monospace"
+                            android:background="#F5F5F5"
+                            android:padding="12dp"
+                            android:text="Loading..."
+                            android:textIsSelectable="true"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/buttonCopyUuid"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="Copy" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- App Logs Section -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="App Logs"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="View app logs for debugging. Search and filter logs by tag or text."
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:layout_marginBottom="16dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonViewLogs"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="View Logs" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
         </LinearLayout>
 
     </androidx.core.widget.NestedScrollView>

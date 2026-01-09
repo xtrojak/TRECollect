@@ -2,5 +2,7 @@
 <resources>
     <string name="app_name">TREC Custom Logsheets</string>
     <string name="hello_world">Hello World!</string>
+    <string name="owncloud_url">https://oc.embl.de/public.php/webdav/</string>
+    <string name="owncloud_access_token">0rxu1scmLhgmWQs</string>
 </resources>
 
