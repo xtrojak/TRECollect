@@ -15,11 +15,11 @@ class FormFileHelper(private val context: Context) {
     
     /**
      * Saves form data as XML file in the site's folder
+     * Draft status is determined by the submittedAt field in the XML content
      * @param formData The form data to save
-     * @param isDraft If true, saves as draft (can be edited later), if false, saves as submitted
      * @return true if successful, false otherwise
      */
-    fun saveFormData(formData: FormData, isDraft: Boolean = false): Boolean {
+    fun saveFormData(formData: FormData): Boolean {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         

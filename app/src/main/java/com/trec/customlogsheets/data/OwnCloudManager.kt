@@ -338,7 +338,7 @@ class OwnCloudManager(private val context: Context) {
     /**
      * Ensures a subfolder exists within a UUID folder (creates if it doesn't)
      */
-    suspend fun ensureSubfolderExists(uuidFolder: String, subfolderName: String, retries: Int = MAX_RETRIES): Boolean {
+    suspend fun ensureSubfolderExists(uuidFolder: String, subfolderName: String): Boolean {
         val subfolderUrl = "$targetFolderUrl/$uuidFolder/$subfolderName"
         val exists = checkPathExists(subfolderUrl)
         if (exists) {
@@ -368,7 +368,7 @@ class OwnCloudManager(private val context: Context) {
         }
         
         // Ensure subfolder exists
-        if (!ensureSubfolderExists(uuidFolder, subfolder, retries)) {
+        if (!ensureSubfolderExists(uuidFolder, subfolder)) {
             AppLogger.e(TAG, "Failed to ensure subfolder exists: $uuidFolder/$subfolder")
             return@withContext false
         }
@@ -509,7 +509,7 @@ class OwnCloudManager(private val context: Context) {
             }
             
             // Verify upload
-            val verification = verifyFolderUpload(uuidFolder, siteFolderName, totalFiles)
+            val verification = verifyFolderUpload(uuidFolder, siteFolderName)
             
             if (verification.success && uploadedCount > 0) {
                 AppLogger.i(TAG, "Folder upload completed: site='$siteFolderName', uploaded=$uploadedCount/$totalFiles")
@@ -605,7 +605,7 @@ class OwnCloudManager(private val context: Context) {
     /**
      * Verifies that a folder was uploaded successfully
      */
-    suspend fun verifyFolderUpload(uuidFolder: String, siteFolderName: String, expectedFileCount: Int): VerificationResult = withContext(Dispatchers.IO) {
+    suspend fun verifyFolderUpload(uuidFolder: String, siteFolderName: String): VerificationResult = withContext(Dispatchers.IO) {
         try {
             val folderUrl = "$targetFolderUrl/$uuidFolder/$siteFolderName"
             
