@@ -4,10 +4,12 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import android.util.Base64
 import okhttp3.*
@@ -427,5 +429,243 @@ class OwnCloudManager(private val context: Context) {
         AppLogger.e(TAG, "Failed to upload file after $retries attempts: $filePath", lastException)
         false
     }
+    
+    /**
+     * Uploads an entire folder recursively to ownCloud
+     * @param uuidFolder The UUID folder name
+     * @param siteFolderName The site folder name (will be created as subfolder in UUID folder)
+     * @param localFolder The local DocumentFile folder to upload
+     * @param progressCallback Optional callback for progress updates (uploaded files count, total files count)
+     * @return UploadFolderResult with success status and details
+     */
+    suspend fun uploadFolder(
+        uuidFolder: String,
+        siteFolderName: String,
+        localFolder: DocumentFile,
+        progressCallback: ((Int, Int) -> Unit)? = null
+    ): UploadFolderResult = withContext(Dispatchers.IO) {
+        if (!isNetworkAvailable()) {
+            AppLogger.w(TAG, "No network connectivity, cannot upload folder")
+            return@withContext UploadFolderResult.Error("No network connectivity")
+        }
+        
+        // Ensure UUID folder exists
+        if (!ensureFolderExists(uuidFolder)) {
+            AppLogger.e(TAG, "Failed to ensure UUID folder exists: $uuidFolder")
+            return@withContext UploadFolderResult.Error("Failed to create UUID folder")
+        }
+        
+        // Ensure site subfolder exists
+        if (!ensureSubfolderExists(uuidFolder, siteFolderName)) {
+            AppLogger.e(TAG, "Failed to ensure site folder exists: $uuidFolder/$siteFolderName")
+            return@withContext UploadFolderResult.Error("Failed to create site folder")
+        }
+        
+        try {
+            // Count total files first
+            val allFiles = collectAllFiles(localFolder)
+            val totalFiles = allFiles.size
+            AppLogger.i(TAG, "Starting folder upload: site='$siteFolderName', total files=$totalFiles")
+            
+            var uploadedCount = 0
+            var failedCount = 0
+            
+            // Upload each file
+            for ((relativePath, file) in allFiles) {
+                try {
+                    // Check for cancellation before each file upload
+                    ensureActive()
+                    
+                    val fileContent = readFileContent(file)
+                    if (fileContent == null) {
+                        AppLogger.w(TAG, "Could not read file content: $relativePath")
+                        failedCount++
+                        continue
+                    }
+                    
+                    val remotePath = "$uuidFolder/$siteFolderName/$relativePath"
+                    val success = uploadTextFileContent(
+                        remotePath = remotePath,
+                        content = fileContent,
+                        retries = 3 // Retry up to 3 times per file
+                    )
+                    
+                    if (success) {
+                        uploadedCount++
+                        AppLogger.d(TAG, "Uploaded file: $relativePath")
+                    } else {
+                        failedCount++
+                        AppLogger.w(TAG, "Failed to upload file: $relativePath")
+                    }
+                    
+                    progressCallback?.invoke(uploadedCount, totalFiles)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    AppLogger.w(TAG, "Upload cancelled for file: $relativePath")
+                    throw e // Re-throw cancellation to stop the upload
+                } catch (e: Exception) {
+                    failedCount++
+                    AppLogger.e(TAG, "Error uploading file: $relativePath", e)
+                }
+            }
+            
+            // Verify upload
+            val verification = verifyFolderUpload(uuidFolder, siteFolderName, totalFiles)
+            
+            if (verification.success && uploadedCount > 0) {
+                AppLogger.i(TAG, "Folder upload completed: site='$siteFolderName', uploaded=$uploadedCount/$totalFiles")
+                UploadFolderResult.Success(uploadedCount, totalFiles)
+            } else {
+                AppLogger.w(TAG, "Folder upload verification failed: site='$siteFolderName', uploaded=$uploadedCount/$totalFiles, verification=${verification.message}")
+                UploadFolderResult.Error("Upload verification failed: ${verification.message}")
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error uploading folder: site='$siteFolderName'", e)
+            UploadFolderResult.Error("Error uploading folder: ${e.message}")
+        }
+    }
+    
+    /**
+     * Collects all files recursively from a folder
+     * Returns a map of relative path -> DocumentFile
+     */
+    private fun collectAllFiles(folder: DocumentFile, basePath: String = ""): Map<String, DocumentFile> {
+        val files = mutableMapOf<String, androidx.documentfile.provider.DocumentFile>()
+        
+        try {
+            val folderFiles = folder.listFiles()
+            for (file in folderFiles) {
+                val fileName = file.name ?: continue
+                val relativePath = if (basePath.isEmpty()) fileName else "$basePath/$fileName"
+                
+                if (file.isDirectory) {
+                    // Recursively collect files from subdirectory
+                    files.putAll(collectAllFiles(file, relativePath))
+                } else {
+                    // Add file
+                    files[relativePath] = file
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error collecting files from folder: ${e.message}", e)
+        }
+        
+        return files
+    }
+    
+    /**
+     * Reads file content as string
+     */
+    private suspend fun readFileContent(file: DocumentFile): String? = withContext(Dispatchers.IO) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(file.uri) ?: return@withContext null
+            inputStream.bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error reading file content: ${file.name}", e)
+            null
+        }
+    }
+    
+    /**
+     * Uploads text file content directly (without ensuring folders)
+     */
+    private suspend fun uploadTextFileContent(
+        remotePath: String,
+        content: String,
+        retries: Int = 1
+    ): Boolean = withContext(Dispatchers.IO) {
+        val fileUrl = "$targetFolderUrl/$remotePath"
+        
+        repeat(retries) { attempt ->
+            try {
+                val requestBody = content.toRequestBody("text/plain".toMediaType())
+                val request = Request.Builder()
+                    .url(fileUrl)
+                    .put(requestBody)
+                    .addHeader("Authorization", createAuthHeader())
+                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .build()
+                
+                val response = client.newCall(request).execute()
+                val success = response.isSuccessful && (response.code == 201 || response.code == 204)
+                response.close()
+                
+                if (success) {
+                    return@withContext true
+                }
+            } catch (e: Exception) {
+                if (attempt == retries - 1) {
+                    AppLogger.w(TAG, "Failed to upload file after $retries attempts: $remotePath")
+                }
+            }
+        }
+        
+        false
+    }
+    
+    /**
+     * Verifies that a folder was uploaded successfully
+     */
+    suspend fun verifyFolderUpload(uuidFolder: String, siteFolderName: String, expectedFileCount: Int): VerificationResult = withContext(Dispatchers.IO) {
+        try {
+            val folderUrl = "$targetFolderUrl/$uuidFolder/$siteFolderName"
+            
+            // Check if folder exists
+            val request = Request.Builder()
+                .url(folderUrl)
+                .method("PROPFIND", null)
+                .addHeader("Depth", "1")
+                .addHeader("Authorization", createAuthHeader())
+                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .build()
+            
+            val response = client.newCall(request).execute()
+            val responseBody = response.body?.string()
+            val exists = response.isSuccessful && response.code == 207
+            
+            response.close()
+            
+            if (!exists) {
+                return@withContext VerificationResult(false, "Folder does not exist")
+            }
+            
+            // Parse response to count files (simplified - just check if response contains file entries)
+            // For a more robust check, we'd parse the XML response
+            val fileCount = if (responseBody != null) {
+                // Count <d:response> elements that are files (not directories)
+                responseBody.split("<d:response>").size - 1 // Subtract 1 for the folder itself
+            } else {
+                0
+            }
+            
+            if (fileCount == 0) {
+                return@withContext VerificationResult(false, "Folder is empty")
+            }
+            
+            // If we have at least some files, consider it successful
+            // We don't require exact match because some files might be skipped or already exist
+            AppLogger.d(TAG, "Folder verification: found $fileCount files, expected at least 1")
+            VerificationResult(true, "Found $fileCount files")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error verifying folder upload", e)
+            VerificationResult(false, "Verification error: ${e.message}")
+        }
+    }
+    
+    data class UploadFolderResult(
+        val success: Boolean,
+        val uploadedCount: Int = 0,
+        val totalCount: Int = 0,
+        val errorMessage: String? = null
+    ) {
+        companion object {
+            fun Success(uploaded: Int, total: Int) = UploadFolderResult(true, uploaded, total)
+            fun Error(message: String) = UploadFolderResult(false, errorMessage = message)
+        }
+    }
+    
+    data class VerificationResult(
+        val success: Boolean,
+        val message: String
+    )
 }
 

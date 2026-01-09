@@ -23,6 +23,14 @@
             android:textStyle="bold"
             android:text="Site Name" />
 
+        <ImageView
+            android:id="@+id/imageViewUploadStatus"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="Upload status"
+            android:visibility="gone" />
+
         <ImageButton
             android:id="@+id/buttonRename"
             android:layout_width="48dp"
