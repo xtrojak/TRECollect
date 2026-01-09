@@ -12,11 +12,19 @@ data class SamplingSite(
     val id: Long = 0,
     val name: String,
     val status: SiteStatus,
+    val uploadStatus: UploadStatus = UploadStatus.NOT_UPLOADED,
     val createdAt: Long = System.currentTimeMillis()
 ) : Parcelable
 
 enum class SiteStatus {
     ONGOING,
     FINISHED
+}
+
+enum class UploadStatus {
+    NOT_UPLOADED,
+    UPLOADING,
+    UPLOADED,
+    UPLOAD_FAILED
 }
 

@@ -38,8 +38,58 @@
                 android:layout_height="wrap_content"
                 android:textSize="24sp"
                 android:textStyle="bold"
-                android:layout_marginBottom="16dp"
+                android:layout_marginBottom="8dp"
                 android:text="Site Name" />
+
+            <!-- Upload Status Section (only for finished sites) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardUploadStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone"
+                app:cardElevation="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <ImageView
+                            android:id="@+id/imageViewUploadStatus"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="8dp"
+                            android:contentDescription="Upload status" />
+
+                        <TextView
+                            android:id="@+id/textViewUploadStatus"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textSize="16sp"
+                            android:text="Upload status" />
+
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonRetryUpload"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Retry Upload"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recyclerViewFormSections"

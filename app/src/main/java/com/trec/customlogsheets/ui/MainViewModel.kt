@@ -9,6 +9,8 @@ import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.data.SiteStatus
+import com.trec.customlogsheets.data.UploadStatus
+import com.trec.customlogsheets.data.OwnCloudManager
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -39,7 +44,7 @@ class MainViewModel(
      * Loads sites from the folder structure (ongoing and finished folders)
      */
     fun loadSitesFromFolders() {
-            viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val settingsPreferences = SettingsPreferences(context)
             val folderUriString = settingsPreferences.getFolderUri()
             
@@ -51,6 +56,16 @@ class MainViewModel(
             }
             
             val folderHelper = FolderStructureHelper(context)
+            
+            // Load all sites from database ONCE (optimization: avoid querying for each folder)
+            val allDbSites = try {
+                database.samplingSiteDao().getAllSites().first()
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "Error loading sites from database: ${e.message}", e)
+                emptyList()
+            }
+            // Create a map for O(1) lookup by name
+            val dbSitesByName = allDbSites.associateBy { it.name }
             
             // Load ongoing sites
             val ongoingFolder = try {
@@ -68,6 +83,7 @@ class MainViewModel(
                             id = 0, // ID not used when loading from folders
                             name = folder.name!!,
                             status = SiteStatus.ONGOING,
+                            uploadStatus = UploadStatus.NOT_UPLOADED, // Ongoing sites are not uploaded
                             createdAt = 0 // We don't have creation time from folders
                         )
                     }
@@ -86,16 +102,51 @@ class MainViewModel(
             
             val finishedSitesList = if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
                 val folders = finishedFolder.listFiles()
-                folders.filter { it.isDirectory && it.name != null }
+                val folderSites = folders.filter { it.isDirectory && it.name != null }
                     .map { folder ->
-                        SamplingSite(
-                            id = 0, // ID not used when loading from folders
-                            name = folder.name!!,
-                            status = SiteStatus.FINISHED,
-                            createdAt = 0 // We don't have creation time from folders
-                        )
+                        // Try to find existing site in database to preserve upload status
+                        // Use the pre-loaded map for O(1) lookup instead of querying for each folder
+                        val dbSite = dbSitesByName[folder.name]
+                        
+                        if (dbSite != null) {
+                            // Use database record, but ensure status is FINISHED (since it's in finished folder)
+                            val siteWithCorrectStatus = if (dbSite.status != SiteStatus.FINISHED) {
+                                // Update status in database if it changed
+                                try {
+                                    database.samplingSiteDao().updateSite(dbSite.copy(status = SiteStatus.FINISHED))
+                                } catch (e: Exception) {
+                                    AppLogger.e("MainViewModel", "Error updating site status: ${e.message}", e)
+                                }
+                                dbSite.copy(status = SiteStatus.FINISHED)
+                            } else {
+                                dbSite
+                            }
+                            AppLogger.d("MainViewModel", "Found site in database: name='${folder.name}', id=${siteWithCorrectStatus.id}, status=${siteWithCorrectStatus.status}, uploadStatus=${siteWithCorrectStatus.uploadStatus}")
+                            siteWithCorrectStatus
+                        } else {
+                            AppLogger.d("MainViewModel", "Site not found in database, creating new: name='${folder.name}'")
+                            // Create new site record with default upload status
+                            val newSite = SamplingSite(
+                                id = 0,
+                                name = folder.name!!,
+                                status = SiteStatus.FINISHED,
+                                uploadStatus = UploadStatus.NOT_UPLOADED,
+                                createdAt = System.currentTimeMillis()
+                            )
+                            // Insert into database
+                            try {
+                                val insertedId = database.samplingSiteDao().insertSite(newSite)
+                                val insertedSite = newSite.copy(id = insertedId)
+                                AppLogger.d("MainViewModel", "Inserted new site: name='${folder.name}', id=$insertedId, uploadStatus=${insertedSite.uploadStatus}")
+                                insertedSite
+                            } catch (e: Exception) {
+                                AppLogger.e("MainViewModel", "Error inserting new site: ${e.message}", e)
+                                newSite
+                            }
+                        }
                     }
                     .sortedBy { it.name }
+                folderSites
             } else {
                 emptyList()
             }
@@ -241,6 +292,20 @@ class MainViewModel(
         }
         
         AppLogger.i("MainViewModel", "Site created successfully: name='$siteName'")
+        
+        // Insert site into database
+        try {
+            val newSite = SamplingSite(
+                id = 0,
+                name = siteName,
+                status = SiteStatus.ONGOING,
+                uploadStatus = UploadStatus.NOT_UPLOADED,
+                createdAt = System.currentTimeMillis()
+            )
+            database.samplingSiteDao().insertSite(newSite)
+        } catch (e: Exception) {
+            AppLogger.w("MainViewModel", "Could not insert site into database: ${e.message}")
+        }
         
         // Give the file system a moment to update, then reload sites from folders to update the UI
         // Using a small delay to ensure the folder is visible in the file system
@@ -413,10 +478,44 @@ class MainViewModel(
             }
         }
         
+        // Update site status to FINISHED with NOT_UPLOADED status (only if site has valid ID)
+        val updatedSite = site.copy(status = SiteStatus.FINISHED, uploadStatus = UploadStatus.NOT_UPLOADED)
+        if (site.id > 0) {
+            try {
+                database.samplingSiteDao().updateSite(updatedSite)
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "Error updating site status to FINISHED: ${e.message}", e)
+                // Continue anyway - the folder move was successful
+            }
+        }
+        
         // Reload sites from folders to update the UI
         loadSitesFromFolders()
         
         AppLogger.i("MainViewModel", "Site finalized successfully: name='${site.name}', id=${site.id}")
+        
+        // Trigger upload in background using a scope that won't be cancelled when ViewModel is cleared
+        // Use SupervisorJob to prevent cancellation of other uploads if one fails
+        val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        uploadScope.launch {
+            try {
+                uploadSiteToOwnCloud(updatedSite)
+            } catch (e: Exception) {
+                AppLogger.e("MainViewModel", "Site upload error: name='${updatedSite.name}'", e)
+                // Update status to UPLOAD_FAILED if upload fails
+                if (updatedSite.id > 0) {
+                    try {
+                        database.samplingSiteDao().updateSite(
+                            updatedSite.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+                        )
+                        loadSitesFromFolders()
+                    } catch (dbException: Exception) {
+                        AppLogger.e("MainViewModel", "Error updating site upload status: ${dbException.message}", dbException)
+                    }
+                }
+            }
+        }
+        
         return FinalizeSiteResult.Success
     }
     
@@ -660,6 +759,156 @@ class MainViewModel(
     sealed class DeleteSiteResult {
         object Success : DeleteSiteResult()
         data class Error(val message: String) : DeleteSiteResult()
+    }
+    
+    /**
+     * Uploads a finished site to ownCloud
+     */
+    suspend fun uploadSiteToOwnCloud(site: SamplingSite): UploadSiteResult {
+        AppLogger.i("MainViewModel", "Starting site upload: name='${site.name}', id=${site.id}")
+        
+        // Update status to UPLOADING
+        // Try to find the site in the database by name if ID is 0
+        try {
+            val siteToUpdate = if (site.id > 0) {
+                site
+            } else {
+                // Find site by name
+                val foundSite = database.samplingSiteDao().getAllSites().first().find { it.name == site.name }
+                if (foundSite != null) {
+                    foundSite
+                } else {
+                    // Site not in database yet, create it
+                    val newSite = SamplingSite(
+                        id = 0,
+                        name = site.name,
+                        status = SiteStatus.FINISHED,
+                        uploadStatus = UploadStatus.UPLOADING,
+                        createdAt = System.currentTimeMillis()
+                    )
+                    val insertedId = database.samplingSiteDao().insertSite(newSite)
+                    newSite.copy(id = insertedId)
+                }
+            }
+            
+            database.samplingSiteDao().updateSite(
+                siteToUpdate.copy(uploadStatus = UploadStatus.UPLOADING)
+            )
+            AppLogger.d("MainViewModel", "Updated site upload status to UPLOADING: name='${site.name}', id=${siteToUpdate.id}")
+            loadSitesFromFolders()
+        } catch (e: Exception) {
+            AppLogger.e("MainViewModel", "Error updating site upload status to UPLOADING: ${e.message}", e)
+            // Continue anyway - the upload can still proceed
+        }
+        
+        try {
+            val settingsPreferences = SettingsPreferences(context)
+            val folderHelper = FolderStructureHelper(context)
+            val ownCloudManager = OwnCloudManager(context)
+            
+            // Get the finished folder
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+                ?: return UploadSiteResult.Error("Finished folder not accessible")
+            
+            // Find the site folder
+            val siteFolder = finishedFolder.findFile(site.name)
+            if (siteFolder == null || !siteFolder.exists()) {
+                AppLogger.e("MainViewModel", "Site folder not found: name='${site.name}'")
+                if (site.id > 0) {
+                    try {
+                        database.samplingSiteDao().updateSite(
+                            site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+                        )
+                        loadSitesFromFolders()
+                    } catch (e: Exception) {
+                        AppLogger.e("MainViewModel", "Error updating site upload status: ${e.message}", e)
+                    }
+                }
+                return UploadSiteResult.Error("Site folder not found")
+            }
+            
+            // Get UUID
+            val appUuid = settingsPreferences.getAppUuid()
+            
+            // Upload folder
+            val uploadResult = ownCloudManager.uploadFolder(
+                uuidFolder = appUuid,
+                siteFolderName = site.name,
+                localFolder = siteFolder
+            ) { uploaded, total ->
+                AppLogger.d("MainViewModel", "Upload progress: $uploaded/$total files")
+            }
+            
+            if (uploadResult.success && uploadResult.uploadedCount > 0) {
+                // Update status to UPLOADED
+                // Try to find the site in the database by name if ID is 0
+                try {
+                    val siteToUpdate = if (site.id > 0) {
+                        site
+                    } else {
+                        // Find site by name
+                        val foundSite = database.samplingSiteDao().getAllSites().first().find { it.name == site.name }
+                        if (foundSite != null) {
+                            foundSite
+                        } else {
+                            // Site not in database yet, create it
+                            val newSite = SamplingSite(
+                                id = 0,
+                                name = site.name,
+                                status = SiteStatus.FINISHED,
+                                uploadStatus = UploadStatus.UPLOADED,
+                                createdAt = System.currentTimeMillis()
+                            )
+                            val insertedId = database.samplingSiteDao().insertSite(newSite)
+                            newSite.copy(id = insertedId)
+                        }
+                    }
+                    
+                    database.samplingSiteDao().updateSite(
+                        siteToUpdate.copy(uploadStatus = UploadStatus.UPLOADED)
+                    )
+                    AppLogger.i("MainViewModel", "Updated site upload status to UPLOADED: name='${site.name}', id=${siteToUpdate.id}")
+                    loadSitesFromFolders()
+                } catch (e: Exception) {
+                    AppLogger.e("MainViewModel", "Error updating site upload status to UPLOADED: ${e.message}", e)
+                }
+                AppLogger.i("MainViewModel", "Site upload completed successfully: name='${site.name}', files=${uploadResult.uploadedCount}/${uploadResult.totalCount}")
+                return UploadSiteResult.Success(uploadResult.uploadedCount, uploadResult.totalCount)
+            } else {
+                // Update status to UPLOAD_FAILED (only if site has valid ID)
+                if (site.id > 0) {
+                    try {
+                        database.samplingSiteDao().updateSite(
+                            site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+                        )
+                        loadSitesFromFolders()
+                    } catch (e: Exception) {
+                        AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${e.message}", e)
+                    }
+                }
+                AppLogger.e("MainViewModel", "Site upload failed: name='${site.name}', error='${uploadResult.errorMessage}'")
+                return UploadSiteResult.Error(uploadResult.errorMessage ?: "Upload failed")
+            }
+        } catch (e: Exception) {
+            // Update status to UPLOAD_FAILED (only if site has valid ID)
+            if (site.id > 0) {
+                try {
+                    database.samplingSiteDao().updateSite(
+                        site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+                    )
+                    loadSitesFromFolders()
+                } catch (dbException: Exception) {
+                    AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${dbException.message}", dbException)
+                }
+            }
+            AppLogger.e("MainViewModel", "Site upload error: name='${site.name}'", e)
+            return UploadSiteResult.Error("Upload error: ${e.message}")
+        }
+    }
+    
+    sealed class UploadSiteResult {
+        data class Success(val uploadedCount: Int, val totalCount: Int) : UploadSiteResult()
+        data class Error(val message: String) : UploadSiteResult()
     }
 }
 

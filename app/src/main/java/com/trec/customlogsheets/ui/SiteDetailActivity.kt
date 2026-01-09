@@ -20,7 +20,11 @@ import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.AppDatabase
 import com.trec.customlogsheets.data.Form
 import com.trec.customlogsheets.data.PredefinedForms
+import android.widget.ImageView
+import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 import com.trec.customlogsheets.data.SamplingSite
+import com.trec.customlogsheets.data.UploadStatus
 import com.trec.customlogsheets.ui.MainViewModel
 import com.trec.customlogsheets.ui.MainViewModelFactory
 import com.trec.customlogsheets.util.AppLogger
@@ -33,6 +37,10 @@ class SiteDetailActivity : AppCompatActivity() {
     private lateinit var database: AppDatabase
     private lateinit var viewModel: MainViewModel
     private lateinit var siteNameText: TextView
+    private lateinit var cardUploadStatus: com.google.android.material.card.MaterialCardView
+    private lateinit var imageViewUploadStatus: ImageView
+    private lateinit var textViewUploadStatus: TextView
+    private lateinit var buttonRetryUpload: MaterialButton
     private var canFinalize: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,16 +72,169 @@ class SiteDetailActivity : AppCompatActivity() {
         siteNameText.text = site.name
         supportActionBar?.title = site.name
         
+        cardUploadStatus = findViewById(R.id.cardUploadStatus)
+        imageViewUploadStatus = findViewById(R.id.imageViewUploadStatus)
+        textViewUploadStatus = findViewById(R.id.textViewUploadStatus)
+        buttonRetryUpload = findViewById(R.id.buttonRetryUpload)
+        
+        setupUploadStatus()
         setupFormsList()
         loadFormCompletions()
     }
     
     override fun onResume() {
         super.onResume()
+        // Reload site data to get updated upload status (only if site has valid ID)
+        if (site.id > 0) {
+            lifecycleScope.launch {
+                try {
+                    val updatedSite = database.samplingSiteDao().getSiteById(site.id)
+                    if (updatedSite != null) {
+                        site = updatedSite
+                        setupUploadStatus()
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e("SiteDetailActivity", "Error reloading site: ${e.message}", e)
+                }
+            }
+        }
         // Reload form completions when returning from form editing
         loadFormCompletions()
         // Update menu to refresh finalize button state
         invalidateOptionsMenu()
+    }
+    
+    private fun setupUploadStatus() {
+        // Only show upload status for finished sites
+        if (site.status == com.trec.customlogsheets.data.SiteStatus.FINISHED) {
+            cardUploadStatus.visibility = android.view.View.VISIBLE
+            
+            when (site.uploadStatus) {
+                UploadStatus.UPLOADED -> {
+                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_upload)
+                    imageViewUploadStatus.setColorFilter(
+                        ContextCompat.getColor(this, android.R.color.holo_green_dark)
+                    )
+                    textViewUploadStatus.text = "Uploaded successfully"
+                    buttonRetryUpload.visibility = android.view.View.VISIBLE
+                    buttonRetryUpload.text = "Re-upload"
+                }
+                UploadStatus.UPLOAD_FAILED -> {
+                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+                    imageViewUploadStatus.setColorFilter(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    textViewUploadStatus.text = "Upload failed"
+                    buttonRetryUpload.visibility = android.view.View.VISIBLE
+                    buttonRetryUpload.text = "Retry Upload"
+                }
+                UploadStatus.UPLOADING -> {
+                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_upload)
+                    imageViewUploadStatus.setColorFilter(
+                        ContextCompat.getColor(this, android.R.color.holo_orange_dark)
+                    )
+                    textViewUploadStatus.text = "Uploading..."
+                    buttonRetryUpload.visibility = android.view.View.GONE
+                }
+                UploadStatus.NOT_UPLOADED -> {
+                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_upload)
+                    imageViewUploadStatus.setColorFilter(
+                        ContextCompat.getColor(this, android.R.color.darker_gray)
+                    )
+                    textViewUploadStatus.text = "Not uploaded"
+                    buttonRetryUpload.visibility = android.view.View.VISIBLE
+                    buttonRetryUpload.text = "Upload Now"
+                }
+            }
+            
+            buttonRetryUpload.setOnClickListener {
+                retryUpload()
+            }
+        } else {
+            cardUploadStatus.visibility = android.view.View.GONE
+        }
+    }
+    
+    private fun retryUpload() {
+        // Check if already uploaded and show warning
+        if (site.uploadStatus == UploadStatus.UPLOADED) {
+            AlertDialog.Builder(this)
+                .setTitle("Re-upload Site")
+                .setMessage("This site has already been uploaded successfully. Re-uploading will overwrite the existing folder in ownCloud. Continue?")
+                .setPositiveButton("Re-upload") { _, _ ->
+                    performUpload()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            performUpload()
+        }
+    }
+    
+    private fun performUpload() {
+        lifecycleScope.launch {
+            @Suppress("DEPRECATION")
+            val progressDialog = android.app.ProgressDialog.show(
+                this@SiteDetailActivity,
+                "Uploading",
+                "Uploading site to ownCloud...",
+                true,
+                false
+            )
+            
+            try {
+                val result = viewModel.uploadSiteToOwnCloud(site)
+                progressDialog.dismiss()
+                
+                when (result) {
+                    is MainViewModel.UploadSiteResult.Success -> {
+                        Toast.makeText(
+                            this@SiteDetailActivity,
+                            "Site uploaded successfully (${result.uploadedCount}/${result.totalCount} files)",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        // Reload site to update status
+                        if (site.id > 0) {
+                            try {
+                                val updatedSite = database.samplingSiteDao().getSiteById(site.id)
+                                if (updatedSite != null) {
+                                    site = updatedSite
+                                    setupUploadStatus()
+                                }
+                            } catch (e: Exception) {
+                                AppLogger.e("SiteDetailActivity", "Error reloading site after upload: ${e.message}", e)
+                            }
+                        }
+                    }
+                    is MainViewModel.UploadSiteResult.Error -> {
+                        Toast.makeText(
+                            this@SiteDetailActivity,
+                            "Upload failed: ${result.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        // Reload site to update status
+                        if (site.id > 0) {
+                            try {
+                                val updatedSite = database.samplingSiteDao().getSiteById(site.id)
+                                if (updatedSite != null) {
+                                    site = updatedSite
+                                    setupUploadStatus()
+                                }
+                            } catch (e: Exception) {
+                                AppLogger.e("SiteDetailActivity", "Error reloading site after upload failure: ${e.message}", e)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Toast.makeText(
+                    this@SiteDetailActivity,
+                    "Error during upload: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
     
     private fun navigateToHome() {
