@@ -82,12 +82,12 @@ Alternatively, configure these settings through the app's Settings activity afte
 
 ## Testing
 
-The project includes comprehensive unit tests. See [TESTING.md](TESTING.md) for detailed information.
+The project includes comprehensive unit tests and instrumented tests. See [TESTING.md](TESTING.md) and [INSTRUMENTED_TESTING.md](INSTRUMENTED_TESTING.md) for detailed information.
 
-### Running Tests Locally
+### Running Unit Tests Locally
 
 ```bash
-# Run all unit tests
+# Run all unit tests (recommended)
 ./run-tests.sh
 
 # Or use Gradle directly
@@ -97,11 +97,34 @@ The project includes comprehensive unit tests. See [TESTING.md](TESTING.md) for 
 ./test-summary.sh
 ```
 
+### Running Instrumented Tests Locally
+
+Instrumented tests require an Android device or emulator to be connected.
+
+```bash
+# Check if device/emulator is connected
+./check-device.sh
+
+# Run all instrumented tests
+./run-instrumented-tests.sh
+
+# Or use Gradle directly
+./gradlew connectedAndroidTest
+
+# Run specific test class
+./run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
+```
+
 ### Test Coverage
 
+**Unit Tests:**
 - Data layer (TypeConverters, data classes, form configuration)
 - Business logic (ViewModel factories, utility functions)
 - Form data structures and validation
+
+**Instrumented Tests:**
+- Database operations (Room DAOs, migrations, TypeConverters)
+- Database CRUD operations with real SQLite
 
 See the [test summary](https://github.com/xtrojak/TREC-custom-logsheets-app/actions) for the latest test results.
 
