@@ -97,4 +97,106 @@ class MainViewModelTest {
 
         assertNotNull(flow)
     }
+    
+    // Edge cases and error conditions
+    
+    @Test
+    fun `CreateSiteResult Error with empty message`() {
+        val result = MainViewModel.CreateSiteResult.Error("")
+
+        assertTrue(result is MainViewModel.CreateSiteResult.Error)
+        assertEquals("", result.message)
+    }
+    
+    @Test
+    fun `CreateSiteResult Error with very long message`() {
+        val longMessage = "A".repeat(1000)
+        val result = MainViewModel.CreateSiteResult.Error(longMessage)
+
+        assertTrue(result is MainViewModel.CreateSiteResult.Error)
+        assertEquals(longMessage, result.message)
+    }
+    
+    @Test
+    fun `UploadSiteResult Success with zero counts`() {
+        val result = MainViewModel.UploadSiteResult.Success(0, 0)
+
+        assertTrue(result is MainViewModel.UploadSiteResult.Success)
+        assertEquals(0, result.uploadedCount)
+        assertEquals(0, result.totalCount)
+    }
+    
+    @Test
+    fun `UploadSiteResult Success with uploadedCount greater than totalCount`() {
+        // Edge case: uploadedCount > totalCount (shouldn't happen but test it)
+        val result = MainViewModel.UploadSiteResult.Success(10, 5)
+
+        assertTrue(result is MainViewModel.UploadSiteResult.Success)
+        assertEquals(10, result.uploadedCount)
+        assertEquals(5, result.totalCount)
+    }
+    
+    @Test
+    fun `UploadSiteResult Error with null message`() {
+        // Note: message is not nullable, but test empty string
+        val result = MainViewModel.UploadSiteResult.Error("")
+
+        assertTrue(result is MainViewModel.UploadSiteResult.Error)
+        assertEquals("", result.message)
+    }
+    
+    @Test
+    fun `CreateSiteResult Success with site having zero ID`() {
+        val site = SamplingSite(
+            id = 0L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING
+        )
+        val result = MainViewModel.CreateSiteResult.Success(site)
+
+        assertTrue(result is MainViewModel.CreateSiteResult.Success)
+        assertEquals(0L, result.site.id)
+    }
+    
+    @Test
+    fun `CreateSiteResult Success with site having negative ID`() {
+        val site = SamplingSite(
+            id = -1L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING
+        )
+        val result = MainViewModel.CreateSiteResult.Success(site)
+
+        assertTrue(result is MainViewModel.CreateSiteResult.Success)
+        assertEquals(-1L, result.site.id)
+    }
+    
+    @Test
+    fun `CreateSiteResult Success with site having empty name`() {
+        val site = SamplingSite(
+            name = "",
+            status = SiteStatus.ONGOING
+        )
+        val result = MainViewModel.CreateSiteResult.Success(site)
+
+        assertTrue(result is MainViewModel.CreateSiteResult.Success)
+        assertEquals("", result.site.name)
+    }
+    
+    @Test
+    fun `StateFlows are initialized as empty lists`() {
+        val ongoing = viewModel.ongoingSites.value
+        val finished = viewModel.finishedSites.value
+
+        assertNotNull(ongoing)
+        assertNotNull(finished)
+        assertTrue("Ongoing sites should be empty initially", ongoing.isEmpty())
+        assertTrue("Finished sites should be empty initially", finished.isEmpty())
+    }
+    
+    @Test
+    fun `StateFlows are not null`() {
+        assertNotNull(viewModel.ongoingSites)
+        assertNotNull(viewModel.finishedSites)
+    }
 }

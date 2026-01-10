@@ -310,4 +310,180 @@ class SamplingSiteTest {
         assertEquals("", site.name)
         assertEquals(SiteStatus.ONGOING, site.status)
     }
+    
+    // Edge cases and error conditions
+    
+    @Test
+    fun `SamplingSite with very long name`() {
+        val longName = "A".repeat(1000)
+        val site = SamplingSite(
+            name = longName,
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(longName, site.name)
+        assertEquals(1000, site.name.length)
+    }
+    
+    @Test
+    fun `SamplingSite with special characters in name`() {
+        val specialName = "Site!@#$%^&*()_+-=[]{}|;':\",./<>?"
+        val site = SamplingSite(
+            name = specialName,
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(specialName, site.name)
+    }
+    
+    @Test
+    fun `SamplingSite with unicode characters in name`() {
+        val unicodeName = "Site 测试 🚀 日本語"
+        val site = SamplingSite(
+            name = unicodeName,
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(unicodeName, site.name)
+    }
+    
+    @Test
+    fun `SamplingSite with whitespace-only name`() {
+        val whitespaceName = "   \t\n   "
+        val site = SamplingSite(
+            name = whitespaceName,
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(whitespaceName, site.name)
+    }
+    
+    @Test
+    fun `SamplingSite with negative ID`() {
+        val site = SamplingSite(
+            id = -1L,
+            name = "Test Site",
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(-1L, site.id)
+    }
+    
+    @Test
+    fun `SamplingSite with maximum long ID`() {
+        val site = SamplingSite(
+            id = Long.MAX_VALUE,
+            name = "Test Site",
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(Long.MAX_VALUE, site.id)
+    }
+    
+    @Test
+    fun `SamplingSite with zero createdAt`() {
+        val site = SamplingSite(
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = 0L
+        )
+
+        assertEquals(0L, site.createdAt)
+    }
+    
+    @Test
+    fun `SamplingSite with negative createdAt`() {
+        val site = SamplingSite(
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = -1000L
+        )
+
+        assertEquals(-1000L, site.createdAt)
+    }
+    
+    @Test
+    fun `SamplingSite with very large createdAt`() {
+        val largeTimestamp = Long.MAX_VALUE
+        val site = SamplingSite(
+            name = "Test Site",
+            status = SiteStatus.ONGOING,
+            createdAt = largeTimestamp
+        )
+
+        assertEquals(largeTimestamp, site.createdAt)
+    }
+    
+    @Test
+    fun `SamplingSite copy with null-like values preserves structure`() {
+        val original = SamplingSite(
+            id = 1L,
+            name = "Original",
+            status = SiteStatus.ONGOING,
+            uploadStatus = UploadStatus.NOT_UPLOADED,
+            createdAt = 1000L
+        )
+
+        // Copy with same values
+        val copy = original.copy()
+
+        assertEquals(original, copy)
+        assertNotSame(original, copy) // Should be different instance
+    }
+    
+    @Test
+    fun `SamplingSite hashCode handles edge cases`() {
+        val site1 = SamplingSite(name = "", status = SiteStatus.ONGOING)
+        val site2 = SamplingSite(name = "", status = SiteStatus.ONGOING)
+        
+        // Sites with same values should have same hashCode
+        assertEquals(site1.hashCode(), site2.hashCode())
+    }
+    
+    @Test
+    fun `SamplingSite equality with all status combinations`() {
+        val baseSite = SamplingSite(
+            id = 1L,
+            name = "Test",
+            status = SiteStatus.ONGOING,
+            uploadStatus = UploadStatus.NOT_UPLOADED,
+            createdAt = 1000L
+        )
+        
+        // Test all status combinations
+        SiteStatus.values().forEach { siteStatus ->
+            UploadStatus.values().forEach { uploadStatus ->
+                val testSite = baseSite.copy(
+                    status = siteStatus,
+                    uploadStatus = uploadStatus
+                )
+                assertEquals(siteStatus, testSite.status)
+                assertEquals(uploadStatus, testSite.uploadStatus)
+            }
+        }
+    }
+    
+    @Test
+    fun `SamplingSite with newline characters in name`() {
+        val nameWithNewlines = "Site\nWith\nNewlines"
+        val site = SamplingSite(
+            name = nameWithNewlines,
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(nameWithNewlines, site.name)
+        assertTrue(site.name.contains("\n"))
+    }
+    
+    @Test
+    fun `SamplingSite with tab characters in name`() {
+        val nameWithTabs = "Site\tWith\tTabs"
+        val site = SamplingSite(
+            name = nameWithTabs,
+            status = SiteStatus.ONGOING
+        )
+
+        assertEquals(nameWithTabs, site.name)
+        assertTrue(site.name.contains("\t"))
+    }
 }
