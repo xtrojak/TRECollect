@@ -37,6 +37,7 @@ if [ -z "$DEVICES" ]; then
     echo "  1. Open Android Studio"
     echo "  2. Tools > Device Manager"
     echo "  3. Create/Start an AVD (Android Virtual Device)"
+    echo "     Recommended: Use API 30 (Android 11) for best compatibility"
     echo "  4. Or use: emulator -avd <avd_name>"
     echo ""
     echo "Current adb devices:"

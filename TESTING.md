@@ -6,7 +6,22 @@ This document describes the testing setup, how to run tests, and how to interpre
 
 Unit tests are located in `app/src/test/` and run on the JVM without requiring an Android device or emulator. They are designed to be fast, deterministic, and CI-ready.
 
+Instrumented tests are located in `app/src/androidTest/` and run on Android devices/emulators. They test UI interactions, database operations, and Android-specific functionality.
+
+## Important: Emulator API Level for Instrumented Tests
+
+**For local testing, use API 30 (Android 11) or lower.** 
+
+Espresso has compatibility issues with Android API 36 (Android 15). The CI uses API 30, which is stable and well-supported. If you encounter `NoSuchMethodException: android.hardware.input.InputManager.getInstance` errors, you're likely using an emulator with API 36 or higher.
+
+**Recommended emulator configuration:**
+- API Level: 30 (Android 11)
+- Architecture: x86_64 (Intel) or arm64-v8a (Apple Silicon)
+- Profile: Any (e.g., Pixel 4, Nexus 6)
+
 ## Current Test Coverage
+
+### Unit Tests
 
 ### Data Layer Tests
 - **ConvertersTest** - Tests enum conversion logic for Room database TypeConverters
@@ -42,6 +57,16 @@ Unit tests are located in `app/src/test/` and run on the JVM without requiring a
 
 - **MainViewModelTest** - Tests ViewModel business logic (basic tests)
 
+### Instrumented Tests
+
+### Database Tests
+- **AppDatabaseTest** - Database creation, TypeConverter functionality
+- **SamplingSiteDaoTest** - CRUD operations for SamplingSite entities
+- **FormCompletionDaoTest** - CRUD operations for FormCompletion entities
+
+### UI Tests
+- **MainActivityTest** - UI element presence, basic interactions, layout verification
+
 ## Running Tests
 
 ### Recommended: Use Test Script (Matches CI)
@@ -59,64 +84,65 @@ This script:
 - Provides links to HTML reports
 - Exits with the same code as CI (0 = success, non-zero = failure)
 
-### Direct Gradle Commands
+### Running Unit Tests
 
 ```bash
-# Run all unit tests
+# Run all unit tests (recommended)
+./scripts/run-tests.sh
+
+# Or use Gradle directly
 ./gradlew test
 
-# Run specific test class
-./gradlew test --tests "com.trec.customlogsheets.data.ConvertersTest"
-
-# Run with verbose output
-./gradlew test --info
-
-# Run tests and generate coverage report
-./gradlew test jacocoTestReport
+# View test summary
+./scripts/test-summary.sh
 ```
 
-### Quick Summary After Running Tests
+### Running Instrumented Tests
+
+**Important:** Use an emulator with API 30 or lower for best compatibility.
 
 ```bash
-# Run tests and get summary
-./gradlew test && ./scripts/test-summary.sh
+# Check if device/emulator is connected
+./scripts/check-device.sh
 
-# Or just get summary if tests already ran
-./scripts/test-summary.sh
+# Run all instrumented tests
+./scripts/run-instrumented-tests.sh
+
+# Or use Gradle directly
+./gradlew connectedAndroidTest
+
+# Run specific test class
+./scripts/run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
+```
+
+### Running Specific Tests
+
+```bash
+# Run specific unit test class
+./gradlew test --tests "com.trec.customlogsheets.data.ConvertersTest"
+
+# Run specific unit test method
+./gradlew test --tests "com.trec.customlogsheets.data.ConvertersTest.toSiteStatus_roundTrip"
+
+# Run specific instrumented test class
+./gradlew connectedAndroidTest --tests "com.trec.customlogsheets.database.AppDatabaseTest"
 ```
 
 ## Viewing Test Results
 
-### Command Line Output
+### HTML Reports
 
-The test output shows:
-- `BUILD SUCCESSFUL` = All tests passed
-- `BUILD FAILED` = Some tests failed
-- Test summary at the end: `X tests completed, Y failed`
+After running tests, view the HTML report at:
 
-**Note about stack traces in passing tests:**
-If you see stack traces in `STANDARD_ERROR` output for tests that are passing, this is **expected and harmless**. This happens because:
-
-1. Some ViewModels (like `MainViewModel`) initialize by calling methods that access Android APIs (e.g., `DocumentFile`, file system operations)
-2. In JVM unit tests, these Android APIs are not available, so they throw exceptions
-3. These exceptions are **caught and handled gracefully** by the code (using try-catch blocks)
-4. The tests still **pass correctly** because the exceptions don't affect the test logic
-5. The stack traces are logged to stderr but don't indicate test failures
-
-**What to look for:**
-- ✅ **Test status**: If tests show "PASSED", they are working correctly
-- ✅ **Test summary**: Check the final summary for total passed/failed counts
-- ❌ **Only worry if**: Tests show "FAILED" status or the summary shows failures > 0
-
-The test configuration is set to hide standard streams for passing tests to reduce noise, but they're still captured in XML reports for debugging if needed.
-
-### HTML Report (Recommended)
-
-After running tests, open the HTML report:
 ```
 app/build/reports/tests/testDebugUnitTest/index.html
 # or
 app/build/reports/tests/testReleaseUnitTest/index.html
+```
+
+For instrumented tests:
+```
+app/build/reports/androidTests/connected/index.html
 ```
 
 The HTML report shows:
@@ -132,6 +158,7 @@ Located at:
 ```
 app/build/test-results/testDebugUnitTest/
 app/build/test-results/testReleaseUnitTest/
+app/build/test-results/androidTests/
 ```
 
 These are used by CI systems and IDEs. The `scripts/test-summary.sh` script aggregates results from all test result directories.
@@ -142,11 +169,11 @@ These are used by CI systems and IDEs. The `scripts/test-summary.sh` script aggr
 
 **Yes, CI explicitly checks if tests passed!**
 
-The GitHub Actions workflow (`.github/workflows/unit_tests.yml`):
-1. Runs `./gradlew test --console=plain` - **This will fail the CI job if any test fails**
-2. Shows a test summary using `scripts/test-summary.sh`
-3. Uploads HTML reports as artifacts
-4. Publishes test results to GitHub (comments on PRs and annotations)
+The GitHub Actions workflows:
+1. Run tests - **This will fail the CI job if any test fails**
+2. Show a test summary using `scripts/test-summary.sh`
+3. Upload HTML reports as artifacts
+4. Publish test results to GitHub (comments on PRs and annotations)
 
 ### Understanding CI Output
 
@@ -172,17 +199,18 @@ The CI job will show as **failed** (red X) if any test fails.
    - Go to the "Actions" tab
    - Click on the workflow run
    - See the "Show test summary" step for detailed counts
-   - Download "test-report" artifact to view HTML report
+   - Download test report artifacts to view HTML reports
 
 2. **PR Comments (if enabled):**
-   - The `publish-unit-test-result-action` posts a comment on PRs
+   - Test results are automatically posted as PR comments
    - Shows pass/fail status for each test class
    - Clickable links to see details
 
 ### CI Configuration
 
 The project uses GitHub Actions with:
-- JDK 17 (Temurin distribution)
+- **Unit Tests**: JDK 17 (Temurin distribution), runs on ubuntu-latest
+- **Instrumented Tests**: JDK 17, runs on macos-14 with API 30 emulator (ARM64)
 - Automatic test result publishing
 - HTML report artifacts
 
@@ -197,68 +225,29 @@ test:
 
 The following testing libraries are included:
 
+### Unit Tests (JVM)
 - **JUnit 4.13.2** - Test framework
 - **Mockito 5.1.1** - Mocking framework
-- **Mockito Kotlin 5.1.0** - Kotlin-friendly Mockito extensions
-- **Kotlin Coroutines Test 1.7.3** - Testing coroutines
-- **Turbine 1.0.0** - Testing Flow/StateFlow
-- **AssertJ 3.24.2** - Fluent assertions (available for future use)
-- **org.json:json:20231013** - JVM-compatible JSON library for unit tests
+- **Mockito-Kotlin 5.1.0** - Kotlin extensions for Mockito
+- **Kotlin Coroutines Test 1.7.3** - Coroutine testing utilities
+- **Turbine 1.0.0** - Flow testing library
+- **AssertJ 3.24.2** - Fluent assertions
+- **org.json:json 20231013** - JVM-compatible JSON library
 
-## Writing New Tests
-
-1. **Create test files** in `app/src/test/java/com/trec/customlogsheets/` matching the source structure
-2. **Use JUnit 4** annotations:
-   - `@Test` - Marks a test method
-   - `@Before` - Setup before each test
-   - `@After` - Cleanup after each test
-3. **Follow naming convention**: `ClassNameTest.kt`
-4. **Keep tests**:
-   - Fast (no network calls, no file I/O unless mocked)
-   - Isolated (no shared state between tests)
-   - Deterministic (same input always produces same output)
-5. **Mock Android dependencies**:
-   - Use Mockito to mock `Context`, `DocumentFile`, etc.
-   - Don't use real Android classes in unit tests
-   - Wrap `AppLogger` calls in try-catch if needed (Android Log not available in JVM tests)
-
-### Example Test Structure
-
-```kotlin
-package com.trec.customlogsheets.data
-
-import org.junit.Assert.*
-import org.junit.Before
-import org.junit.Test
-
-class MyClassTest {
-    private lateinit var subject: MyClass
-
-    @Before
-    fun setUp() {
-        subject = MyClass()
-    }
-
-    @Test
-    fun `test description`() {
-        // Arrange
-        val input = "test"
-        
-        // Act
-        val result = subject.method(input)
-        
-        // Assert
-        assertEquals("expected", result)
-    }
-}
-```
+### Instrumented Tests (Android)
+- **JUnit 1.2.1** - Android JUnit extensions
+- **Espresso 3.6.1** - UI testing framework
+  - espresso-core: Core Espresso functionality
+  - espresso-contrib: Additional matchers and actions
+  - espresso-intents: Intent testing support
+- **AndroidX Test 1.6.2** - Test runner and rules
+- **Room Testing 2.6.1** - Room database testing utilities
+- **Turbine 1.0.0** - Flow testing library
+- **Kotlin Coroutines Test 1.7.3** - Coroutine testing utilities
 
 ## Troubleshooting
 
-### Tests fail with "ClassNotFoundException"
-- Ensure test dependencies are properly synced: `./gradlew --refresh-dependencies`
-
-### Tests fail with Android class errors
+### Tests Fail with "Unresolved reference"
 - Make sure you're running unit tests (`./gradlew test`), not instrumented tests
 - Mock Android dependencies instead of using real classes
 - Wrap Android API calls (like `android.util.Log`) in try-catch blocks
@@ -288,6 +277,20 @@ This shouldn't happen with the current setup. If it does:
 - Check for results in: `app/build/test-results/testDebugUnitTest/` or `app/build/test-results/testReleaseUnitTest/`
 - The `scripts/test-summary.sh` script automatically checks all possible locations
 
+### Instrumented Tests Fail with InputManager Error
+If you see `NoSuchMethodException: android.hardware.input.InputManager.getInstance`:
+- **You're using an emulator with API 36 (Android 15) or higher**
+- Espresso 3.6.1 has compatibility issues with Android 15
+- **Solution**: Use an emulator with API 30 (Android 11) or lower
+- This matches the CI configuration and is more stable
+
+To create an API 30 emulator:
+1. Open Android Studio
+2. Tools → Device Manager
+3. Create Device → Select a device (e.g., Pixel 4)
+4. Select system image: **API 30 (Android 11)**
+5. Finish and start the emulator
+
 ## Helper Scripts
 
 ### `scripts/run-tests.sh`
@@ -305,9 +308,24 @@ Extracts and displays test results from XML files:
 - Finds HTML reports in all possible locations
 - Can be used standalone or called by `scripts/run-tests.sh`
 
+### `scripts/check-device.sh`
+Checks if an Android device or emulator is connected:
+- Verifies `adb` is installed
+- Lists connected devices
+- Tests device connectivity
+- Provides helpful error messages
+
+### `scripts/run-instrumented-tests.sh`
+Runs instrumented tests with device check:
+- Verifies device is connected
+- Runs tests with optional test class filter
+- Shows test summary
+- Displays report location
+
 ## Resources
 
 - [JUnit 4 Documentation](https://junit.org/junit4/)
 - [Mockito Documentation](https://site.mockito.org/)
 - [Kotlin Coroutines Testing](https://kotlin.github.io/kotlinx.coroutines/kotlinx-coroutines-test/)
+- [Espresso Testing Guide](https://developer.android.com/training/testing/espresso)
 - [Android Testing Guide](https://developer.android.com/training/testing)
