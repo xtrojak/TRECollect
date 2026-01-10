@@ -1,6 +1,6 @@
 # TRECollect
 
-[![Unit Tests](https://github.com/xtrojak/TREC-custom-logsheets-app/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/xtrojak/TREC-custom-logsheets-app/actions/workflows/unit_tests.yml)
+[![Unit Tests](actions/workflows/unit_tests.yml/badge.svg)](actions/workflows/unit_tests.yml)
 
 TRECollect is an Android application for collecting and managing field sampling metadata with custom logsheets. The app enables researchers to create sampling sites, fill out dynamic forms, capture GPS locations, take photos, and upload submissions to centralized storage for processing.
 
@@ -58,8 +58,8 @@ TRECollect is an Android application for collecting and managing field sampling 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/xtrojak/TREC-custom-logsheets-app.git
-   cd TREC-custom-logsheets-app
+   git clone <repository-url>
+   cd TRECollect
    ```
 
 2. Open the project in Android Studio
@@ -126,7 +126,7 @@ Instrumented tests require an Android device or emulator to be connected.
 - Database operations (Room DAOs, migrations, TypeConverters)
 - Database CRUD operations with real SQLite
 
-See the [test summary](https://github.com/xtrojak/TREC-custom-logsheets-app/actions) for the latest test results.
+See the [test summary](actions) for the latest test results.
 
 ## Project Structure
 
