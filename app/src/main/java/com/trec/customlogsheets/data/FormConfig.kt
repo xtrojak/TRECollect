@@ -89,7 +89,13 @@ object FormConfigLoader {
         
         try {
             val jsonObject = JSONObject(jsonString)
-            val formsArray = jsonObject.getJSONArray("forms")
+            // Use optJSONArray to handle missing or null "forms" key gracefully
+            val formsArray = jsonObject.optJSONArray("forms")
+            
+            // If forms array is missing or null, return empty list
+            if (formsArray == null) {
+                return forms
+            }
             
             for (i in 0 until formsArray.length()) {
                 try {
@@ -112,8 +118,8 @@ object FormConfigLoader {
                 }
             }
         } catch (e: Exception) {
-            // Re-throw the exception (logging disabled for unit tests)
-            throw e
+            // Return empty list on any parsing error (logging disabled for unit tests)
+            return forms
         }
         
         return forms

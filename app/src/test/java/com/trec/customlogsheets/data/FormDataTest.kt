@@ -509,4 +509,417 @@ class FormDataTest {
         assertTrue(timestamp1.contains("T"))
         assertTrue(timestamp2.contains("T"))
     }
+    
+    // Edge cases and error conditions
+    
+    @Test
+    fun `FormData with very long formId`() {
+        val longFormId = "A".repeat(500)
+        val formData = FormData(
+            formId = longFormId,
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = emptyList()
+        )
+
+        assertEquals(longFormId, formData.formId)
+    }
+    
+    @Test
+    fun `FormData with very long siteName`() {
+        val longSiteName = "B".repeat(500)
+        val formData = FormData(
+            formId = "form1",
+            siteName = longSiteName,
+            isSubmitted = false,
+            fieldValues = emptyList()
+        )
+
+        assertEquals(longSiteName, formData.siteName)
+    }
+    
+    @Test
+    fun `FormData with special characters in formId`() {
+        val specialFormId = "form!@#$%^&*()_+-=[]{}|;':\",./<>?"
+        val formData = FormData(
+            formId = specialFormId,
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = emptyList()
+        )
+
+        assertEquals(specialFormId, formData.formId)
+    }
+    
+    @Test
+    fun `FormData with empty formId`() {
+        val formData = FormData(
+            formId = "",
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = emptyList()
+        )
+
+        assertEquals("", formData.formId)
+    }
+    
+    @Test
+    fun `FormData with empty siteName`() {
+        val formData = FormData(
+            formId = "form1",
+            siteName = "",
+            isSubmitted = false,
+            fieldValues = emptyList()
+        )
+
+        assertEquals("", formData.siteName)
+    }
+    
+    @Test
+    fun `FormData with very large fieldValues list`() {
+        val largeFieldList = (1..1000).map { index ->
+            FormFieldValue(
+                fieldId = "field$index",
+                value = "value$index"
+            )
+        }
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = largeFieldList
+        )
+
+        assertEquals(1000, formData.fieldValues.size)
+    }
+    
+    @Test
+    fun `FormData with submittedAt but isSubmitted is false`() {
+        // Edge case: submittedAt set but isSubmitted is false
+        val timestamp = FormData.getCurrentTimestamp()
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            submittedAt = timestamp,
+            fieldValues = emptyList()
+        )
+
+        assertFalse(formData.isSubmitted)
+        assertNotNull(formData.submittedAt) // Can be set even if isSubmitted is false
+    }
+    
+    @Test
+    fun `FormData with isSubmitted true but submittedAt is null`() {
+        // Edge case: isSubmitted true but submittedAt is null
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            submittedAt = null,
+            fieldValues = emptyList()
+        )
+
+        assertTrue(formData.isSubmitted)
+        assertNull(formData.submittedAt) // Can be null even if isSubmitted is true
+    }
+    
+    @Test
+    fun `FormFieldValue with very long text value`() {
+        val longValue = "A".repeat(10000)
+        val fieldValue = FormFieldValue(
+            fieldId = "text_field",
+            value = longValue
+        )
+
+        assertEquals(longValue, fieldValue.value)
+        assertEquals(10000, fieldValue.value!!.length)
+    }
+    
+    @Test
+    fun `FormFieldValue with GPS coordinates at boundaries`() {
+        // Test GPS coordinate boundaries
+        val maxLat = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = 90.0,
+            gpsLongitude = 0.0
+        )
+        val minLat = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = -90.0,
+            gpsLongitude = 0.0
+        )
+        val maxLon = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = 0.0,
+            gpsLongitude = 180.0
+        )
+        val minLon = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = 0.0,
+            gpsLongitude = -180.0
+        )
+
+        assertEquals(90.0, maxLat.gpsLatitude!!, 0.0001)
+        assertEquals(-90.0, minLat.gpsLatitude!!, 0.0001)
+        assertEquals(180.0, maxLon.gpsLongitude!!, 0.0001)
+        assertEquals(-180.0, minLon.gpsLongitude!!, 0.0001)
+    }
+    
+    @Test
+    fun `FormFieldValue with GPS coordinates beyond boundaries`() {
+        // Test GPS coordinates beyond valid range (should still be stored)
+        val beyondMax = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = 91.0,
+            gpsLongitude = 181.0
+        )
+        val beyondMin = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = -91.0,
+            gpsLongitude = -181.0
+        )
+
+        assertEquals(91.0, beyondMax.gpsLatitude!!, 0.0001)
+        assertEquals(181.0, beyondMax.gpsLongitude!!, 0.0001)
+        assertEquals(-91.0, beyondMin.gpsLatitude!!, 0.0001)
+        assertEquals(-181.0, beyondMin.gpsLongitude!!, 0.0001)
+    }
+    
+    @Test
+    fun `FormFieldValue with GPS latitude only`() {
+        // Edge case: only latitude set, longitude is null
+        val fieldValue = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = 40.7128,
+            gpsLongitude = null
+        )
+
+        assertNotNull(fieldValue.gpsLatitude)
+        assertNull(fieldValue.gpsLongitude)
+    }
+    
+    @Test
+    fun `FormFieldValue with GPS longitude only`() {
+        // Edge case: only longitude set, latitude is null
+        val fieldValue = FormFieldValue(
+            fieldId = "gps",
+            gpsLatitude = null,
+            gpsLongitude = -74.0060
+        )
+
+        assertNull(fieldValue.gpsLatitude)
+        assertNotNull(fieldValue.gpsLongitude)
+    }
+    
+    @Test
+    fun `FormFieldValue with very large multiselect values list`() {
+        val largeValuesList = (1..1000).map { "Option $it" }
+        val fieldValue = FormFieldValue(
+            fieldId = "multiselect",
+            values = largeValuesList
+        )
+
+        assertEquals(1000, fieldValue.values!!.size)
+    }
+    
+    @Test
+    fun `FormFieldValue with empty string in multiselect values`() {
+        val fieldValue = FormFieldValue(
+            fieldId = "multiselect",
+            values = listOf("", "value1", "", "value2")
+        )
+
+        assertEquals(4, fieldValue.values!!.size)
+        assertTrue(fieldValue.values!!.contains(""))
+    }
+    
+    @Test
+    fun `FormFieldValue with very long photo filename`() {
+        val longFilename = "A".repeat(500) + ".jpg"
+        val fieldValue = FormFieldValue(
+            fieldId = "photo",
+            photoFileName = longFilename
+        )
+
+        assertEquals(longFilename, fieldValue.photoFileName)
+    }
+    
+    @Test
+    fun `FormFieldValue with special characters in photo filename`() {
+        val specialFilename = "photo!@#$%^&*()_+-=[]{}|;':\",./<>?.jpg"
+        val fieldValue = FormFieldValue(
+            fieldId = "photo",
+            photoFileName = specialFilename
+        )
+
+        assertEquals(specialFilename, fieldValue.photoFileName)
+    }
+    
+    @Test
+    fun `FormFieldValue with very large table data`() {
+        val largeTableData = (1..100).associate { rowIndex ->
+            "row$rowIndex" to (1..50).associate { colIndex ->
+                "col$colIndex" to "value_${rowIndex}_$colIndex"
+            }
+        }
+        val fieldValue = FormFieldValue(
+            fieldId = "table",
+            tableData = largeTableData
+        )
+
+        assertEquals(100, fieldValue.tableData!!.size)
+        assertEquals(50, fieldValue.tableData!!["row1"]!!.size)
+    }
+    
+    @Test
+    fun `FormFieldValue with empty table row`() {
+        val tableData = mapOf(
+            "row1" to emptyMap<String, String>(),
+            "row2" to mapOf("col1" to "value1")
+        )
+        val fieldValue = FormFieldValue(
+            fieldId = "table",
+            tableData = tableData
+        )
+
+        assertEquals(2, fieldValue.tableData!!.size)
+        assertTrue(fieldValue.tableData!!["row1"]!!.isEmpty())
+    }
+    
+    @Test
+    fun `FormFieldValue with very large dynamic data`() {
+        val largeDynamicData = (1..100).map { instanceIndex ->
+            (1..20).associate { fieldIndex ->
+                "subField$fieldIndex" to FormFieldValue(
+                    fieldId = "subField$fieldIndex",
+                    value = "value_${instanceIndex}_$fieldIndex"
+                )
+            }
+        }
+        val fieldValue = FormFieldValue(
+            fieldId = "dynamic",
+            dynamicData = largeDynamicData
+        )
+
+        assertEquals(100, fieldValue.dynamicData!!.size)
+        assertEquals(20, fieldValue.dynamicData!![0].size)
+    }
+    
+    @Test
+    fun `FormFieldValue with empty dynamic instance`() {
+        val dynamicData = listOf(
+            emptyMap<String, FormFieldValue>(),
+            mapOf("subField1" to FormFieldValue("subField1", value = "value1"))
+        )
+        val fieldValue = FormFieldValue(
+            fieldId = "dynamic",
+            dynamicData = dynamicData
+        )
+
+        assertEquals(2, fieldValue.dynamicData!!.size)
+        assertTrue(fieldValue.dynamicData!![0].isEmpty())
+    }
+    
+    @Test
+    fun `FormData with duplicate fieldIds`() {
+        // Edge case: multiple fields with same ID (should be allowed in data structure)
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = listOf(
+                FormFieldValue("field1", value = "value1"),
+                FormFieldValue("field1", value = "value2"),
+                FormFieldValue("field1", value = "value3")
+            )
+        )
+
+        assertEquals(3, formData.fieldValues.size)
+        assertEquals("value1", formData.fieldValues[0].value)
+        assertEquals("value2", formData.fieldValues[1].value)
+        assertEquals("value3", formData.fieldValues[2].value)
+    }
+    
+    @Test
+    fun `FormData with null fieldId in FormFieldValue`() {
+        // Note: fieldId is not nullable in FormFieldValue, but test empty string
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = false,
+            fieldValues = listOf(
+                FormFieldValue("", value = "value1")
+            )
+        )
+
+        assertEquals("", formData.fieldValues[0].fieldId)
+    }
+    
+    @Test
+    fun `FormData equality with different field order`() {
+        val timestamp = FormData.getCurrentTimestamp()
+        val formData1 = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = listOf(
+                FormFieldValue("field1", value = "value1"),
+                FormFieldValue("field2", value = "value2")
+            )
+        )
+        val formData2 = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = timestamp,
+            fieldValues = listOf(
+                FormFieldValue("field2", value = "value2"),
+                FormFieldValue("field1", value = "value1")
+            )
+        )
+
+        // Should not be equal because field order matters in lists
+        assertNotEquals(formData1, formData2)
+    }
+    
+    @Test
+    fun `FormData with createdAt before submittedAt`() {
+        val createdAt = "2024-01-01T00:00:00Z"
+        val submittedAt = "2024-01-02T00:00:00Z"
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = createdAt,
+            submittedAt = submittedAt,
+            fieldValues = emptyList()
+        )
+
+        assertNotNull(formData.createdAt)
+        assertNotNull(formData.submittedAt)
+        // Both should be valid ISO 8601
+        assertTrue(formData.createdAt!!.contains("2024-01-01"))
+        assertTrue(formData.submittedAt!!.contains("2024-01-02"))
+    }
+    
+    @Test
+    fun `FormData with submittedAt before createdAt`() {
+        // Edge case: submittedAt before createdAt (invalid but should be handled)
+        val createdAt = "2024-01-02T00:00:00Z"
+        val submittedAt = "2024-01-01T00:00:00Z"
+        val formData = FormData(
+            formId = "form1",
+            siteName = "Test Site",
+            isSubmitted = true,
+            createdAt = createdAt,
+            submittedAt = submittedAt,
+            fieldValues = emptyList()
+        )
+
+        // Data structure should accept this (validation would be in business logic)
+        assertNotNull(formData.createdAt)
+        assertNotNull(formData.submittedAt)
+    }
 }
