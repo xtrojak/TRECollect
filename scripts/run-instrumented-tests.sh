@@ -7,7 +7,7 @@ set -e
 
 # Check if device is connected
 echo "Checking for connected devices..."
-if ! ./check-device.sh; then
+if ! ./scripts/check-device.sh; then
     echo ""
     echo "Cannot run instrumented tests without a connected device or emulator."
     exit 1
@@ -26,11 +26,11 @@ else
 fi
 
 # Show summary if test-summary.sh exists
-if [ -f "test-summary.sh" ]; then
+if [ -f "scripts/test-summary.sh" ]; then
     echo ""
     echo "=== Test Summary ==="
-    chmod +x test-summary.sh
-    CI=true ./test-summary.sh || true
+    chmod +x scripts/test-summary.sh
+    CI=true ./scripts/test-summary.sh || true
 fi
 
 echo ""

@@ -41,7 +41,7 @@ fi
 
 echo ""
 # Use the shared test-summary.sh script to avoid duplication
-./test-summary.sh
+./scripts/test-summary.sh
 
 # Exit with the test exit code (same as CI)
 if [ $TEST_EXIT_CODE -eq 0 ]; then

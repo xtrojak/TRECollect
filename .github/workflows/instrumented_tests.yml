@@ -58,8 +58,8 @@ jobs:
     - name: Show test summary
       if: always()
       run: |
-        chmod +x test-summary.sh
-        CI=true ./test-summary.sh || true
+        chmod +x scripts/test-summary.sh
+        CI=true ./scripts/test-summary.sh || true
         # Show instrumented test results if available
         if [ -d "app/build/test-results/androidTests" ]; then
           echo ""

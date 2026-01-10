@@ -49,7 +49,7 @@ Unit tests are located in `app/src/test/` and run on the JVM without requiring a
 The easiest way to run tests locally with the same setup as CI:
 
 ```bash
-./run-tests.sh
+./scripts/run-tests.sh
 ```
 
 This script:
@@ -79,10 +79,10 @@ This script:
 
 ```bash
 # Run tests and get summary
-./gradlew test && ./test-summary.sh
+./gradlew test && ./scripts/test-summary.sh
 
 # Or just get summary if tests already ran
-./test-summary.sh
+./scripts/test-summary.sh
 ```
 
 ## Viewing Test Results
@@ -134,7 +134,7 @@ app/build/test-results/testDebugUnitTest/
 app/build/test-results/testReleaseUnitTest/
 ```
 
-These are used by CI systems and IDEs. The `test-summary.sh` script aggregates results from all test result directories.
+These are used by CI systems and IDEs. The `scripts/test-summary.sh` script aggregates results from all test result directories.
 
 ## CI Integration
 
@@ -144,7 +144,7 @@ These are used by CI systems and IDEs. The `test-summary.sh` script aggregates r
 
 The GitHub Actions workflow (`.github/workflows/unit_tests.yml`):
 1. Runs `./gradlew test --console=plain` - **This will fail the CI job if any test fails**
-2. Shows a test summary using `test-summary.sh`
+2. Shows a test summary using `scripts/test-summary.sh`
 3. Uploads HTML reports as artifacts
 4. Publishes test results to GitHub (comments on PRs and annotations)
 
@@ -275,7 +275,7 @@ class MyClassTest {
 ### Can't See Test Count
 - Run with `--info` flag: `./gradlew test --info`
 - Check the HTML report: `app/build/reports/tests/testDebugUnitTest/index.html`
-- Use the test summary script: `./test-summary.sh`
+- Use the test summary script: `./scripts/test-summary.sh`
 
 ### CI Shows "Success" but Tests Failed
 This shouldn't happen with the current setup. If it does:
@@ -286,24 +286,24 @@ This shouldn't happen with the current setup. If it does:
 ### Test Results Directory Not Found
 - Make sure tests have been run: `./gradlew test`
 - Check for results in: `app/build/test-results/testDebugUnitTest/` or `app/build/test-results/testReleaseUnitTest/`
-- The `test-summary.sh` script automatically checks all possible locations
+- The `scripts/test-summary.sh` script automatically checks all possible locations
 
 ## Helper Scripts
 
-### `run-tests.sh`
+### `scripts/run-tests.sh`
 Runs tests locally with the same setup as CI, including:
 - JDK version check
 - Execute permission setup
 - Test execution with plain console output
 - Automatic test summary
 
-### `test-summary.sh`
+### `scripts/test-summary.sh`
 Extracts and displays test results from XML files:
 - Aggregates results from all test directories (debug/release variants)
 - Shows total, passed, failed, errors, skipped counts
 - Lists failed test classes
 - Finds HTML reports in all possible locations
-- Can be used standalone or called by `run-tests.sh`
+- Can be used standalone or called by `scripts/run-tests.sh`
 
 ## Resources
 

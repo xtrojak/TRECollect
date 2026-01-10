@@ -34,8 +34,8 @@ jobs:
     - name: Show test summary
       if: always()
       run: |
-        chmod +x test-summary.sh
-        CI=true ./test-summary.sh
+        chmod +x scripts/test-summary.sh
+        CI=true ./scripts/test-summary.sh
       
     - name: Upload test report
       if: always()
