@@ -8,16 +8,21 @@ Unit tests are located in `app/src/test/` and run on the JVM without requiring a
 
 Instrumented tests are located in `app/src/androidTest/` and run on Android devices/emulators. They test UI interactions, database operations, and Android-specific functionality.
 
-## Important: Emulator API Level for Instrumented Tests
+## Important: UI Testing Framework
 
-**For local testing, use API 30 (Android 11) or lower.** 
+**The project uses UI Automator instead of Espresso for UI tests.**
 
-Espresso has compatibility issues with Android API 36 (Android 15). The CI uses API 30, which is stable and well-supported. If you encounter `NoSuchMethodException: android.hardware.input.InputManager.getInstance` errors, you're likely using an emulator with API 36 or higher.
+UI Automator was chosen because:
+- ✅ Works on Android 15 (API 36) without compatibility issues
+- ✅ More stable on newer Android versions
+- ✅ Can test across apps and system UI
 
-**Recommended emulator configuration:**
-- API Level: 30 (Android 11)
+**Emulator configuration:**
+- API Level: 30 (Android 11) or higher (including Android 15)
 - Architecture: x86_64 (Intel) or arm64-v8a (Apple Silicon)
 - Profile: Any (e.g., Pixel 4, Nexus 6)
+
+**Note:** Espresso 3.6.1 has compatibility issues with Android 15 (API 36) due to `InputManager` API changes. UI Automator does not have this limitation.
 
 ## Current Test Coverage
 
@@ -236,7 +241,11 @@ The following testing libraries are included:
 
 ### Instrumented Tests (Android)
 - **JUnit 1.2.1** - Android JUnit extensions
-- **Espresso 3.6.1** - UI testing framework
+- **UI Automator 2.3.0** - UI testing framework (works on Android 15)
+  - Alternative to Espresso with better Android 15 compatibility
+  - Can test across apps and system UI
+- **Espresso 3.6.1** - UI testing framework (kept for reference, not actively used)
+  - Has compatibility issues with Android 15 (API 36)
   - espresso-core: Core Espresso functionality
   - espresso-contrib: Additional matchers and actions
   - espresso-intents: Intent testing support
@@ -277,19 +286,27 @@ This shouldn't happen with the current setup. If it does:
 - Check for results in: `app/build/test-results/testDebugUnitTest/` or `app/build/test-results/testReleaseUnitTest/`
 - The `scripts/test-summary.sh` script automatically checks all possible locations
 
-### Instrumented Tests Fail with InputManager Error
-If you see `NoSuchMethodException: android.hardware.input.InputManager.getInstance`:
-- **You're using an emulator with API 36 (Android 15) or higher**
-- Espresso 3.6.1 has compatibility issues with Android 15
-- **Solution**: Use an emulator with API 30 (Android 11) or lower
-- This matches the CI configuration and is more stable
+### UI Tests Use UI Automator (Not Espresso)
 
-To create an API 30 emulator:
-1. Open Android Studio
-2. Tools → Device Manager
-3. Create Device → Select a device (e.g., Pixel 4)
-4. Select system image: **API 30 (Android 11)**
-5. Finish and start the emulator
+**The project uses UI Automator for UI testing**, which works on all Android versions including Android 15 (API 36).
+
+**Why UI Automator:**
+- ✅ Works on Android 15 without compatibility issues
+- ✅ More stable on newer Android versions
+- ✅ Can test across apps and system UI
+
+**If you see Espresso-related errors:**
+- The project has migrated from Espresso to UI Automator
+- All UI tests now use UI Automator APIs
+- Espresso dependencies are kept for reference but not actively used
+
+**UI Automator vs Espresso:**
+- UI Automator: More verbose but more stable, works on Android 15
+- Espresso: More concise but has Android 15 compatibility issues
+
+**For new UI tests:**
+- Use UI Automator APIs (`UiDevice`, `UiSelector`, `UiObject`)
+- See `MainActivityTest.kt` for examples
 
 ## Helper Scripts
 
