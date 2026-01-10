@@ -14,19 +14,15 @@ import com.trec.customlogsheets.data.SiteStatus
 import com.trec.customlogsheets.data.UploadStatus
 import com.trec.customlogsheets.data.OwnCloudManager
 import com.trec.customlogsheets.util.AppLogger
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
-import java.io.InputStream
-import java.io.OutputStream
 
 class MainViewModel(
     private val database: AppDatabase,
@@ -38,6 +34,10 @@ class MainViewModel(
     private val _finishedSites = MutableStateFlow<List<SamplingSite>>(emptyList())
     val finishedSites: StateFlow<List<SamplingSite>> = _finishedSites.asStateFlow()
     
+    // Debounce mechanism to prevent excessive reloads
+    private var lastLoadTime = 0L
+    private val LOAD_DEBOUNCE_MS = 500L // Minimum time between loads
+    
     init {
         // Load sites from folder structure on initialization
         loadSitesFromFolders()
@@ -45,8 +45,17 @@ class MainViewModel(
     
     /**
      * Loads sites from the folder structure (ongoing and finished folders)
+     * Includes debouncing to prevent excessive reloads
      */
     fun loadSitesFromFolders() {
+        val currentTime = System.currentTimeMillis()
+        // Debounce: skip if called too soon after last load
+        if (currentTime - lastLoadTime < LOAD_DEBOUNCE_MS && lastLoadTime > 0) {
+            AppLogger.d("MainViewModel", "Skipping loadSitesFromFolders - debounced (last load ${currentTime - lastLoadTime}ms ago)")
+            return
+        }
+        lastLoadTime = currentTime
+        
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val settingsPreferences = SettingsPreferences(context)
             val folderUriString = settingsPreferences.getFolderUri()
@@ -78,7 +87,7 @@ class MainViewModel(
             val ongoingFolder = try {
                 folderHelper.getOngoingFolder(settingsPreferences)
             } catch (e: Exception) {
-                android.util.Log.e("MainViewModel", "Error loading ongoing folder: ${e.message}", e)
+                AppLogger.e("MainViewModel", "Error loading ongoing folder: ${e.message}", e)
                 null
             }
             
@@ -113,7 +122,7 @@ class MainViewModel(
             val finishedFolder = try {
                 folderHelper.getFinishedFolder(settingsPreferences)
             } catch (e: Exception) {
-                android.util.Log.e("MainViewModel", "Error loading finished folder: ${e.message}", e)
+                AppLogger.e("MainViewModel", "Error loading finished folder: ${e.message}", e)
                 null
             }
             
@@ -132,11 +141,9 @@ class MainViewModel(
                             
                             if (dbSite != null) {
                                 // Use database record, but ensure status is FINISHED (since it's in finished folder)
-                                if (dbSite.status != SiteStatus.FINISHED) {
+                                val siteWithCorrectStatus = if (dbSite.status != SiteStatus.FINISHED) {
                                     // Queue for batch update
                                     sitesToUpdate.add(dbSite.copy(status = SiteStatus.FINISHED))
-                                }
-                                val siteWithCorrectStatus = if (dbSite.status != SiteStatus.FINISHED) {
                                     dbSite.copy(status = SiteStatus.FINISHED)
                                 } else {
                                     dbSite
@@ -187,20 +194,15 @@ class MainViewModel(
                         }
                     }
                     
-                    // Map folder sites to database sites with correct IDs (use inserted sites map for new ones)
+                    // Map folder sites to database sites with correct IDs
+                    // folderSites already has correct status and data from mapNotNull above
+                    // We just need to update IDs for sites that were inserted or already existed
                     folderSites.map { folderSite ->
-                        // First check if it was just inserted
+                        // First check if it was just inserted (has correct ID now)
                         insertedSitesMap[folderSite.name] 
-                            // Then check original database map
-                            ?: dbSitesByName[folderSite.name]?.let { dbSite ->
-                                // Update status if needed
-                                if (dbSite.status != SiteStatus.FINISHED) {
-                                    dbSite.copy(status = SiteStatus.FINISHED)
-                                } else {
-                                    dbSite
-                                }
-                            }
-                            // Fallback to folder site
+                            // Then check original database map (for sites that already existed)
+                            ?: dbSitesByName[folderSite.name] 
+                            // Fallback to folder site (new site that will be inserted)
                             ?: folderSite
                     }.sortedBy { it.name }
                 } catch (e: Exception) {
@@ -280,14 +282,14 @@ class MainViewModel(
         
         // CRITICAL: Verify we have the TREC_logsheets folder by checking its name
         val folderName = trecFolder.name
-        android.util.Log.d("MainViewModel", "Retrieved folder name: '$folderName', expected: '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
+            AppLogger.d("MainViewModel", "Retrieved folder name: '$folderName', expected: '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
         
         if (folderName != FolderStructureHelper.PARENT_FOLDER_NAME) {
             // The URI might point to the parent folder, try to find TREC_logsheets inside it
-            android.util.Log.w("MainViewModel", "Folder name mismatch! Looking for TREC_logsheets inside '$folderName'...")
+            AppLogger.w("MainViewModel", "Folder name mismatch! Looking for TREC_logsheets inside '$folderName'...")
             val actualTrecFolder = trecFolder.findFile(FolderStructureHelper.PARENT_FOLDER_NAME)
             if (actualTrecFolder != null && actualTrecFolder.exists()) {
-                android.util.Log.d("MainViewModel", "Found TREC_logsheets inside parent folder")
+                AppLogger.d("MainViewModel", "Found TREC_logsheets inside parent folder")
                 // Use the actual TREC_logsheets folder
                 val verifiedTrecFolder = actualTrecFolder
                 return createSiteInFolder(trimmedName, verifiedTrecFolder)
@@ -378,9 +380,8 @@ class MainViewModel(
             )
         }
         
-        // Give the file system a moment to update, then reload sites from folders to update the UI
-        // Using a small delay to ensure the folder is visible in the file system
-        kotlinx.coroutines.delay(100)
+        // Reload sites from folders to update the UI
+        // Note: File system operations are synchronous, so no delay needed
         loadSitesFromFolders()
         
         return CreateSiteResult.Success(newSite)
@@ -450,7 +451,7 @@ class MainViewModel(
         val oldSiteFolder = ongoingFolder.findFile(site.name)
         if (oldSiteFolder == null || !oldSiteFolder.exists()) {
             // Folder doesn't exist, but we can still proceed
-            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found")
+            AppLogger.w("MainViewModel", "Site folder '${site.name}' not found")
         } else {
             // Rename the folder
             val renameSuccess = oldSiteFolder.renameTo(trimmedName)
@@ -495,14 +496,14 @@ class MainViewModel(
         val ongoingFolder = try {
             folderHelper.getOngoingFolder(settingsPreferences)
         } catch (e: Exception) {
-            android.util.Log.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
+            AppLogger.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
             return FinalizeSiteResult.Error("Error accessing ongoing folder: ${e.message}")
         }
         
         val finishedFolder = try {
             folderHelper.getFinishedFolder(settingsPreferences)
         } catch (e: Exception) {
-            android.util.Log.e("MainViewModel", "Error accessing finished folder: ${e.message}", e)
+            AppLogger.e("MainViewModel", "Error accessing finished folder: ${e.message}", e)
             return FinalizeSiteResult.Error("Error accessing finished folder: ${e.message}")
         }
         
@@ -557,7 +558,7 @@ class MainViewModel(
             try {
                 database.samplingSiteDao().updateSite(updatedSite)
                 // Reload from database to ensure we have the latest data
-                database.samplingSiteDao().getAllSites().first().find { it.name == site.name } ?: updatedSite
+                database.samplingSiteDao().getSiteByName(site.name) ?: updatedSite
             } catch (e: Exception) {
                 AppLogger.e("MainViewModel", "Error updating site status to FINISHED: ${e.message}", e)
                 updatedSite
@@ -565,11 +566,11 @@ class MainViewModel(
         } else {
             // Site not in database, try to find it or create it
             try {
-                val foundSite = database.samplingSiteDao().getAllSites().first().find { it.name == site.name }
+                val foundSite = database.samplingSiteDao().getSiteByName(site.name)
                 if (foundSite != null) {
                     val siteWithStatus = foundSite.copy(status = SiteStatus.FINISHED, uploadStatus = UploadStatus.NOT_UPLOADED)
                     database.samplingSiteDao().updateSite(siteWithStatus)
-                    database.samplingSiteDao().getAllSites().first().find { it.name == site.name } ?: siteWithStatus
+                    database.samplingSiteDao().getSiteByName(site.name) ?: siteWithStatus
                 } else {
                     // Create new site record
                     val newSite = SamplingSite(
@@ -639,7 +640,7 @@ class MainViewModel(
                     val siteToUpdate = if (siteForUpload.id > 0) {
                         siteForUpload
                     } else {
-                        database.samplingSiteDao().getAllSites().first().find { it.name == siteForUpload.name }
+                        database.samplingSiteDao().getSiteByName(siteForUpload.name)
                     }
                     if (siteToUpdate != null) {
                         val failedSite = siteToUpdate.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
@@ -659,7 +660,6 @@ class MainViewModel(
                         
                         // Also reload from database to ensure consistency
                         viewModelScope.launch(Dispatchers.IO) {
-                            kotlinx.coroutines.delay(300)
                             loadSitesFromFolders()
                         }
                     }
@@ -688,7 +688,7 @@ class MainViewModel(
             try {
                 database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
             } catch (e: Exception) {
-                android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+                AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
             }
             loadSitesFromFolders()
             return DeleteSiteResult.Success
@@ -700,7 +700,7 @@ class MainViewModel(
         val ongoingFolder = try {
             folderHelper.getOngoingFolder(settingsPreferences)
         } catch (e: Exception) {
-            android.util.Log.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
+            AppLogger.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
             // Still delete from database
             database.samplingSiteDao().deleteSite(site)
             return DeleteSiteResult.Success
@@ -709,31 +709,31 @@ class MainViewModel(
         val deletedFolder = try {
             folderHelper.getDeletedFolder(settingsPreferences)
         } catch (e: Exception) {
-            android.util.Log.e("MainViewModel", "Error accessing deleted folder: ${e.message}", e)
+            AppLogger.e("MainViewModel", "Error accessing deleted folder: ${e.message}", e)
             // Still delete from database
             database.samplingSiteDao().deleteSite(site)
             return DeleteSiteResult.Success
         }
         
         if (ongoingFolder == null || !ongoingFolder.exists() || !ongoingFolder.canRead()) {
-            android.util.Log.w("MainViewModel", "Ongoing folder not accessible")
+            AppLogger.w("MainViewModel", "Ongoing folder not accessible")
             // Delete form completions anyway
             try {
                 database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
             } catch (e: Exception) {
-                android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+                AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
             }
             loadSitesFromFolders()
             return DeleteSiteResult.Success
         }
         
         if (deletedFolder == null || !deletedFolder.exists() || !deletedFolder.canWrite()) {
-            android.util.Log.w("MainViewModel", "Deleted folder not accessible")
+            AppLogger.w("MainViewModel", "Deleted folder not accessible")
             // Delete form completions anyway
             try {
                 database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
             } catch (e: Exception) {
-                android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+                AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
             }
             loadSitesFromFolders()
             return DeleteSiteResult.Success
@@ -755,13 +755,13 @@ class MainViewModel(
                         // Now try to move it
                         val moveSuccess = moveFolder(renamedFolder, deletedFolder)
                         if (!moveSuccess) {
-                            android.util.Log.w("MainViewModel", "Could not move folder to deleted, but continuing with database deletion")
+                            AppLogger.w("MainViewModel", "Could not move folder to deleted, but continuing with database deletion")
                         }
                     } else {
-                        android.util.Log.w("MainViewModel", "Could not find renamed folder, but continuing with database deletion")
+                        AppLogger.w("MainViewModel", "Could not find renamed folder, but continuing with database deletion")
                     }
                 } else {
-                    android.util.Log.w("MainViewModel", "Could not rename folder before moving, but continuing with database deletion")
+                    AppLogger.w("MainViewModel", "Could not rename folder before moving, but continuing with database deletion")
                 }
             } else {
                 // Move the folder to deleted
@@ -771,14 +771,14 @@ class MainViewModel(
                 }
             }
         } else {
-            android.util.Log.w("MainViewModel", "Site folder '${site.name}' not found in ongoing folder")
+            AppLogger.w("MainViewModel", "Site folder '${site.name}' not found in ongoing folder")
         }
         
         // Delete form completions for this site (using site name)
         try {
             database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
         } catch (e: Exception) {
-            android.util.Log.w("MainViewModel", "Could not delete form completions: ${e.message}")
+            AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
         }
         
         // Reload sites from folders to update the UI
@@ -794,12 +794,12 @@ class MainViewModel(
      */
     private fun moveFolder(sourceFolder: androidx.documentfile.provider.DocumentFile, destinationFolder: androidx.documentfile.provider.DocumentFile): Boolean {
         if (!sourceFolder.exists() || !sourceFolder.isDirectory) {
-            android.util.Log.e("MainViewModel", "Source folder does not exist or is not a directory")
+            AppLogger.e("MainViewModel", "Source folder does not exist or is not a directory")
             return false
         }
         
         if (!destinationFolder.exists() || !destinationFolder.canWrite()) {
-            android.util.Log.e("MainViewModel", "Destination folder does not exist or is not writable")
+            AppLogger.e("MainViewModel", "Destination folder does not exist or is not writable")
             return false
         }
         
@@ -807,7 +807,7 @@ class MainViewModel(
         val folderName = sourceFolder.name ?: return false
         val existingFolder = destinationFolder.findFile(folderName)
         if (existingFolder != null && existingFolder.exists()) {
-            android.util.Log.w("MainViewModel", "Folder '$folderName' already exists in deleted folder")
+            AppLogger.w("MainViewModel", "Folder '$folderName' already exists in deleted folder")
             // We could append a timestamp, but for now let's just return false
             return false
         }
@@ -815,7 +815,7 @@ class MainViewModel(
         // Create the destination folder
         val newFolder = destinationFolder.createDirectory(folderName)
         if (newFolder == null || !newFolder.exists()) {
-            android.util.Log.e("MainViewModel", "Could not create folder '${sourceFolder.name}' in destination")
+            AppLogger.e("MainViewModel", "Could not create folder '${sourceFolder.name}' in destination")
             return false
         }
         
@@ -845,7 +845,7 @@ class MainViewModel(
         try {
             val files = source.listFiles()
             if (files.isEmpty()) {
-                android.util.Log.w("MainViewModel", "Could not list files in source folder")
+                AppLogger.w("MainViewModel", "Could not list files in source folder")
                 return true // Empty folder, consider it success
             }
             
@@ -855,7 +855,7 @@ class MainViewModel(
                     // Create subdirectory in destination
                     val newSubDir = destination.createDirectory(fileName)
                     if (newSubDir == null || !newSubDir.exists()) {
-                        android.util.Log.e("MainViewModel", "Could not create subdirectory '$fileName'")
+                        AppLogger.e("MainViewModel", "Could not create subdirectory '$fileName'")
                         return false
                     }
                     // Recursively copy subdirectory
@@ -865,14 +865,14 @@ class MainViewModel(
                 } else {
                     // Copy file
                     if (!copyFile(file, destination)) {
-                        android.util.Log.e("MainViewModel", "Could not copy file '$fileName'")
+                        AppLogger.e("MainViewModel", "Could not copy file '$fileName'")
                         return false
                     }
                 }
             }
             return true
         } catch (e: Exception) {
-            android.util.Log.e("MainViewModel", "Error copying folder: ${e.message}", e)
+            AppLogger.e("MainViewModel", "Error copying folder: ${e.message}", e)
             return false
         }
     }
@@ -886,7 +886,7 @@ class MainViewModel(
             val fileName = sourceFile.name ?: return false
             val destinationFile = destinationDir.createFile(sourceFile.type ?: "*/*", fileName)
             if (destinationFile == null || !destinationFile.exists()) {
-                android.util.Log.e("MainViewModel", "Could not create destination file '${sourceFile.name}'")
+                AppLogger.e("MainViewModel", "Could not create destination file '${sourceFile.name}'")
                 return false
             }
             
@@ -896,15 +896,15 @@ class MainViewModel(
                     inputStream.copyTo(outputStream)
                     return true
                 } ?: run {
-                    android.util.Log.e("MainViewModel", "Could not open output stream for file '${sourceFile.name}'")
+                    AppLogger.e("MainViewModel", "Could not open output stream for file '${sourceFile.name}'")
                     return false
                 }
             } ?: run {
-                android.util.Log.e("MainViewModel", "Could not open input stream for file '${sourceFile.name}'")
+                AppLogger.e("MainViewModel", "Could not open input stream for file '${sourceFile.name}'")
                 return false
             }
         } catch (e: Exception) {
-            android.util.Log.e("MainViewModel", "Error copying file '${sourceFile.name}': ${e.message}", e)
+            AppLogger.e("MainViewModel", "Error copying file '${sourceFile.name}': ${e.message}", e)
             return false
         }
     }
@@ -927,7 +927,7 @@ class MainViewModel(
                 site
             } else {
                 // Find site by name
-                val foundSite = database.samplingSiteDao().getAllSites().first().find { it.name == site.name }
+                val foundSite = database.samplingSiteDao().getSiteByName(site.name)
                 if (foundSite != null) {
                     foundSite
                 } else {
@@ -1022,9 +1022,7 @@ class MainViewModel(
                     AppLogger.i("MainViewModel", "Updated site upload status to UPLOADED: name='${site.name}', id=${siteToUpdate.id}")
                     
                     // Reload sites from folders to update the UI
-                    // We're already in a background coroutine, so we can call loadSitesFromFolders() directly
-                    // Add delay to ensure database write is committed before querying
-                    kotlinx.coroutines.delay(500) // Give database time to commit the write
+                    // Database operations are synchronous within the transaction, so no delay needed
                     AppLogger.d("MainViewModel", "Reloading sites after upload status update for: name='${site.name}'")
                     loadSitesFromFolders()
                 } catch (e: Exception) {
@@ -1053,7 +1051,6 @@ class MainViewModel(
                         
                         // Also reload from database to ensure consistency
                         viewModelScope.launch(Dispatchers.IO) {
-                            kotlinx.coroutines.delay(300)
                             loadSitesFromFolders()
                         }
                     } catch (e: Exception) {

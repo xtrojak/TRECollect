@@ -55,11 +55,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    private var lastResumeTime = 0L
+    
     override fun onResume() {
         super.onResume()
-        // Only reload if we've been away for a while (not on initial load)
-        // This prevents unnecessary reloads when just pausing/resuming quickly
-        viewModel.loadSitesFromFolders()
+        
+        val currentTime = System.currentTimeMillis()
+        // Only reload if we've been away for more than 2 seconds to avoid unnecessary reloads
+        // This prevents reloading when just pausing/resuming quickly (e.g., opening settings)
+        if (lastResumeTime == 0L || (currentTime - lastResumeTime) > 2000) {
+            viewModel.loadSitesFromFolders()
+        }
+        lastResumeTime = currentTime
         
         // Retry ownCloud folder creation if it wasn't verified yet
         retryOwnCloudFolderCreation()
@@ -137,15 +144,20 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun observeData() {
+        // Observe both flows in parallel using a single coroutine scope
         lifecycleScope.launch {
-            viewModel.ongoingSites.collect { sites ->
-                ongoingAdapter.submitList(sites)
-            }
-        }
-        
-        lifecycleScope.launch {
-            viewModel.finishedSites.collect { sites ->
-                finishedAdapter.submitList(sites)
+            kotlinx.coroutines.coroutineScope {
+                // Launch both collectors in parallel
+                launch {
+                    viewModel.ongoingSites.collect { sites ->
+                        ongoingAdapter.submitList(sites)
+                    }
+                }
+                launch {
+                    viewModel.finishedSites.collect { sites ->
+                        finishedAdapter.submitList(sites)
+                    }
+                }
             }
         }
     }
@@ -295,7 +307,6 @@ class MainActivity : AppCompatActivity() {
         // Skip ownCloud folder creation during tests to avoid creating test folders
         if (isRunningInTest()) {
             AppLogger.d("MainActivity", "Skipping ownCloud folder creation - running in test environment")
-            android.util.Log.d("MainActivity", "Skipping ownCloud folder creation - running in test environment")
             return
         }
         
@@ -387,13 +398,11 @@ class MainActivity : AppCompatActivity() {
                 if (folderCreated) {
                     settingsPreferences.setOwnCloudFolderVerified(true)
                     AppLogger.i("MainActivity", "OwnCloud folder verified on retry: $appUuid")
-                    android.util.Log.d("MainActivity", "OwnCloud folder verified on retry: $appUuid")
                 } else {
                     AppLogger.w("MainActivity", "OwnCloud folder creation retry failed: $appUuid")
                 }
             } catch (e: Exception) {
                 AppLogger.e("MainActivity", "Error retrying ownCloud folder creation: ${e.message}", e)
-                android.util.Log.e("MainActivity", "Error retrying ownCloud folder creation: ${e.message}", e)
             }
         }
     }
