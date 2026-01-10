@@ -38,8 +38,8 @@ jobs:
     - name: Create AVD and generate snapshot for faster emulator creation
       uses: reactivecircus/android-emulator-runner@v2
       with:
-        api-level: 29 # Android 10 - good balance of features and speed
-        arch: x86_64
+        api-level: 30 # Android 11 - has ARM64 support for Apple Silicon
+        arch: arm64-v8a # Use ARM64 for Apple Silicon (aarch64) hosts
         profile: Nexus 6
         force-avd-creation: false
         emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
