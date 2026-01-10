@@ -113,8 +113,7 @@
                     android:id="@+id/buttonUploadAll"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Upload All"
-                    style="@style/Widget.MaterialComponents.Button.TextButton" />
+                    android:text="Upload All" />
 
             </LinearLayout>
 
