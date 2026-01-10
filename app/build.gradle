@@ -113,5 +113,14 @@ dependencies {
     testImplementation 'org.assertj:assertj-core:3.24.2'
     // org.json for unit tests (Android's org.json is not available in JVM tests)
     testImplementation 'org.json:json:20231013'
+    
+    // Android Test (Instrumented) dependencies
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation 'androidx.room:room-testing:2.6.1'
+    androidTestImplementation 'app.cash.turbine:turbine:1.0.0'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
 }
 
