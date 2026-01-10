@@ -348,6 +348,49 @@ class OwnCloudManager(private val context: Context) {
     }
     
     /**
+     * Deletes a folder from ownCloud.
+     * Useful for cleanup after tests or when removing old folders.
+     * 
+     * @param folderName The folder name (e.g., UUID) to delete
+     * @return true if successful, false otherwise
+     */
+    suspend fun deleteFolder(folderName: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isNetworkAvailable()) {
+            AppLogger.w(TAG, "No network connectivity, cannot delete folder")
+            return@withContext false
+        }
+        
+        val folderUrl = "$targetFolderUrl/$folderName"
+        
+        try {
+            val request = Request.Builder()
+                .url(folderUrl)
+                .method("DELETE", null)
+                .addHeader("Authorization", createAuthHeader())
+                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .build()
+            
+            val response = client.newCall(request).execute()
+            val deleted = response.isSuccessful && (response.code == 204 || response.code == 404)
+            response.close()
+            
+            if (deleted) {
+                AppLogger.d(TAG, "Deleted folder: $folderName")
+                Log.d(TAG, "Deleted folder: $folderName")
+            } else {
+                AppLogger.w(TAG, "Failed to delete folder: $folderName (code: ${response.code})")
+                Log.w(TAG, "Failed to delete folder: $folderName (code: ${response.code})")
+            }
+            
+            return@withContext deleted
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error deleting folder: $folderName - ${e.message}", e)
+            Log.e(TAG, "Error deleting folder: $folderName - ${e.message}", e)
+            return@withContext false
+        }
+    }
+    
+    /**
      * Uploads a text file to ownCloud
      * @param uuidFolder The UUID folder name
      * @param subfolder The subfolder name (e.g., "logs")
