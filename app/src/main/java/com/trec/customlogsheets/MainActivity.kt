@@ -292,6 +292,13 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun initializeAppUuidAndOwnCloud() {
+        // Skip ownCloud folder creation during tests to avoid creating test folders
+        if (isRunningInTest()) {
+            AppLogger.d("MainActivity", "Skipping ownCloud folder creation - running in test environment")
+            android.util.Log.d("MainActivity", "Skipping ownCloud folder creation - running in test environment")
+            return
+        }
+        
         lifecycleScope.launch {
             try {
                 val settingsPreferences = SettingsPreferences(this@MainActivity)
@@ -322,6 +329,42 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 AppLogger.e("MainActivity", "Error initializing UUID/ownCloud: ${e.message}", e)
                 android.util.Log.e("MainActivity", "Error initializing UUID/ownCloud: ${e.message}", e)
+            }
+        }
+    }
+    
+    /**
+     * Checks if the app is running in a test environment.
+     * This prevents creating ownCloud folders during testing.
+     * 
+     * Detection methods:
+     * 1. Check if running under instrumentation (most reliable for instrumented tests)
+     * 2. Check for test runner process name
+     */
+    private fun isRunningInTest(): Boolean {
+        return try {
+            // Method 1: Check if running under instrumentation (instrumented tests)
+            // This is the most reliable method for Android instrumented tests
+            Class.forName("androidx.test.platform.app.InstrumentationRegistry")
+            true
+        } catch (e: ClassNotFoundException) {
+            try {
+                // Method 2: Check for AndroidJUnitRunner (alternative instrumentation)
+                Class.forName("androidx.test.runner.AndroidJUnitRunner")
+                true
+            } catch (e2: ClassNotFoundException) {
+                // Method 3: Check process name (heuristic - less reliable but catches some cases)
+                val processName = android.os.Process.myPid().let { pid ->
+                    try {
+                        val activityManager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                        activityManager.runningAppProcesses?.find { it.pid == pid }?.processName
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                // Check if process name suggests testing
+                processName?.contains("test", ignoreCase = true) == true ||
+                processName?.contains("androidTest", ignoreCase = true) == true
             }
         }
     }

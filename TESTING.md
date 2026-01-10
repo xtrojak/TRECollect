@@ -8,6 +8,15 @@ Unit tests are located in `app/src/test/` and run on the JVM without requiring a
 
 Instrumented tests are located in `app/src/androidTest/` and run on Android devices/emulators. They test UI interactions, database operations, and Android-specific functionality.
 
+## Test Environment Isolation
+
+**Important:** The app automatically detects when running in a test environment and skips ownCloud folder creation to prevent creating test folders on the server. This detection works for:
+- Instrumented tests (using `InstrumentationRegistry`)
+- AndroidJUnitRunner-based tests
+- Tests running in test processes
+
+If you need to test ownCloud functionality, you should mock `OwnCloudManager` or use a test-specific ownCloud instance.
+
 ## Important: UI Testing Framework
 
 **The project uses UI Automator instead of Espresso for UI tests.**
