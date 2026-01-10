@@ -88,13 +88,13 @@ The project includes comprehensive unit tests and instrumented tests. See [TESTI
 
 ```bash
 # Run all unit tests (recommended)
-./run-tests.sh
+./scripts/run-tests.sh
 
 # Or use Gradle directly
 ./gradlew test
 
 # View test summary
-./test-summary.sh
+./scripts/test-summary.sh
 ```
 
 ### Running Instrumented Tests Locally
@@ -103,16 +103,16 @@ Instrumented tests require an Android device or emulator to be connected.
 
 ```bash
 # Check if device/emulator is connected
-./check-device.sh
+./scripts/check-device.sh
 
 # Run all instrumented tests
-./run-instrumented-tests.sh
+./scripts/run-instrumented-tests.sh
 
 # Or use Gradle directly
 ./gradlew connectedAndroidTest
 
 # Run specific test class
-./run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
+./scripts/run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
 ```
 
 ### Test Coverage
@@ -169,7 +169,7 @@ app/
 
 1. Create a feature branch from `main` or `develop`
 2. Make your changes
-3. Ensure all tests pass: `./run-tests.sh`
+3. Ensure all tests pass: `./scripts/run-tests.sh`
 4. Submit a pull request
 
 ## License
