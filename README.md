@@ -6,13 +6,22 @@ TRECollect is an Android application for collecting and managing field sampling 
 
 ## Features
 
+- **Team-Based Configuration**
+  - Select sampling team (LSI or AML)
+  - For LSI team, select subteam (Soil, Sediment, or Shoreline)
+  - Team/subteam selection determines available forms and folder structure
+  - Initial setup requires team selection before use
+
 - **Sampling Site Management**
   - Create and manage ongoing and finished sampling sites
-  - Organize sites in a structured folder hierarchy
+  - Organize sites in team/subteam-based folder hierarchy
   - Track site status and upload progress
 
 - **Dynamic Form System**
-  - JSON-configured custom logsheets
+  - JSON-configured custom logsheets organized by team/subteam
+  - Team-specific form configurations:
+    - LSI teams have distinct forms for Soil, Sediment, and Shoreline sampling
+    - AML team has specialized forms for contaminated site assessment
   - Support for multiple field types:
     - Text, number, and date inputs
     - Multi-select options
@@ -38,7 +47,9 @@ TRECollect is an Android application for collecting and managing field sampling 
 - **Data Management**
   - Room database for local persistence
   - XML-based form data storage
-  - Structured folder organization (ongoing/finished/deleted)
+  - Team/subteam-based folder organization:
+    - Local: `TREC_logsheets/{team}/{subteam}/{ongoing,finished,deleted}/`
+    - ownCloud: `{UUID}/{team}/{subteam}/{siteName}/`
 
 ## Requirements
 
@@ -73,12 +84,22 @@ TRECollect is an Android application for collecting and managing field sampling 
 
 ### Configuration
 
-Before running the app, configure the following in `app/src/main/res/values/strings.xml`:
+**Initial Setup (Required on First Launch):**
 
-- `owncloud_url`: Your ownCloud WebDAV endpoint URL
-- `owncloud_access_token`: Your ownCloud access token
+1. **Select Sampling Team**: Choose your team (LSI or AML)
+   - If LSI is selected, choose subteam (Soil, Sediment, or Shoreline)
+   - This determines which forms are available and the folder structure
 
-Alternatively, configure these settings through the app's Settings activity after first launch.
+2. **Select Output Folder**: Choose where submissions will be stored
+   - The app will create the folder structure: `TREC_logsheets/{team}/{subteam}/`
+   - You can select a Google Drive folder if linked to your device
+
+3. **Optional - ownCloud Settings**: Configure in `app/src/main/res/values/strings.xml`:
+   - `owncloud_url`: Your ownCloud WebDAV endpoint URL
+   - `owncloud_access_token`: Your ownCloud access token
+   - Or configure through the app's Settings activity
+
+**Note**: The app requires team selection and output folder configuration before you can create sites.
 
 ## Testing
 
@@ -139,10 +160,55 @@ app/
 │   │   │   ├── ui/             # Activities, ViewModels, adapters
 │   │   │   └── util/           # Utilities (logging, etc.)
 │   │   ├── res/                # Resources (layouts, strings, etc.)
-│   │   └── assets/             # Form configuration JSON
+│   │   └── assets/             # Form configurations organized by team
+│   │       ├── teams/
+│   │       │   ├── LSI/
+│   │       │   │   ├── Soil/forms_config.json
+│   │       │   │   ├── Sediment/forms_config.json
+│   │       │   │   └── Shoreline/forms_config.json
+│   │       │   └── AML/forms_config.json
+│   │       └── forms_config.json  # Fallback (backwards compatibility)
 │   └── test/                   # Unit tests
 ├── build.gradle
 └── proguard-rules.pro
+```
+
+### Folder Structure
+
+**Local Storage:**
+```
+TREC_logsheets/
+├── LSI/
+│   ├── Soil/
+│   │   ├── ongoing/
+│   │   ├── finished/
+│   │   └── deleted/
+│   ├── Sediment/
+│   │   ├── ongoing/
+│   │   ├── finished/
+│   │   └── deleted/
+│   └── Shoreline/
+│       ├── ongoing/
+│       ├── finished/
+│       └── deleted/
+└── AML/
+    ├── ongoing/
+    ├── finished/
+    └── deleted/
+```
+
+**ownCloud Storage:**
+```
+{UUID}/
+├── LSI/
+│   ├── Soil/
+│   │   └── {siteName}/
+│   ├── Sediment/
+│   │   └── {siteName}/
+│   └── Shoreline/
+│       └── {siteName}/
+└── AML/
+    └── {siteName}/
 ```
 
 ## Key Technologies
@@ -165,12 +231,18 @@ app/
 - Add KDoc comments for public APIs
 - Keep functions focused and single-purpose
 
+### Building Release APK
+
+To build a signed release APK for distribution, see the [Building the Project](#building-the-project) section. For testing, debug APKs are automatically built on pull requests to `main` and are available as workflow artifacts.
+
 ### Contributing
 
 1. Create a feature branch from `main` or `develop`
 2. Make your changes
 3. Ensure all tests pass: `./scripts/run-tests.sh`
 4. Submit a pull request
+   - Debug APK will be automatically built and available as an artifact
+   - Download from the workflow run page (available for 30 days)
 
 ## License
 
