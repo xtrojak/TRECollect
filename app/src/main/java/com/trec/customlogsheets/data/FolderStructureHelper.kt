@@ -72,34 +72,87 @@ class FolderStructureHelper(private val context: Context) {
     }
     
     /**
-     * Gets the ongoing subfolder
+     * Gets the team folder (LSI or AML) inside TREC_logsheets
+     */
+    private fun getTeamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
+        val trecFolder = getTrecLogsheetsFolder(settingsPreferences) ?: return null
+        val team = settingsPreferences.getSamplingTeam()
+        if (team.isEmpty()) {
+            return null
+        }
+        var teamFolder = trecFolder.findFile(team)
+        if (teamFolder == null || !teamFolder.exists()) {
+            teamFolder = trecFolder.createDirectory(team)
+        }
+        return teamFolder
+    }
+    
+    /**
+     * Gets the subteam folder (for LSI) or returns team folder (for AML)
+     */
+    private fun getSubteamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
+        val teamFolder = getTeamFolder(settingsPreferences) ?: return null
+        val team = settingsPreferences.getSamplingTeam()
+        
+        if (team == "LSI") {
+            val subteam = settingsPreferences.getSamplingSubteam()
+            if (subteam.isEmpty()) {
+                return null
+            }
+            var subteamFolder = teamFolder.findFile(subteam)
+            if (subteamFolder == null || !subteamFolder.exists()) {
+                subteamFolder = teamFolder.createDirectory(subteam)
+            }
+            return subteamFolder
+        } else {
+            // For AML, return team folder directly
+            return teamFolder
+        }
+    }
+    
+    /**
+     * Gets the ongoing subfolder for the current team/subteam
      */
     fun getOngoingFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
-        val trecFolder = getTrecLogsheetsFolder(settingsPreferences) ?: return null
-        return trecFolder.findFile(ONGOING_FOLDER)
+        val subteamFolder = getSubteamFolder(settingsPreferences) ?: return null
+        var ongoingFolder = subteamFolder.findFile(ONGOING_FOLDER)
+        if (ongoingFolder == null || !ongoingFolder.exists()) {
+            ongoingFolder = subteamFolder.createDirectory(ONGOING_FOLDER)
+        }
+        return ongoingFolder
     }
     
     /**
-     * Gets the finished subfolder
+     * Gets the finished subfolder for the current team/subteam
      */
     fun getFinishedFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
-        val trecFolder = getTrecLogsheetsFolder(settingsPreferences) ?: return null
-        return trecFolder.findFile(FINISHED_FOLDER)
+        val subteamFolder = getSubteamFolder(settingsPreferences) ?: return null
+        var finishedFolder = subteamFolder.findFile(FINISHED_FOLDER)
+        if (finishedFolder == null || !finishedFolder.exists()) {
+            finishedFolder = subteamFolder.createDirectory(FINISHED_FOLDER)
+        }
+        return finishedFolder
     }
     
     /**
-     * Gets the deleted subfolder
+     * Gets the deleted subfolder for the current team/subteam
      */
     fun getDeletedFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
-        val trecFolder = getTrecLogsheetsFolder(settingsPreferences) ?: return null
-        return trecFolder.findFile(DELETED_FOLDER)
+        val subteamFolder = getSubteamFolder(settingsPreferences) ?: return null
+        var deletedFolder = subteamFolder.findFile(DELETED_FOLDER)
+        if (deletedFolder == null || !deletedFolder.exists()) {
+            deletedFolder = subteamFolder.createDirectory(DELETED_FOLDER)
+        }
+        return deletedFolder
     }
     
     /**
      * Ensures the folder structure exists, creating it only if it doesn't exist
-     * Structure: baseFolder/TREC_logsheets/{ongoing, finished, deleted}
+     * Structure: baseFolder/TREC_logsheets/{team}/{subteam}/{ongoing, finished, deleted}
+     * For LSI: baseFolder/TREC_logsheets/LSI/{Soil|Sediment|Shoreline}/{ongoing, finished, deleted}
+     * For AML: baseFolder/TREC_logsheets/AML/{ongoing, finished, deleted}
      */
-    fun ensureFolderStructure(baseUri: Uri): DocumentFile? {
+    fun ensureFolderStructure(baseUri: Uri, settingsPreferences: SettingsPreferences): DocumentFile? {
         val baseFolder = DocumentFile.fromTreeUri(context, baseUri) ?: return null
         if (!baseFolder.exists() || !baseFolder.canWrite()) return null
         
@@ -111,13 +164,51 @@ class FolderStructureHelper(private val context: Context) {
             if (trecFolder == null) return null
         }
         
-        // Ensure all subfolders exist inside TREC_logsheets
+        // Get team and subteam
+        val team = settingsPreferences.getSamplingTeam()
+        if (team.isEmpty()) {
+            android.util.Log.w("FolderStructureHelper", "Cannot create folder structure: team not set")
+            return trecFolder
+        }
+        
+        val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+        if (team == "LSI" && (subteam == null || subteam.isEmpty())) {
+            android.util.Log.w("FolderStructureHelper", "Cannot create folder structure: LSI subteam not set")
+            return trecFolder
+        }
+        
+        // Create team folder
+        var teamFolder = trecFolder.findFile(team)
+        if (teamFolder == null || !teamFolder.exists()) {
+            teamFolder = trecFolder.createDirectory(team)
+            if (teamFolder == null) {
+                android.util.Log.e("FolderStructureHelper", "Failed to create team folder: $team")
+                return trecFolder
+            }
+        }
+        
+        // For LSI, create subteam folder
+        val targetFolder = if (team == "LSI" && subteam != null) {
+            var subteamFolder = teamFolder.findFile(subteam)
+            if (subteamFolder == null || !subteamFolder.exists()) {
+                subteamFolder = teamFolder.createDirectory(subteam)
+                if (subteamFolder == null) {
+                    android.util.Log.e("FolderStructureHelper", "Failed to create subteam folder: $subteam")
+                    return trecFolder
+                }
+            }
+            subteamFolder
+        } else {
+            teamFolder
+        }
+        
+        // Ensure all subfolders exist inside team/subteam folder
         val subfolders = listOf(ONGOING_FOLDER, FINISHED_FOLDER, DELETED_FOLDER)
         for (subfolderName in subfolders) {
-            var subfolder = trecFolder.findFile(subfolderName)
+            var subfolder = targetFolder.findFile(subfolderName)
             if (subfolder == null || !subfolder.exists()) {
-                // Create the subfolder inside TREC_logsheets
-                subfolder = trecFolder.createDirectory(subfolderName)
+                // Create the subfolder inside team/subteam folder
+                subfolder = targetFolder.createDirectory(subfolderName)
                 if (subfolder == null) {
                     // Log error but continue with other folders
                     android.util.Log.e("FolderStructureHelper", "Failed to create subfolder: $subfolderName")
@@ -129,20 +220,20 @@ class FolderStructureHelper(private val context: Context) {
     }
     
     /**
-     * Ensures the TREC_logsheets folder structure is complete
+     * Ensures the TREC_logsheets folder structure is complete for current team/subteam
      * This is a helper method to verify and create missing subfolders
      */
     fun ensureSubfoldersExist(settingsPreferences: SettingsPreferences): Boolean {
-        val trecFolder = getTrecLogsheetsFolder(settingsPreferences) ?: return false
-        if (!trecFolder.exists() || !trecFolder.canWrite()) return false
+        val subteamFolder = getSubteamFolder(settingsPreferences) ?: return false
+        if (!subteamFolder.exists() || !subteamFolder.canWrite()) return false
         
         val subfolders = listOf(ONGOING_FOLDER, FINISHED_FOLDER, DELETED_FOLDER)
         var allCreated = true
         
         for (subfolderName in subfolders) {
-            var subfolder = trecFolder.findFile(subfolderName)
+            var subfolder = subteamFolder.findFile(subfolderName)
             if (subfolder == null || !subfolder.exists()) {
-                subfolder = trecFolder.createDirectory(subfolderName)
+                subfolder = subteamFolder.createDirectory(subfolderName)
                 if (subfolder == null) {
                     allCreated = false
                 }

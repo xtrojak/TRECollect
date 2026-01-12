@@ -51,27 +51,57 @@ data class FormConfig(
  */
 object FormConfigLoader {
     private var cachedConfigs: List<FormConfig>? = null
+    private var cachedTeam: String? = null
+    private var cachedSubteam: String? = null
     
-    fun loadFromAssets(context: android.content.Context): List<FormConfig> {
-        // Cache the configs to avoid reloading on every call
-        if (cachedConfigs != null) {
+    fun loadFromAssets(context: android.content.Context, team: String? = null, subteam: String? = null): List<FormConfig> {
+        // Get team/subteam from SettingsPreferences if not provided
+        val actualTeam = team ?: SettingsPreferences(context).getSamplingTeam()
+        val actualSubteam = subteam ?: SettingsPreferences(context).getSamplingSubteam()
+        
+        // Cache the configs to avoid reloading on every call (check if team/subteam changed)
+        if (cachedConfigs != null && cachedTeam == actualTeam && cachedSubteam == actualSubteam) {
             return cachedConfigs!!
         }
         
+        // Determine the config file path based on team/subteam
+        val configPath = when {
+            actualTeam == "LSI" && actualSubteam.isNotEmpty() -> "teams/LSI/$actualSubteam/forms_config.json"
+            actualTeam == "AML" -> "teams/AML/forms_config.json"
+            else -> "forms_config.json" // Fallback to root for backwards compatibility
+        }
+        
         return try {
-            val inputStream = context.assets.open("forms_config.json")
+            val inputStream = context.assets.open(configPath)
             val jsonString = inputStream.bufferedReader().use { it.readText() }
             val configs = parseJson(jsonString)
             try {
-                android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms: ${configs.map { it.id }}")
+                android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms from $configPath: ${configs.map { it.id }}")
             } catch (e: Exception) {
                 // Ignore logging errors in test environments
             }
             cachedConfigs = configs
+            cachedTeam = actualTeam
+            cachedSubteam = actualSubteam
             configs
         } catch (e: Exception) {
             try {
-                android.util.Log.e("FormConfigLoader", "Error loading form config: ${e.message}", e)
+                android.util.Log.e("FormConfigLoader", "Error loading form config from $configPath: ${e.message}", e)
+                // Try fallback to root forms_config.json if team-specific config doesn't exist
+                if (configPath != "forms_config.json") {
+                    android.util.Log.d("FormConfigLoader", "Trying fallback to root forms_config.json")
+                    try {
+                        val fallbackStream = context.assets.open("forms_config.json")
+                        val fallbackJson = fallbackStream.bufferedReader().use { it.readText() }
+                        val fallbackConfigs = parseJson(fallbackJson)
+                        cachedConfigs = fallbackConfigs
+                        cachedTeam = actualTeam
+                        cachedSubteam = actualSubteam
+                        return fallbackConfigs
+                    } catch (fallbackError: Exception) {
+                        android.util.Log.e("FormConfigLoader", "Fallback also failed: ${fallbackError.message}")
+                    }
+                }
             } catch (logError: Exception) {
                 // Ignore logging errors in test environments
             }
@@ -82,6 +112,8 @@ object FormConfigLoader {
     
     fun clearCache() {
         cachedConfigs = null
+        cachedTeam = null
+        cachedSubteam = null
     }
     
     internal fun parseJson(jsonString: String): List<FormConfig> {

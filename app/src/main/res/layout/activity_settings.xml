@@ -141,7 +141,24 @@
                         android:id="@+id/spinnerTeam"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:minHeight="48dp" />
+                        android:minHeight="48dp"
+                        android:layout_marginBottom="16dp" />
+
+                    <TextView
+                        android:id="@+id/textSubteamLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Subteam:"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone" />
+
+                    <Spinner
+                        android:id="@+id/spinnerSubteam"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="48dp"
+                        android:visibility="gone" />
 
                 </LinearLayout>
 

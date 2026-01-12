@@ -71,6 +71,9 @@ class MainViewModel(
             
             val folderHelper = FolderStructureHelper(context)
             
+            // Ensure all subfolders exist (ongoing, finished, deleted) for current team/subteam
+            folderHelper.ensureSubfoldersExist(settingsPreferences)
+            
             // Load all sites from database ONCE (optimization: avoid querying for each folder)
             // Removed delay - not needed, database operations are already async
             val allDbSites = try {
@@ -313,42 +316,33 @@ class MainViewModel(
             return CreateSiteResult.Error("Internal error: Not working with TREC_logsheets folder. Please reconfigure storage.")
         }
         
-        // Ensure all subfolders exist inside TREC_logsheets: ongoing, finished, deleted
-        val subfolders = listOf(
-            FolderStructureHelper.ONGOING_FOLDER,
-            FolderStructureHelper.FINISHED_FOLDER,
-            FolderStructureHelper.DELETED_FOLDER
-        )
+        // Use FolderStructureHelper to get the ongoing folder (which handles team/subteam structure)
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
         
-        for (subfolderName in subfolders) {
-            var subfolder = trecFolder.findFile(subfolderName)
-            if (subfolder == null || !subfolder.exists()) {
-                // Create the subfolder inside TREC_logsheets
-                subfolder = trecFolder.createDirectory(subfolderName)
-                if (subfolder == null) {
-                    return CreateSiteResult.Error("Could not create $subfolderName folder inside TREC_logsheets. Please check storage permissions.")
-                }
-            }
+        // Ensure all subfolders exist for current team/subteam
+        if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
+            return CreateSiteResult.Error("Could not create folder structure for current team/subteam. Please check storage permissions.")
         }
         
-        // Get the ongoing subfolder inside TREC_logsheets
-        val ongoingFolder = trecFolder.findFile(FolderStructureHelper.ONGOING_FOLDER)
+        // Get the ongoing subfolder for current team/subteam
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
         
         if (ongoingFolder == null || !ongoingFolder.exists()) {
-            return CreateSiteResult.Error("Ongoing folder not found inside TREC_logsheets. Please reconfigure storage.")
+            return CreateSiteResult.Error("Ongoing folder not found. Please reconfigure storage.")
         }
         
         if (!ongoingFolder.canRead() || !ongoingFolder.canWrite()) {
-            return CreateSiteResult.Error("Cannot access ongoing folder inside TREC_logsheets. Please check permissions.")
+            return CreateSiteResult.Error("Cannot access ongoing folder. Please check permissions.")
         }
         
-        // Check if folder for this site already exists inside TREC_logsheets/ongoing/
+        // Check if folder for this site already exists
         val siteFolder = ongoingFolder.findFile(siteName)
         if (siteFolder != null && siteFolder.exists()) {
-            return CreateSiteResult.Error("A folder for this site already exists in TREC_logsheets/ongoing/")
+            return CreateSiteResult.Error("A folder for this site already exists.")
         }
         
-        // Create the site folder inside TREC_logsheets/ongoing/
+        // Create the site folder
         val createdFolder = ongoingFolder.createDirectory(siteName)
         if (createdFolder == null) {
             AppLogger.e("MainViewModel", "Failed to create site folder: name='$siteName'")

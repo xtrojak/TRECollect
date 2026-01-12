@@ -13,12 +13,12 @@ class SettingsPreferences(context: Context) {
         private const val PREFS_NAME = "app_settings"
         private const val KEY_SUBMISSION_PATH = "submission_path"
         private const val KEY_SAMPLING_TEAM = "sampling_team"
+        private const val KEY_SAMPLING_SUBTEAM = "sampling_subteam"
         private const val KEY_FOLDER_URI = "folder_uri"
         private const val KEY_MAP_EXPIRY_DAYS = "map_expiry_days"
         private const val KEY_APP_UUID = "app_uuid"
         private const val KEY_OWNCLOUD_FOLDER_VERIFIED = "owncloud_folder_verified"
         
-        const val DEFAULT_TEAM = "LSI"
         const val DEFAULT_MAP_EXPIRY_DAYS = 30L // Default: 30 days
     }
     
@@ -39,11 +39,32 @@ class SettingsPreferences(context: Context) {
     }
     
     fun getSamplingTeam(): String {
-        return prefs.getString(KEY_SAMPLING_TEAM, DEFAULT_TEAM) ?: DEFAULT_TEAM
+        return prefs.getString(KEY_SAMPLING_TEAM, "") ?: ""
     }
     
     fun setSamplingTeam(team: String) {
         prefs.edit().putString(KEY_SAMPLING_TEAM, team).apply()
+    }
+    
+    fun isSamplingTeamSet(): Boolean {
+        return getSamplingTeam().isNotEmpty()
+    }
+    
+    fun getSamplingSubteam(): String {
+        return prefs.getString(KEY_SAMPLING_SUBTEAM, "") ?: ""
+    }
+    
+    fun setSamplingSubteam(subteam: String) {
+        prefs.edit().putString(KEY_SAMPLING_SUBTEAM, subteam).apply()
+    }
+    
+    fun isSamplingSubteamSet(): Boolean {
+        val team = getSamplingTeam()
+        if (team != "LSI") {
+            // For non-LSI teams, subteam is not required
+            return true
+        }
+        return getSamplingSubteam().isNotEmpty()
     }
     
     /**

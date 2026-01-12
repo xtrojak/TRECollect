@@ -320,26 +320,81 @@ class OwnCloudManager(private val context: Context) {
     
     /**
      * Ensures a folder exists (creates if it doesn't) with retry logic
+     * Creates the full structure: UUID/team/subteam (for LSI) or UUID/team (for AML)
      */
     suspend fun ensureFolderExists(folderName: String, retries: Int = MAX_RETRIES): Boolean {
         // First ensure the target folder path exists
         ensureTargetFolderPath()
         
-        // Then check if the UUID folder exists
-        val exists = folderExists(folderName, retries)
-        if (exists) {
-            return true
+        // Get team and subteam from settings
+        val settingsPreferences = SettingsPreferences(context)
+        val team = settingsPreferences.getSamplingTeam()
+        val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+        
+        // Check if team/subteam are set
+        if (team.isEmpty()) {
+            AppLogger.w(TAG, "Cannot create ownCloud folder structure: team not set")
+            return false
+        }
+        if (team == "LSI" && (subteam == null || subteam.isEmpty())) {
+            AppLogger.w(TAG, "Cannot create ownCloud folder structure: LSI subteam not set")
+            return false
         }
         
-        // If it doesn't exist, try to create it
-        return createFolder(folderName, retries)
+        // Ensure UUID folder exists
+        val uuidExists = folderExists(folderName, retries)
+        if (!uuidExists) {
+            if (!createFolder(folderName, retries)) {
+                return false
+            }
+        }
+        
+        // Ensure team folder exists inside UUID
+        val teamPath = "$folderName/$team"
+        val teamExists = checkPathExists("$targetFolderUrl/$teamPath")
+        if (!teamExists) {
+            if (!createPath("$targetFolderUrl/$teamPath")) {
+                AppLogger.w(TAG, "Failed to create team folder: $teamPath")
+                return false
+            }
+        }
+        
+        // For LSI, ensure subteam folder exists
+        if (team == "LSI" && subteam != null) {
+            val subteamPath = "$teamPath/$subteam"
+            val subteamExists = checkPathExists("$targetFolderUrl/$subteamPath")
+            if (!subteamExists) {
+                if (!createPath("$targetFolderUrl/$subteamPath")) {
+                    AppLogger.w(TAG, "Failed to create subteam folder: $subteamPath")
+                    return false
+                }
+            }
+        }
+        
+        return true
     }
     
     /**
-     * Ensures a subfolder exists within a UUID folder (creates if it doesn't)
+     * Gets the team/subteam path for the current settings
+     */
+    private fun getTeamSubteamPath(uuidFolder: String): String {
+        val settingsPreferences = SettingsPreferences(context)
+        val team = settingsPreferences.getSamplingTeam()
+        val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+        
+        return if (team == "LSI" && subteam != null) {
+            "$uuidFolder/$team/$subteam"
+        } else {
+            "$uuidFolder/$team"
+        }
+    }
+    
+    /**
+     * Ensures a subfolder exists within the team/subteam structure (creates if it doesn't)
      */
     suspend fun ensureSubfolderExists(uuidFolder: String, subfolderName: String): Boolean {
-        val subfolderUrl = "$targetFolderUrl/$uuidFolder/$subfolderName"
+        val teamSubteamPath = getTeamSubteamPath(uuidFolder)
+        val subfolderUrl = "$targetFolderUrl/$teamSubteamPath/$subfolderName"
         val exists = checkPathExists(subfolderUrl)
         if (exists) {
             return true
@@ -404,9 +459,9 @@ class OwnCloudManager(private val context: Context) {
             return@withContext false
         }
         
-        // Ensure UUID folder exists
+        // Ensure UUID/team/subteam folder structure exists
         if (!ensureFolderExists(uuidFolder, retries)) {
-            AppLogger.e(TAG, "Failed to ensure UUID folder exists: $uuidFolder")
+            AppLogger.e(TAG, "Failed to ensure UUID/team/subteam folder structure exists: $uuidFolder")
             return@withContext false
         }
         
@@ -419,7 +474,8 @@ class OwnCloudManager(private val context: Context) {
         var lastException: Exception? = null
         var delayMs = INITIAL_RETRY_DELAY_MS
         
-        val filePath = "$uuidFolder/$subfolder/$fileName"
+        val teamSubteamPath = getTeamSubteamPath(uuidFolder)
+        val filePath = "$teamSubteamPath/$subfolder/$fileName"
         val fileUrl = "$targetFolderUrl/$filePath"
         
         repeat(retries) { attempt ->
@@ -492,10 +548,10 @@ class OwnCloudManager(private val context: Context) {
             return@withContext UploadFolderResult.Error("No network connectivity")
         }
         
-        // Ensure UUID folder exists
+        // Ensure UUID/team/subteam folder structure exists
         if (!ensureFolderExists(uuidFolder)) {
-            AppLogger.e(TAG, "Failed to ensure UUID folder exists: $uuidFolder")
-            return@withContext UploadFolderResult.Error("Failed to create UUID folder")
+            AppLogger.e(TAG, "Failed to ensure UUID/team/subteam folder structure exists: $uuidFolder")
+            return@withContext UploadFolderResult.Error("Failed to create UUID/team/subteam folder structure")
         }
         
         // Ensure site subfolder exists
@@ -503,6 +559,8 @@ class OwnCloudManager(private val context: Context) {
             AppLogger.e(TAG, "Failed to ensure site folder exists: $uuidFolder/$siteFolderName")
             return@withContext UploadFolderResult.Error("Failed to create site folder")
         }
+        
+        val teamSubteamPath = getTeamSubteamPath(uuidFolder)
         
         try {
             // Count total files first
@@ -526,7 +584,7 @@ class OwnCloudManager(private val context: Context) {
                         continue
                     }
                     
-                    val remotePath = "$uuidFolder/$siteFolderName/$relativePath"
+                    val remotePath = "$teamSubteamPath/$siteFolderName/$relativePath"
                     val success = uploadTextFileContent(
                         remotePath = remotePath,
                         content = fileContent,
@@ -552,7 +610,7 @@ class OwnCloudManager(private val context: Context) {
             }
             
             // Verify upload
-            val verification = verifyFolderUpload(uuidFolder, siteFolderName)
+            val verification = verifyFolderUpload(teamSubteamPath, siteFolderName)
             
             if (verification.success && uploadedCount > 0) {
                 AppLogger.i(TAG, "Folder upload completed: site='$siteFolderName', uploaded=$uploadedCount/$totalFiles")
@@ -648,9 +706,9 @@ class OwnCloudManager(private val context: Context) {
     /**
      * Verifies that a folder was uploaded successfully
      */
-    suspend fun verifyFolderUpload(uuidFolder: String, siteFolderName: String): VerificationResult = withContext(Dispatchers.IO) {
+    suspend fun verifyFolderUpload(teamSubteamPath: String, siteFolderName: String): VerificationResult = withContext(Dispatchers.IO) {
         try {
-            val folderUrl = "$targetFolderUrl/$uuidFolder/$siteFolderName"
+            val folderUrl = "$targetFolderUrl/$teamSubteamPath/$siteFolderName"
             
             // Check if folder exists
             val request = Request.Builder()

@@ -60,6 +60,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         
+        // Check if team and folder are configured
+        checkInitialSetup()
+        
         val currentTime = System.currentTimeMillis()
         // Only reload if we've been away for more than 2 seconds to avoid unnecessary reloads
         // This prevents reloading when just pausing/resuming quickly (e.g., opening settings)
@@ -70,6 +73,38 @@ class MainActivity : AppCompatActivity() {
         
         // Retry ownCloud folder creation if it wasn't verified yet
         retryOwnCloudFolderCreation()
+    }
+    
+    private fun checkInitialSetup() {
+        val settingsPreferences = SettingsPreferences(this)
+        val folderUri = settingsPreferences.getFolderUri()
+        val team = settingsPreferences.getSamplingTeam()
+        val subteamSet = settingsPreferences.isSamplingSubteamSet()
+        
+        val missingItems = mutableListOf<String>()
+        if (folderUri.isEmpty()) {
+            missingItems.add("output folder")
+        }
+        if (team.isEmpty()) {
+            missingItems.add("sampling team")
+        } else if (team == "LSI" && !subteamSet) {
+            missingItems.add("LSI subteam")
+        }
+        
+        if (missingItems.isNotEmpty()) {
+            val message = "Please configure the following in Settings before using the app:\n\n" +
+                    missingItems.joinToString("\n• ", "• ")
+            
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Initial Setup Required")
+                .setMessage(message)
+                .setPositiveButton("Open Settings") { _, _ ->
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
+                }
+                .setCancelable(false)
+                .show()
+        }
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -111,6 +146,23 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupCreateButton() {
         findViewById<MaterialButton>(R.id.buttonCreateSite).setOnClickListener {
+            val settingsPreferences = SettingsPreferences(this)
+            val team = settingsPreferences.getSamplingTeam()
+            val subteamSet = settingsPreferences.isSamplingSubteamSet()
+            val folderUri = settingsPreferences.getFolderUri()
+            
+            // Check if setup is complete
+            if (team.isEmpty() || (team == "LSI" && !subteamSet) || folderUri.isEmpty()) {
+                android.widget.Toast.makeText(
+                    this,
+                    "Please configure team and output folder in Settings first",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
+                return@setOnClickListener
+            }
+            
             val editText = findViewById<TextInputEditText>(R.id.editTextSiteName)
             val siteName = editText.text?.toString() ?: ""
             
