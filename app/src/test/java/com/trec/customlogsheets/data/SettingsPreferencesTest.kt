@@ -94,19 +94,19 @@ class SettingsPreferencesTest {
     }
 
     @Test
-    fun `getSamplingTeam returns default value`() {
-        whenever(mockSharedPreferences.getString("sampling_team", SettingsPreferences.DEFAULT_TEAM))
-            .thenReturn(SettingsPreferences.DEFAULT_TEAM)
+    fun `getSamplingTeam returns empty string by default`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("")
         
         val result = settingsPreferences.getSamplingTeam()
         
-        assertEquals(SettingsPreferences.DEFAULT_TEAM, result)
+        assertEquals("", result)
     }
 
     @Test
     fun `getSamplingTeam returns stored value`() {
-        val team = "Custom Team"
-        whenever(mockSharedPreferences.getString("sampling_team", SettingsPreferences.DEFAULT_TEAM))
+        val team = "LSI"
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
             .thenReturn(team)
         
         val result = settingsPreferences.getSamplingTeam()
@@ -242,11 +242,98 @@ class SettingsPreferencesTest {
 
     @Test
     fun `getSamplingTeam handles null return`() {
-        whenever(mockSharedPreferences.getString("sampling_team", SettingsPreferences.DEFAULT_TEAM))
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
             .thenReturn(null)
         
         val result = settingsPreferences.getSamplingTeam()
         
-        assertEquals(SettingsPreferences.DEFAULT_TEAM, result)
+        assertEquals("", result)
+    }
+    
+    @Test
+    fun `isSamplingTeamSet returns false when empty`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("")
+        
+        val result = settingsPreferences.isSamplingTeamSet()
+        
+        assertFalse(result)
+    }
+    
+    @Test
+    fun `isSamplingTeamSet returns true when set`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("LSI")
+        
+        val result = settingsPreferences.isSamplingTeamSet()
+        
+        assertTrue(result)
+    }
+    
+    @Test
+    fun `getSamplingSubteam returns empty string by default`() {
+        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
+            .thenReturn("")
+        
+        val result = settingsPreferences.getSamplingSubteam()
+        
+        assertEquals("", result)
+    }
+    
+    @Test
+    fun `getSamplingSubteam returns stored value`() {
+        val subteam = "Soil"
+        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
+            .thenReturn(subteam)
+        
+        val result = settingsPreferences.getSamplingSubteam()
+        
+        assertEquals(subteam, result)
+    }
+    
+    @Test
+    fun `setSamplingSubteam stores value`() {
+        val subteam = "Soil"
+        
+        settingsPreferences.setSamplingSubteam(subteam)
+        
+        verify(mockEditor).putString("sampling_subteam", subteam)
+        verify(mockEditor).apply()
+    }
+    
+    @Test
+    fun `isSamplingSubteamSet returns true for non-LSI team`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("AML")
+        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
+            .thenReturn("")
+        
+        val result = settingsPreferences.isSamplingSubteamSet()
+        
+        assertTrue(result) // Non-LSI teams don't need subteam
+    }
+    
+    @Test
+    fun `isSamplingSubteamSet returns false for LSI without subteam`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("LSI")
+        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
+            .thenReturn("")
+        
+        val result = settingsPreferences.isSamplingSubteamSet()
+        
+        assertFalse(result)
+    }
+    
+    @Test
+    fun `isSamplingSubteamSet returns true for LSI with subteam`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("LSI")
+        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
+            .thenReturn("Soil")
+        
+        val result = settingsPreferences.isSamplingSubteamSet()
+        
+        assertTrue(result)
     }
 }
