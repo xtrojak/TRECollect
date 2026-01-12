@@ -13,6 +13,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TREC Custom Logsheets"
+rootProject.name = "TRECollect"
 include ':app'
 
