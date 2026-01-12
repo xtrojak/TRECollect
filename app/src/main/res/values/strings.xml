@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TREC Custom Logsheets</string>
+    <string name="app_name">TRECollect</string>
     <string name="hello_world">Hello World!</string>
     <string name="owncloud_url">https://oc.embl.de/public.php/webdav/</string>
     <string name="owncloud_access_token">0rxu1scmLhgmWQs</string>
