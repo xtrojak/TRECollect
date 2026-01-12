@@ -1,6 +1,6 @@
 # Unit Tests
 
-This directory contains unit tests for the TREC Custom Logsheets app. These tests run on the JVM (not requiring an Android device/emulator) and are designed to be CI-ready.
+This directory contains unit tests for the TRECollect app. These tests run on the JVM (not requiring an Android device/emulator) and are designed to be CI-ready.
 
 ## Running Tests
 

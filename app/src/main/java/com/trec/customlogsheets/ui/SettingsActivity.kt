@@ -21,6 +21,8 @@ import com.trec.customlogsheets.MainActivity
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SettingsPreferences
+import com.trec.customlogsheets.data.FormConfigLoader
+import com.trec.customlogsheets.data.PredefinedForms
 import com.trec.customlogsheets.util.AppLogger
 
 class SettingsActivity : AppCompatActivity() {
@@ -30,10 +32,13 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var iconFolderSelected: ImageView
     private lateinit var selectFolderButton: MaterialButton
     private lateinit var teamSpinner: Spinner
+    private lateinit var subteamSpinner: Spinner
+    private lateinit var subteamLabel: TextView
     private lateinit var buttonOfflineMaps: MaterialButton
     private lateinit var buttonViewLogs: MaterialButton
     private lateinit var buttonCopyUuid: MaterialButton
-    private val teams = arrayOf(SettingsPreferences.DEFAULT_TEAM)
+    private val teams = arrayOf("LSI", "AML")
+    private val lsiSubteams = arrayOf("Soil", "Sediment", "Shoreline")
     
     companion object {
         private const val REQUEST_CODE_OPEN_FOLDER = 1001
@@ -68,10 +73,17 @@ class SettingsActivity : AppCompatActivity() {
         buttonOfflineMaps = findViewById(R.id.buttonOfflineMaps)
         
         // Setup team spinner
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, teams)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val teamAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, teams)
+        teamAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         teamSpinner = findViewById(R.id.spinnerTeam)
-        teamSpinner.adapter = adapter
+        teamSpinner.adapter = teamAdapter
+        
+        // Setup subteam spinner
+        val subteamAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, lsiSubteams)
+        subteamAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        subteamSpinner = findViewById(R.id.spinnerSubteam)
+        subteamSpinner.adapter = subteamAdapter
+        subteamLabel = findViewById(R.id.textSubteamLabel)
         
         selectFolderButton.setOnClickListener {
             openFolderPicker()
@@ -101,6 +113,31 @@ class SettingsActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                 val selectedTeam = teams[position]
                 settingsPreferences.setSamplingTeam(selectedTeam)
+                
+                // Clear form config cache when team changes
+                FormConfigLoader.clearCache()
+                PredefinedForms.clearCache()
+                
+                // Show subteam spinner only for LSI
+                if (selectedTeam == "LSI") {
+                    subteamSpinner.visibility = android.view.View.VISIBLE
+                    subteamLabel.visibility = android.view.View.VISIBLE
+                } else {
+                    subteamSpinner.visibility = android.view.View.GONE
+                    subteamLabel.visibility = android.view.View.GONE
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        
+        subteamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                val selectedSubteam = lsiSubteams[position]
+                settingsPreferences.setSamplingSubteam(selectedSubteam)
+                
+                // Clear form config cache when subteam changes
+                FormConfigLoader.clearCache()
+                PredefinedForms.clearCache()
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
@@ -136,9 +173,33 @@ class SettingsActivity : AppCompatActivity() {
         }
         
         val currentTeam = settingsPreferences.getSamplingTeam()
-        val teamIndex = teams.indexOf(currentTeam)
-        if (teamIndex >= 0) {
-            teamSpinner.setSelection(teamIndex)
+        if (currentTeam.isNotEmpty()) {
+            val teamIndex = teams.indexOf(currentTeam)
+            if (teamIndex >= 0) {
+                teamSpinner.setSelection(teamIndex)
+                
+                // Show subteam spinner if LSI is selected
+                if (currentTeam == "LSI") {
+                    subteamSpinner.visibility = android.view.View.VISIBLE
+                    subteamLabel.visibility = android.view.View.VISIBLE
+                    
+                    // Load current subteam
+                    val currentSubteam = settingsPreferences.getSamplingSubteam()
+                    if (currentSubteam.isNotEmpty()) {
+                        val subteamIndex = lsiSubteams.indexOf(currentSubteam)
+                        if (subteamIndex >= 0) {
+                            subteamSpinner.setSelection(subteamIndex)
+                        }
+                    }
+                } else {
+                    subteamSpinner.visibility = android.view.View.GONE
+                    subteamLabel.visibility = android.view.View.GONE
+                }
+            }
+        } else {
+            // No team selected yet - hide subteam
+            subteamSpinner.visibility = android.view.View.GONE
+            subteamLabel.visibility = android.view.View.GONE
         }
         
         // Load and display app UUID
@@ -210,7 +271,9 @@ class SettingsActivity : AppCompatActivity() {
     private fun createFolderStructure(baseUri: Uri) {
         try {
             val folderHelper = FolderStructureHelper(this)
-            val trecFolder = folderHelper.ensureFolderStructure(baseUri)
+            val team = settingsPreferences.getSamplingTeam()
+            val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+            val trecFolder = folderHelper.ensureFolderStructure(baseUri, settingsPreferences)
             
             if (trecFolder == null) {
                 Toast.makeText(this, "Error: Could not create folder structure", Toast.LENGTH_LONG).show()
@@ -244,7 +307,11 @@ class SettingsActivity : AppCompatActivity() {
             
             // Display the path with structure info
             val fullPath = getFullPath(trecFolderUri, trecFolder)
-            val structureInfo = "\n\nStructure created:\n• TREC_logsheets/\n  - ongoing/\n  - finished/\n  - deleted/"
+            val structureInfo = if (team == "LSI" && subteam != null) {
+                "\n\nStructure created:\n• TREC_logsheets/\n  - $team/\n    - $subteam/\n      - ongoing/\n      - finished/\n      - deleted/"
+            } else {
+                "\n\nStructure created:\n• TREC_logsheets/\n  - $team/\n    - ongoing/\n    - finished/\n    - deleted/"
+            }
             folderPathText.text = fullPath + structureInfo
             
             // Make it visually obvious that folder is selected

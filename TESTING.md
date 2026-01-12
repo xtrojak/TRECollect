@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document describes the testing setup, how to run tests, and how to interpret results for the TREC Custom Logsheets app.
+This document describes the testing setup, how to run tests, and how to interpret results for the TRECollect app.
 
 ## Overview
 

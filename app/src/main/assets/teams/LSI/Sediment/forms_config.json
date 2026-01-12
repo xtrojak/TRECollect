@@ -1,0 +1,185 @@
+{
+  "forms": [
+    {
+      "id": "lsi_sediment_waterbody",
+      "name": "LSI Sediment Water Body Characterization",
+      "section": "Water Body & Site",
+      "description": "Water body and sediment sampling site characterization",
+      "mandatory": true,
+      "fields": [
+        {
+          "id": "waterbody_id",
+          "label": "Water Body Identifier",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "sediment_site_gps",
+          "label": "Sediment Sampling GPS Coordinates",
+          "type": "gps",
+          "required": true
+        },
+        {
+          "id": "waterbody_classification",
+          "label": "Water Body Classification",
+          "type": "select",
+          "options": ["River", "Stream", "Lake", "Pond", "Reservoir", "Wetland", "Marine", "Estuary", "Other"],
+          "required": true
+        },
+        {
+          "id": "waterbody_condition",
+          "label": "Water Body Condition",
+          "type": "multiselect",
+          "options": ["Natural", "Modified", "Impounded", "Channelized", "Restored", "Degraded"],
+          "required": false
+        },
+        {
+          "id": "waterbody_photographs",
+          "label": "Water Body Photographs",
+          "type": "photo",
+          "required": false
+        },
+        {
+          "id": "site_characterization",
+          "label": "Site Characterization Notes",
+          "type": "textarea",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "lsi_sediment_grab_sampling",
+      "name": "LSI Sediment Grab Sampling",
+      "section": "Sediment Collection",
+      "description": "Sediment grab sampling protocol and collection details",
+      "mandatory": true,
+      "fields": [
+        {
+          "id": "grab_sampler_type",
+          "label": "Grab Sampler Type",
+          "type": "select",
+          "options": ["Ponar", "Van Veen", "Ekman", "Petite Ponar", "Shipek", "Other"],
+          "required": true
+        },
+        {
+          "id": "sampling_stations",
+          "label": "Sampling Stations",
+          "type": "table",
+          "rows": ["Station 1", "Station 2", "Station 3", "Station 4", "Station 5"],
+          "columns": ["GPS Location", "Water Depth (m)", "Sediment Depth (cm)", "Sample Collected"],
+          "inputType": "text",
+          "required": true
+        },
+        {
+          "id": "water_depth_range",
+          "label": "Water Depth Range (m)",
+          "type": "text",
+          "inputType": "text",
+          "required": false
+        },
+        {
+          "id": "sediment_depth_collected",
+          "label": "Sediment Depth Collected (cm)",
+          "type": "text",
+          "inputType": "number",
+          "required": true
+        },
+        {
+          "id": "grab_collection_date",
+          "label": "Grab Collection Date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "grab_collection_time",
+          "label": "Grab Collection Time",
+          "type": "time",
+          "required": true
+        },
+        {
+          "id": "water_quality_parameters",
+          "label": "Water Quality Parameters",
+          "type": "section"
+        },
+        {
+          "id": "water_temperature",
+          "label": "Water Temperature (°C)",
+          "type": "text",
+          "inputType": "number",
+          "required": false
+        },
+        {
+          "id": "water_ph",
+          "label": "Water pH",
+          "type": "text",
+          "inputType": "number",
+          "required": false
+        },
+        {
+          "id": "grab_sampling_photo",
+          "label": "Grab Sampling Process Photo",
+          "type": "photo",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "lsi_sediment_grain_analysis",
+      "name": "LSI Sediment Grain Size Analysis",
+      "section": "Sediment Analysis",
+      "description": "Sediment grain size and composition analysis",
+      "mandatory": false,
+      "fields": [
+        {
+          "id": "grain_size_analysis",
+          "label": "Grain Size Analysis",
+          "type": "dynamic",
+          "required": false,
+          "instance_name": "Sediment Sample",
+          "subFields": [
+            {
+              "id": "sediment_sample_id",
+              "label": "Sediment Sample ID",
+              "type": "barcode",
+              "required": true
+            },
+            {
+              "id": "grain_size_distribution",
+              "label": "Grain Size Distribution",
+              "type": "multiselect",
+              "options": ["Clay (<0.002mm)", "Silt (0.002-0.063mm)", "Fine Sand (0.063-0.25mm)", "Medium Sand (0.25-0.5mm)", "Coarse Sand (0.5-2mm)", "Gravel (>2mm)"],
+              "required": false
+            },
+            {
+              "id": "organic_matter_content",
+              "label": "Organic Matter Content (%)",
+              "type": "text",
+              "inputType": "number",
+              "required": false
+            },
+            {
+              "id": "heavy_metals_detected",
+              "label": "Heavy Metals Detected",
+              "type": "multiselect",
+              "options": ["Lead (Pb)", "Mercury (Hg)", "Cadmium (Cd)", "Arsenic (As)", "Chromium (Cr)", "Zinc (Zn)", "Copper (Cu)", "None Detected"],
+              "required": false
+            },
+            {
+              "id": "contamination_level",
+              "label": "Contamination Level",
+              "type": "select",
+              "options": ["Background", "Low", "Moderate", "High", "Very High"],
+              "required": false
+            },
+            {
+              "id": "analysis_notes",
+              "label": "Analysis Notes",
+              "type": "textarea",
+              "required": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

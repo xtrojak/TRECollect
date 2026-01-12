@@ -15,6 +15,14 @@ object PredefinedForms {
     private var cachedContext: Context? = null
     
     /**
+     * Clears the forms cache (should be called when team/subteam changes)
+     */
+    fun clearCache() {
+        cachedForms = null
+        cachedContext = null
+    }
+    
+    /**
      * Loads forms from JSON configuration
      * Falls back to hardcoded list if config loading fails
      */
