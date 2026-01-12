@@ -1,0 +1,59 @@
+name: Unit Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      statuses: read
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Run unit tests
+      run: ./gradlew test --console=plain
+      # This step will fail if any test fails, causing the CI job to fail
+      
+    - name: Show test summary
+      if: always()
+      run: |
+        chmod +x scripts/test-summary.sh
+        CI=true ./scripts/test-summary.sh
+      
+    - name: Upload test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report
+        path: |
+          app/build/reports/tests/test/
+          app/build/reports/tests/testDebugUnitTest/
+          app/build/reports/tests/testReleaseUnitTest/
+        
+    - name: Publish test results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        files: |
+          app/build/test-results/test/**/*.xml
+          app/build/test-results/testDebugUnitTest/**/*.xml
+          app/build/test-results/testReleaseUnitTest/**/*.xml
+        check_name: Unit Test Results
+        comment_mode: always
+        report_individual_runs: false
+        compare_to_previous_run: false
