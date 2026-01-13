@@ -92,7 +92,6 @@ TRECollect is an Android application for collecting and managing field sampling 
 
 2. **Select Output Folder**: Choose where submissions will be stored
    - The app will create the folder structure: `TREC_logsheets/{team}/{subteam}/`
-   - You can select a Google Drive folder if linked to your device
 
 3. **Optional - ownCloud Settings**: Configure in `app/src/main/res/values/strings.xml`:
    - `owncloud_url`: Your ownCloud WebDAV endpoint URL
