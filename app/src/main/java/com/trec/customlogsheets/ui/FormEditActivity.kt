@@ -132,9 +132,10 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun updateGPSFieldView(fieldId: String, latitude: Double, longitude: Double) {
         val fieldView = fieldViews[fieldId] ?: return
-        val textCoordinates = fieldView.findViewById<TextView>(R.id.textCoordinates)
-        textCoordinates?.text = "Lat: $latitude, Lon: $longitude"
-        textCoordinates?.visibility = View.VISIBLE
+        val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+        val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+        editTextLatitude?.setText(latitude.toString())
+        editTextLongitude?.setText(longitude.toString())
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -925,7 +926,8 @@ class FormEditActivity : AppCompatActivity() {
         
         val textLabel = container.findViewById<TextView>(R.id.textLabel)
         val buttonGetLocation = container.findViewById<MaterialButton>(R.id.buttonGetLocation)
-        val textCoordinates = container.findViewById<TextView>(R.id.textCoordinates)
+        val editTextLatitude = container.findViewById<TextInputEditText>(R.id.editTextLatitude)
+        val editTextLongitude = container.findViewById<TextInputEditText>(R.id.editTextLongitude)
         
         textLabel.text = if (fieldConfig.required) {
             "${fieldConfig.label} *"
@@ -938,19 +940,89 @@ class FormEditActivity : AppCompatActivity() {
         // Load existing GPS coordinates
         val existingValue = fieldValues[fieldConfig.id]
         if (existingValue?.gpsLatitude != null && existingValue.gpsLongitude != null) {
-            textCoordinates.text = "Lat: ${existingValue.gpsLatitude}, Lon: ${existingValue.gpsLongitude}"
-            textCoordinates.visibility = View.VISIBLE
+            editTextLatitude.setText(existingValue.gpsLatitude.toString())
+            editTextLongitude.setText(existingValue.gpsLongitude.toString())
         }
         
-        if (!isReadOnly) {
-            buttonGetLocation.setOnClickListener {
-                openGPSPicker(fieldConfig.id)
-            }
-        } else {
+        if (isReadOnly) {
+            editTextLatitude.isEnabled = false
+            editTextLatitude.isFocusable = false
+            editTextLatitude.isFocusableInTouchMode = false
+            editTextLongitude.isEnabled = false
+            editTextLongitude.isFocusable = false
+            editTextLongitude.isFocusableInTouchMode = false
             buttonGetLocation.isEnabled = false
+        } else {
+            // Update fieldValues as user types
+            editTextLatitude.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    updateGPSFieldValue(fieldConfig.id, editTextLatitude, editTextLongitude)
+                }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+            
+            editTextLongitude.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    updateGPSFieldValue(fieldConfig.id, editTextLatitude, editTextLongitude)
+                }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+            
+            buttonGetLocation.setOnClickListener {
+                // Get current values from text fields to pass to GPS picker
+                val currentLat = editTextLatitude.text?.toString()?.toDoubleOrNull()
+                val currentLon = editTextLongitude.text?.toString()?.toDoubleOrNull()
+                openGPSPicker(fieldConfig.id, currentLat, currentLon)
+            }
         }
         
+        fieldViews[fieldConfig.id] = container
         return container
+    }
+    
+    private fun updateGPSFieldValue(fieldId: String, editTextLatitude: TextInputEditText, editTextLongitude: TextInputEditText) {
+        val latStr = editTextLatitude.text?.toString()?.trim() ?: ""
+        val lonStr = editTextLongitude.text?.toString()?.trim() ?: ""
+        
+        val latitude = latStr.toDoubleOrNull()
+        val longitude = lonStr.toDoubleOrNull()
+        
+        if (latitude != null && longitude != null) {
+            fieldValues[fieldId] = FormFieldValue(
+                fieldId,
+                gpsLatitude = latitude,
+                gpsLongitude = longitude
+            )
+            markFormChanged()
+        } else {
+            // Clear if either field is empty or invalid
+            if (latStr.isEmpty() && lonStr.isEmpty()) {
+                fieldValues.remove(fieldId)
+                markFormChanged()
+            }
+        }
+    }
+    
+    private fun openGPSPicker(fieldId: String, currentLat: Double? = null, currentLon: Double? = null) {
+        val intent = Intent(this, GPSPickerActivity::class.java).apply {
+            putExtra("fieldId", fieldId)
+            // Pass current coordinates if available
+            if (currentLat != null && currentLon != null) {
+                putExtra("latitude", currentLat)
+                putExtra("longitude", currentLon)
+            } else {
+                // Fallback to existing value in fieldValues
+                val existingValue = fieldValues[fieldId]
+                if (existingValue?.gpsLatitude != null && existingValue.gpsLongitude != null) {
+                    putExtra("latitude", existingValue.gpsLatitude)
+                    putExtra("longitude", existingValue.gpsLongitude)
+                }
+            }
+        }
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, REQUEST_CODE_GPS_PICKER)
     }
     
     private fun openGPSPicker(fieldId: String) {
@@ -1546,6 +1618,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TIME -> createTimeFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.SELECT -> createSelectFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeFieldForSubField(subFieldConfig, uniqueFieldId)
                 else -> {
                     android.util.Log.w("FormEditActivity", "Unsupported sub-field type: ${subFieldConfig.type} in dynamic widget")
@@ -1786,6 +1859,60 @@ class FormEditActivity : AppCompatActivity() {
         return container
     }
     
+    private fun createGPSFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_gps,
+            null,
+            false
+        ) as LinearLayout
+        
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val buttonGetLocation = container.findViewById<MaterialButton>(R.id.buttonGetLocation)
+        val editTextLatitude = container.findViewById<TextInputEditText>(R.id.editTextLatitude)
+        val editTextLongitude = container.findViewById<TextInputEditText>(R.id.editTextLongitude)
+        
+        if (textLabel == null || buttonGetLocation == null || editTextLatitude == null || editTextLongitude == null) {
+            android.util.Log.e("FormEditActivity", "Failed to find views in field_gps layout")
+            throw IllegalStateException("Failed to find required views in GPS field layout")
+        }
+        
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = uniqueFieldId
+        
+        // Load existing GPS coordinates
+        val existingValue = fieldValues[uniqueFieldId]
+        if (existingValue?.gpsLatitude != null && existingValue.gpsLongitude != null) {
+            editTextLatitude.setText(existingValue.gpsLatitude.toString())
+            editTextLongitude.setText(existingValue.gpsLongitude.toString())
+        }
+        
+        if (isReadOnly) {
+            editTextLatitude.isEnabled = false
+            editTextLatitude.isFocusable = false
+            editTextLatitude.isFocusableInTouchMode = false
+            editTextLongitude.isEnabled = false
+            editTextLongitude.isFocusable = false
+            editTextLongitude.isFocusableInTouchMode = false
+            buttonGetLocation.isEnabled = false
+        } else {
+            buttonGetLocation.setOnClickListener {
+                // Get current values from text fields to pass to GPS picker
+                val currentLat = editTextLatitude.text?.toString()?.toDoubleOrNull()
+                val currentLon = editTextLongitude.text?.toString()?.toDoubleOrNull()
+                openGPSPicker(uniqueFieldId, currentLat, currentLon)
+            }
+            // Note: TextWatchers will be added in addSubFieldChangeListener
+        }
+        
+        return container
+    }
+    
     private fun createBarcodeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
@@ -1860,6 +1987,47 @@ class FormEditActivity : AppCompatActivity() {
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 })
             }
+            FormFieldConfig.FieldType.GPS -> {
+                val editTextLatitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                val editTextLongitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                
+                val updateGPSValue = {
+                    val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                    val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                    val latitude = latStr.toDoubleOrNull()
+                    val longitude = lonStr.toDoubleOrNull()
+                    
+                    if (latitude != null && longitude != null) {
+                        fieldValues[uniqueFieldId] = FormFieldValue(
+                            uniqueFieldId,
+                            gpsLatitude = latitude,
+                            gpsLongitude = longitude
+                        )
+                    } else {
+                        if (latStr.isEmpty() && lonStr.isEmpty()) {
+                            fieldValues.remove(uniqueFieldId)
+                        }
+                    }
+                    markFormChanged()
+                    updateAddButtonForDynamicField(dynamicFieldId)
+                }
+                
+                editTextLatitude?.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        updateGPSValue()
+                    }
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                })
+                
+                editTextLongitude?.addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(s: android.text.Editable?) {
+                        updateGPSValue()
+                    }
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                })
+            }
             else -> {
                 // For other types, we'll handle in their respective change handlers
             }
@@ -1913,6 +2081,14 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.text?.toString()?.trim()?.isNotEmpty() ?: false
+            }
+            FormFieldConfig.FieldType.GPS -> {
+                val editTextLatitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                val editTextLongitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                latStr.isNotEmpty() && lonStr.isNotEmpty() && 
+                    latStr.toDoubleOrNull() != null && lonStr.toDoubleOrNull() != null
             }
             FormFieldConfig.FieldType.MULTISELECT -> {
                 val uniqueFieldId = subFieldView.tag as? String
@@ -2294,6 +2470,16 @@ class FormEditActivity : AppCompatActivity() {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
             }
+            FormFieldConfig.FieldType.GPS -> {
+                val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                if (fieldValue.gpsLatitude != null) {
+                    editTextLatitude?.setText(fieldValue.gpsLatitude.toString())
+                }
+                if (fieldValue.gpsLongitude != null) {
+                    editTextLongitude?.setText(fieldValue.gpsLongitude.toString())
+                }
+            }
             FormFieldConfig.FieldType.DYNAMIC -> {
                 // Dynamic fields are handled during creation, not here
                 // The data is already loaded when createDynamicField is called
@@ -2333,8 +2519,16 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues[fieldId]?.let { values.add(it) }
             }
             FormFieldConfig.FieldType.GPS -> {
-                // GPS values are stored when user selects location
-                fieldValues[fieldId]?.let { values.add(it) }
+                // Read GPS values from text fields
+                val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                val latitude = latStr.toDoubleOrNull()
+                val longitude = lonStr.toDoubleOrNull()
+                if (latitude != null && longitude != null) {
+                    values.add(FormFieldValue(fieldId, gpsLatitude = latitude, gpsLongitude = longitude))
+                }
             }
             FormFieldConfig.FieldType.PHOTO -> {
                 // Photo filename is stored when photo is captured
@@ -2407,7 +2601,29 @@ class FormEditActivity : AppCompatActivity() {
                         
                         for (subFieldConfig in subFields) {
                             val uniqueFieldId = "${fieldId}_instance${i}_${subFieldConfig.id}"
-                            val subFieldValue = fieldValues[uniqueFieldId]
+                            val subFieldView = fieldViews[uniqueFieldId]
+                            
+                            val subFieldValue = when (subFieldConfig.type) {
+                                FormFieldConfig.FieldType.GPS -> {
+                                    // Read GPS values from text fields
+                                    val editTextLatitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                                    val editTextLongitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                                    val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                                    val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                                    val latitude = latStr.toDoubleOrNull()
+                                    val longitude = lonStr.toDoubleOrNull()
+                                    if (latitude != null && longitude != null) {
+                                        FormFieldValue(uniqueFieldId, gpsLatitude = latitude, gpsLongitude = longitude)
+                                    } else {
+                                        null
+                                    }
+                                }
+                                else -> {
+                                    // For other types, use value from fieldValues
+                                    fieldValues[uniqueFieldId]
+                                }
+                            }
+                            
                             if (subFieldValue != null) {
                                 // Create a copy with the original sub-field ID
                                 instanceData[subFieldConfig.id] = subFieldValue.copy(fieldId = subFieldConfig.id)
@@ -2475,7 +2691,15 @@ class FormEditActivity : AppCompatActivity() {
                         }
                     }
                     FormFieldConfig.FieldType.GPS -> {
-                        if (fieldValue?.gpsLatitude == null || fieldValue.gpsLongitude == null) {
+                        // Read GPS values from text fields
+                        val fieldView = fieldViews[fieldConfig.id] ?: return@validateForm false
+                        val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                        val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                        val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                        val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                        val latitude = latStr.toDoubleOrNull()
+                        val longitude = lonStr.toDoubleOrNull()
+                        if (latitude == null || longitude == null) {
                             Toast.makeText(
                                 this,
                                 "${fieldConfig.label} is required",
@@ -2533,6 +2757,9 @@ class FormEditActivity : AppCompatActivity() {
                                         FormFieldConfig.FieldType.SELECT,
                                         FormFieldConfig.FieldType.BARCODE -> {
                                             subFieldValue?.value?.trim()?.isEmpty() ?: true
+                                        }
+                                        FormFieldConfig.FieldType.GPS -> {
+                                            subFieldValue?.gpsLatitude == null || subFieldValue.gpsLongitude == null
                                         }
                                         FormFieldConfig.FieldType.MULTISELECT -> {
                                             subFieldValue?.values.isNullOrEmpty()
