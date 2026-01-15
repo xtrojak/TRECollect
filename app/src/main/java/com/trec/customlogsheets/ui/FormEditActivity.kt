@@ -390,8 +390,8 @@ class FormEditActivity : AppCompatActivity() {
                     val fieldView = createFieldView(fieldConfig)
                     containerFields.addView(fieldView)
                     
-                    // Section headers are display-only and don't need to be stored in fieldViews
-                    if (fieldConfig.type != FormFieldConfig.FieldType.SECTION) {
+                    // Section headers and image displays are display-only and don't need to be stored in fieldViews
+                    if (fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
                         fieldViews[fieldConfig.id] = fieldView
                         
                         // Load existing value if available
@@ -431,6 +431,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.PHOTO -> createPhotoField(fieldConfig)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeField(fieldConfig)
                 FormFieldConfig.FieldType.SECTION -> createSectionHeader(fieldConfig)
+                FormFieldConfig.FieldType.IMAGE_DISPLAY -> createImageDisplayField(fieldConfig)
                 FormFieldConfig.FieldType.TABLE -> createTableField(fieldConfig)
                 FormFieldConfig.FieldType.DYNAMIC -> createDynamicField(fieldConfig)
             }
@@ -456,6 +457,49 @@ class FormEditActivity : AppCompatActivity() {
         sectionTitle.text = fieldConfig.label
         
         // Section headers are not interactive and don't need a tag
+        container.tag = null
+        
+        return container
+    }
+    
+    private fun createImageDisplayField(fieldConfig: FormFieldConfig): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_image_display,
+            containerFields,
+            false
+        ) as LinearLayout
+        
+        val imageView = container.findViewById<ImageView>(R.id.imageViewDisplay)
+        val textDescription = container.findViewById<TextView>(R.id.textImageDescription)
+        
+        // Load image from assets
+        val imagePath = fieldConfig.imagePath
+        if (imagePath != null) {
+            try {
+                val inputStream = assets.open(imagePath)
+                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                imageView.setImageBitmap(bitmap)
+                inputStream.close()
+            } catch (e: Exception) {
+                android.util.Log.e("FormEditActivity", "Error loading image ${imagePath}: ${e.message}", e)
+                // Set a placeholder or error icon
+                imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+            }
+        } else {
+            // No image path provided, show placeholder
+            imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+        }
+        
+        // Set description/title if provided (using label field)
+        if (fieldConfig.label.isNotEmpty()) {
+            textDescription.text = fieldConfig.label
+            textDescription.visibility = View.VISIBLE
+        } else {
+            textDescription.visibility = View.GONE
+        }
+        
+        // Image displays are not interactive and don't need a tag
         container.tag = null
         
         return container
@@ -2392,8 +2436,8 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun validateForm(): Boolean {
         for (fieldConfig in formConfig.fields) {
-            // Skip section headers in validation
-            if (fieldConfig.type == FormFieldConfig.FieldType.SECTION) {
+            // Skip section headers and image displays in validation (display-only fields)
+            if (fieldConfig.type == FormFieldConfig.FieldType.SECTION || fieldConfig.type == FormFieldConfig.FieldType.IMAGE_DISPLAY) {
                 continue
             }
             
@@ -2508,8 +2552,9 @@ class FormEditActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    FormFieldConfig.FieldType.SECTION -> {
-                        // Section headers are display-only and don't need validation
+                    FormFieldConfig.FieldType.SECTION,
+                    FormFieldConfig.FieldType.IMAGE_DISPLAY -> {
+                        // Section headers and image displays are display-only and don't need validation
                         // This case should never be reached due to the continue statement above,
                         // but included for exhaustiveness
                     }
