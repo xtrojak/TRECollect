@@ -108,6 +108,62 @@
           "label": "Core Collection Process Photo",
           "type": "photo",
           "required": false
+        },
+        {
+          "id": "soil_texture_visual",
+          "label": "Soil Texture (Visual Selection)",
+          "type": "select_image",
+          "required": false,
+          "options": [
+            {
+              "value": "tap",
+              "image": "images/tap.png",
+              "label": "Tap"
+            },
+            {
+              "value": "adven",
+              "image": "images/adven.png",
+              "label": "Adven"
+            },
+            {
+              "value": "heart",
+              "image": "images/heart.png",
+              "label": "Heart"
+            },
+            {
+              "value": "flat",
+              "image": "images/flat.png",
+              "label": "Flat"
+            }
+          ]
+        },
+        {
+          "id": "vegetation_types",
+          "label": "Vegetation Types Present",
+          "type": "multiselect_image",
+          "required": false,
+          "options": [
+            {
+              "value": "tap",
+              "image": "images/tap.png",
+              "label": "Tap"
+            },
+            {
+              "value": "adven",
+              "image": "images/adven.png",
+              "label": "Adven"
+            },
+            {
+              "value": "heart",
+              "image": "images/heart.png",
+              "label": "Heart"
+            },
+            {
+              "value": "flat",
+              "image": "images/flat.png",
+              "label": "Flat"
+            }
+          ]
         }
       ]
     },

@@ -140,6 +140,8 @@ class FormConfigLoaderTest {
                         {"id": "time", "label": "Time", "type": "time"},
                         {"id": "select", "label": "Select", "type": "select", "options": ["opt1"]},
                         {"id": "multiselect", "label": "Multiselect", "type": "multiselect", "options": ["opt1"]},
+                        {"id": "select_image", "label": "Select Image", "type": "select_image", "options": [{"value": "opt1", "image": "images/opt1.png"}]},
+                        {"id": "multiselect_image", "label": "Multiselect Image", "type": "multiselect_image", "options": [{"value": "opt1", "image": "images/opt1.png"}]},
                         {"id": "gps", "label": "GPS", "type": "gps"},
                         {"id": "photo", "label": "Photo", "type": "photo"},
                         {"id": "barcode", "label": "Barcode", "type": "barcode"},
@@ -156,19 +158,21 @@ class FormConfigLoaderTest {
 
         assertEquals(1, configs.size)
         val fields = configs[0].fields
-        assertEquals(12, fields.size)
+        assertEquals(14, fields.size)
         assertEquals(FormFieldConfig.FieldType.TEXT, fields[0].type)
         assertEquals(FormFieldConfig.FieldType.TEXTAREA, fields[1].type)
         assertEquals(FormFieldConfig.FieldType.DATE, fields[2].type)
         assertEquals(FormFieldConfig.FieldType.TIME, fields[3].type)
         assertEquals(FormFieldConfig.FieldType.SELECT, fields[4].type)
         assertEquals(FormFieldConfig.FieldType.MULTISELECT, fields[5].type)
-        assertEquals(FormFieldConfig.FieldType.GPS, fields[6].type)
-        assertEquals(FormFieldConfig.FieldType.PHOTO, fields[7].type)
-        assertEquals(FormFieldConfig.FieldType.BARCODE, fields[8].type)
-        assertEquals(FormFieldConfig.FieldType.SECTION, fields[9].type)
-        assertEquals(FormFieldConfig.FieldType.TABLE, fields[10].type)
-        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[11].type)
+        assertEquals(FormFieldConfig.FieldType.SELECT_IMAGE, fields[6].type)
+        assertEquals(FormFieldConfig.FieldType.MULTISELECT_IMAGE, fields[7].type)
+        assertEquals(FormFieldConfig.FieldType.GPS, fields[8].type)
+        assertEquals(FormFieldConfig.FieldType.PHOTO, fields[9].type)
+        assertEquals(FormFieldConfig.FieldType.BARCODE, fields[10].type)
+        assertEquals(FormFieldConfig.FieldType.SECTION, fields[11].type)
+        assertEquals(FormFieldConfig.FieldType.TABLE, fields[12].type)
+        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[13].type)
     }
 
     @Test
@@ -1060,5 +1064,232 @@ class FormConfigLoaderTest {
         assertTrue(configs[0].name.contains("测试"))
         assertTrue(configs[0].section.contains("日本語"))
         assertTrue(configs[0].fields[0].label.contains("🚀"))
+    }
+    
+    @Test
+    fun `parseJson parses select_image field with image options`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Select Image Field",
+                            "type": "select_image",
+                            "required": true,
+                            "options": [
+                                {
+                                    "value": "option1",
+                                    "image": "images/option1.png",
+                                    "label": "Option 1"
+                                },
+                                {
+                                    "value": "option2",
+                                    "image": "images/option2.png",
+                                    "label": "Option 2"
+                                },
+                                {
+                                    "value": "option3",
+                                    "image": "images/option3.png"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        assertEquals(FormFieldConfig.FieldType.SELECT_IMAGE, field.type)
+        assertNotNull(field.imageOptions)
+        assertEquals(3, field.imageOptions?.size)
+        
+        val option1 = field.imageOptions!![0]
+        assertEquals("option1", option1.value)
+        assertEquals("images/option1.png", option1.imagePath)
+        assertEquals("Option 1", option1.label)
+        
+        val option2 = field.imageOptions!![1]
+        assertEquals("option2", option2.value)
+        assertEquals("images/option2.png", option2.imagePath)
+        assertEquals("Option 2", option2.label)
+        
+        val option3 = field.imageOptions!![2]
+        assertEquals("option3", option3.value)
+        assertEquals("images/option3.png", option3.imagePath)
+        assertNull(option3.label) // No label provided
+    }
+    
+    @Test
+    fun `parseJson parses multiselect_image field with image options`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Multiselect Image Field",
+                            "type": "multiselect_image",
+                            "required": false,
+                            "options": [
+                                {
+                                    "value": "opt1",
+                                    "image": "images/opt1.png",
+                                    "label": "Option 1"
+                                },
+                                {
+                                    "value": "opt2",
+                                    "image": "images/opt2.png"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        assertEquals(FormFieldConfig.FieldType.MULTISELECT_IMAGE, field.type)
+        assertNotNull(field.imageOptions)
+        assertEquals(2, field.imageOptions?.size)
+        assertEquals("opt1", field.imageOptions!![0].value)
+        assertEquals("opt2", field.imageOptions!![1].value)
+    }
+    
+    @Test
+    fun `parseJson handles select_image field with empty options`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Select Image Field",
+                            "type": "select_image",
+                            "options": []
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        assertEquals(FormFieldConfig.FieldType.SELECT_IMAGE, field.type)
+        assertNotNull(field.imageOptions)
+        assertTrue(field.imageOptions!!.isEmpty())
+    }
+    
+    @Test
+    fun `parseJson handles image option with missing value`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Select Image Field",
+                            "type": "select_image",
+                            "options": [
+                                {
+                                    "image": "images/option1.png",
+                                    "label": "Option 1"
+                                },
+                                {
+                                    "value": "option2",
+                                    "image": "images/option2.png"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        // Invalid options (missing value) should be skipped
+        // Should have at least one valid option
+        assertNotNull(field.imageOptions)
+        // The valid option should be parsed
+        val validOptions = field.imageOptions!!.filter { it.value.isNotEmpty() }
+        assertTrue("Should have at least one valid option", validOptions.isNotEmpty())
+    }
+    
+    @Test
+    fun `parseJson handles image option with missing image`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Select Image Field",
+                            "type": "select_image",
+                            "options": [
+                                {
+                                    "value": "option1",
+                                    "label": "Option 1"
+                                },
+                                {
+                                    "value": "option2",
+                                    "image": "images/option2.png"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        // Invalid options (missing image) should be skipped
+        assertNotNull(field.imageOptions)
+        // The valid option should be parsed
+        val validOptions = field.imageOptions!!.filter { it.imagePath.isNotEmpty() }
+        assertTrue("Should have at least one valid option", validOptions.isNotEmpty())
     }
 }

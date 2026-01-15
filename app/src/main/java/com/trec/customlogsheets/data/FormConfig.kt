@@ -4,6 +4,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
+ * Represents an option with an image and optional label
+ */
+data class ImageOption(
+    val value: String, // The value stored when selected
+    val imagePath: String, // Path to image in assets (e.g., "images/option1.png")
+    val label: String? = null // Optional text label to display with the image
+)
+
+/**
  * Configuration for a form field
  */
 data class FormFieldConfig(
@@ -11,7 +20,8 @@ data class FormFieldConfig(
     val label: String,
     val type: FieldType,
     val required: Boolean = false,
-    val options: List<String>? = null, // For select/multiselect
+    val options: List<String>? = null, // For select/multiselect (text-based)
+    val imageOptions: List<ImageOption>? = null, // For select_image/multiselect_image (image-based)
     val inputType: String? = null, // For text fields: "text", "number", etc.
     val rows: List<String>? = null, // For table: row names
     val columns: List<String>? = null, // For table: column names
@@ -25,6 +35,8 @@ data class FormFieldConfig(
         TIME,
         SELECT,
         MULTISELECT,
+        SELECT_IMAGE, // Single select with images
+        MULTISELECT_IMAGE, // Multi-select with images
         GPS,
         PHOTO,
         BARCODE,
@@ -171,6 +183,8 @@ object FormConfigLoader {
                     "time" -> FormFieldConfig.FieldType.TIME
                     "select" -> FormFieldConfig.FieldType.SELECT
                     "multiselect" -> FormFieldConfig.FieldType.MULTISELECT
+                    "select_image" -> FormFieldConfig.FieldType.SELECT_IMAGE
+                    "multiselect_image" -> FormFieldConfig.FieldType.MULTISELECT_IMAGE
                     "gps" -> FormFieldConfig.FieldType.GPS
                     "photo" -> FormFieldConfig.FieldType.PHOTO
                     "barcode" -> FormFieldConfig.FieldType.BARCODE
@@ -183,9 +197,32 @@ object FormConfigLoader {
                     }
                 }
                 
-                val options = if (fieldObj.has("options") && !fieldObj.isNull("options")) {
+                // Parse text-based options (for select/multiselect)
+                val options = if ((fieldType == FormFieldConfig.FieldType.SELECT || fieldType == FormFieldConfig.FieldType.MULTISELECT) 
+                    && fieldObj.has("options") && !fieldObj.isNull("options")) {
                     val optionsArray = fieldObj.getJSONArray("options")
                     (0 until optionsArray.length()).map { optionsArray.getString(it) }
+                } else {
+                    null
+                }
+                
+                // Parse image-based options (for select_image/multiselect_image)
+                val imageOptions = if ((fieldType == FormFieldConfig.FieldType.SELECT_IMAGE || fieldType == FormFieldConfig.FieldType.MULTISELECT_IMAGE)
+                    && fieldObj.has("options") && !fieldObj.isNull("options")) {
+                    val optionsArray = fieldObj.getJSONArray("options")
+                    (0 until optionsArray.length()).mapNotNull { index ->
+                        val optionObj = optionsArray.getJSONObject(index)
+                        try {
+                            ImageOption(
+                                value = optionObj.getString("value"),
+                                imagePath = optionObj.getString("image"),
+                                label = optionObj.optString("label").takeIf { it.isNotEmpty() }
+                            )
+                        } catch (e: Exception) {
+                            // Skip invalid option entries
+                            null
+                        }
+                    }
                 } else {
                     null
                 }
@@ -224,6 +261,7 @@ object FormConfigLoader {
                         type = fieldType,
                         required = if (fieldType == FormFieldConfig.FieldType.SECTION) false else fieldObj.optBoolean("required", false),
                         options = if (fieldType == FormFieldConfig.FieldType.SECTION) null else options,
+                        imageOptions = imageOptions,
                         inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType").takeIf { it.isNotEmpty() },
                         rows = if (fieldType == FormFieldConfig.FieldType.TABLE) rows else null,
                         columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null,
