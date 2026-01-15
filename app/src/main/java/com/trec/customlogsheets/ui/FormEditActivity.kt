@@ -12,6 +12,7 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -424,6 +425,8 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TIME -> createTimeField(fieldConfig)
                 FormFieldConfig.FieldType.SELECT -> createSelectField(fieldConfig)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectField(fieldConfig)
+                FormFieldConfig.FieldType.SELECT_IMAGE -> createSelectImageField(fieldConfig)
+                FormFieldConfig.FieldType.MULTISELECT_IMAGE -> createMultiSelectImageField(fieldConfig)
                 FormFieldConfig.FieldType.GPS -> createGPSField(fieldConfig)
                 FormFieldConfig.FieldType.PHOTO -> createPhotoField(fieldConfig)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeField(fieldConfig)
@@ -766,6 +769,106 @@ class FormEditActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+    
+    private fun createSelectImageField(fieldConfig: FormFieldConfig): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_select_image,
+            containerFields,
+            false
+        ) as LinearLayout
+        
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val recyclerView = container.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOptions)
+        val textSelected = container.findViewById<TextView>(R.id.textSelected)
+        
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = fieldConfig.id
+        
+        val imageOptions = fieldConfig.imageOptions ?: emptyList()
+        val adapter = ImageOptionAdapter(imageOptions, isMultiSelect = false) { selectedValues ->
+            // For single select, take the first (and only) value
+            val selectedValue = selectedValues.firstOrNull() ?: return@ImageOptionAdapter
+            fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = selectedValue)
+            markFormChanged()
+        }
+        
+        // Hide text display
+        textSelected.visibility = View.GONE
+        
+        // Load existing value
+        val existingValue = fieldValues[fieldConfig.id]?.value
+        if (existingValue != null) {
+            adapter.setSelectedValue(existingValue)
+        }
+        
+        recyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 3)
+        recyclerView.adapter = adapter
+        
+        if (isReadOnly) {
+            recyclerView.isEnabled = false
+            recyclerView.alpha = 0.6f
+        }
+        
+        fieldViews[fieldConfig.id] = container
+        return container
+    }
+    
+    private fun createMultiSelectImageField(fieldConfig: FormFieldConfig): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_select_image,
+            containerFields,
+            false
+        ) as LinearLayout
+        
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val recyclerView = container.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOptions)
+        val textSelected = container.findViewById<TextView>(R.id.textSelected)
+        
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = fieldConfig.id
+        
+        val imageOptions = fieldConfig.imageOptions ?: emptyList()
+        val adapter = ImageOptionAdapter(imageOptions, isMultiSelect = true) { selectedValues ->
+            if (selectedValues.isNotEmpty()) {
+                fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = selectedValues)
+            } else {
+                fieldValues.remove(fieldConfig.id)
+            }
+            markFormChanged()
+        }
+        
+        // Hide text display
+        textSelected.visibility = View.GONE
+        
+        // Load existing values
+        val existingValues = fieldValues[fieldConfig.id]?.values
+        if (existingValues != null && existingValues.isNotEmpty()) {
+            adapter.setSelectedValues(existingValues.toSet())
+        }
+        
+        recyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 3)
+        recyclerView.adapter = adapter
+        
+        if (isReadOnly) {
+            recyclerView.isEnabled = false
+            recyclerView.alpha = 0.6f
+        }
+        
+        fieldViews[fieldConfig.id] = container
+        return container
     }
     
     private fun createGPSField(fieldConfig: FormFieldConfig): View {
@@ -2303,6 +2406,7 @@ class FormEditActivity : AppCompatActivity() {
                     FormFieldConfig.FieldType.DATE,
                     FormFieldConfig.FieldType.TIME,
                     FormFieldConfig.FieldType.SELECT,
+                    FormFieldConfig.FieldType.SELECT_IMAGE,
                     FormFieldConfig.FieldType.BARCODE -> {
                         val value = fieldValue?.value?.trim()
                         if (value.isNullOrEmpty()) {
@@ -2314,7 +2418,8 @@ class FormEditActivity : AppCompatActivity() {
                             return false
                         }
                     }
-                    FormFieldConfig.FieldType.MULTISELECT -> {
+                    FormFieldConfig.FieldType.MULTISELECT,
+                    FormFieldConfig.FieldType.MULTISELECT_IMAGE -> {
                         val values = fieldValue?.values
                         if (values.isNullOrEmpty()) {
                             Toast.makeText(
@@ -2517,3 +2622,96 @@ class FormEditActivity : AppCompatActivity() {
     }
 }
 
+/**
+ * Adapter for displaying image-based options in a RecyclerView
+ */
+private class ImageOptionAdapter(
+    private val imageOptions: List<com.trec.customlogsheets.data.ImageOption>,
+    private val isMultiSelect: Boolean,
+    private val onSelectionChanged: (List<String>) -> Unit
+) : androidx.recyclerview.widget.RecyclerView.Adapter<ImageOptionAdapter.ImageOptionViewHolder>() {
+    
+    private var selectedValues = mutableSetOf<String>()
+    
+    fun setSelectedValue(value: String) {
+        selectedValues.clear()
+        selectedValues.add(value)
+        notifyDataSetChanged()
+    }
+    
+    fun setSelectedValues(values: Set<String>) {
+        selectedValues.clear()
+        selectedValues.addAll(values)
+        notifyDataSetChanged()
+    }
+    
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ImageOptionViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_image_option, parent, false)
+        return ImageOptionViewHolder(view)
+    }
+    
+    override fun onBindViewHolder(holder: ImageOptionViewHolder, position: Int) {
+        val option = imageOptions[position]
+        val isSelected = selectedValues.contains(option.value)
+        holder.bind(option, isSelected) {
+            if (isMultiSelect) {
+                if (isSelected) {
+                    selectedValues.remove(option.value)
+                } else {
+                    selectedValues.add(option.value)
+                }
+                notifyItemChanged(position)
+                onSelectionChanged(selectedValues.toList())
+            } else {
+                selectedValues.clear()
+                selectedValues.add(option.value)
+                notifyDataSetChanged()
+                onSelectionChanged(listOf(option.value))
+            }
+        }
+    }
+    
+    override fun getItemCount(): Int = imageOptions.size
+    
+    inner class ImageOptionViewHolder(itemView: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView) {
+        private val imageView: ImageView = itemView.findViewById(R.id.imageViewOption)
+        private val textLabel: TextView = itemView.findViewById(R.id.textOptionLabel)
+        private val cardView: com.google.android.material.card.MaterialCardView = itemView as com.google.android.material.card.MaterialCardView
+        
+        fun bind(option: com.trec.customlogsheets.data.ImageOption, isSelected: Boolean, onClick: () -> Unit) {
+            // Load image from assets
+            try {
+                val inputStream = itemView.context.assets.open(option.imagePath)
+                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                imageView.setImageBitmap(bitmap)
+                inputStream.close()
+            } catch (e: Exception) {
+                android.util.Log.e("ImageOptionAdapter", "Error loading image ${option.imagePath}: ${e.message}", e)
+                // Set a placeholder or error icon
+                imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+            }
+            
+            // Set label if provided
+            if (option.label != null) {
+                textLabel.text = option.label
+                textLabel.visibility = View.VISIBLE
+            } else {
+                textLabel.visibility = View.GONE
+            }
+            
+            // Update selection state
+            if (isSelected) {
+                cardView.strokeColor = itemView.context.getColor(android.R.color.holo_blue_dark)
+                cardView.strokeWidth = 4
+                cardView.setCardBackgroundColor(0xFFE3F2FD.toInt()) // Light blue background
+            } else {
+                cardView.strokeColor = itemView.context.getColor(android.R.color.transparent)
+                cardView.strokeWidth = 2
+                cardView.setCardBackgroundColor(0xFFFFFFFF.toInt()) // White background
+            }
+            
+            itemView.setOnClickListener { onClick() }
+        }
+    }
+}
