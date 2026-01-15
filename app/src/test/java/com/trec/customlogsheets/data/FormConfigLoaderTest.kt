@@ -146,6 +146,7 @@ class FormConfigLoaderTest {
                         {"id": "photo", "label": "Photo", "type": "photo"},
                         {"id": "barcode", "label": "Barcode", "type": "barcode"},
                         {"id": "section", "label": "Section", "type": "section"},
+                        {"id": "image_display", "label": "Image Display", "type": "image_display", "image": "images/site.png"},
                         {"id": "table", "label": "Table", "type": "table", "rows": ["row1"], "columns": ["col1"]},
                         {"id": "dynamic", "label": "Dynamic", "type": "dynamic", "subFields": []}
                     ]
@@ -158,7 +159,7 @@ class FormConfigLoaderTest {
 
         assertEquals(1, configs.size)
         val fields = configs[0].fields
-        assertEquals(14, fields.size)
+        assertEquals(15, fields.size)
         assertEquals(FormFieldConfig.FieldType.TEXT, fields[0].type)
         assertEquals(FormFieldConfig.FieldType.TEXTAREA, fields[1].type)
         assertEquals(FormFieldConfig.FieldType.DATE, fields[2].type)
@@ -171,8 +172,9 @@ class FormConfigLoaderTest {
         assertEquals(FormFieldConfig.FieldType.PHOTO, fields[9].type)
         assertEquals(FormFieldConfig.FieldType.BARCODE, fields[10].type)
         assertEquals(FormFieldConfig.FieldType.SECTION, fields[11].type)
-        assertEquals(FormFieldConfig.FieldType.TABLE, fields[12].type)
-        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[13].type)
+        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, fields[12].type)
+        assertEquals(FormFieldConfig.FieldType.TABLE, fields[13].type)
+        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[14].type)
     }
 
     @Test
@@ -1291,5 +1293,101 @@ class FormConfigLoaderTest {
         // The valid option should be parsed
         val validOptions = field.imageOptions!!.filter { it.imagePath.isNotEmpty() }
         assertTrue("Should have at least one valid option", validOptions.isNotEmpty())
+    }
+    
+    @Test
+    fun `parseJson parses image_display field with image path`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Site Image",
+                            "type": "image_display",
+                            "image": "images/site.png"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, field.type)
+        assertEquals("Site Image", field.label)
+        assertEquals("images/site.png", field.imagePath)
+        assertFalse(field.required) // Display-only fields should not be required
+        assertNull(field.options)
+        assertNull(field.inputType)
+    }
+    
+    @Test
+    fun `parseJson parses image_display field without image path`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Image Display",
+                            "type": "image_display"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val field = configs[0].fields[0]
+        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, field.type)
+        assertNull(field.imagePath) // No image path provided
+    }
+    
+    @Test
+    fun `parseJson handles image_display field with required false`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Image Display",
+                            "type": "image_display",
+                            "image": "images/site.png",
+                            "required": true
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        // Image displays should always have required = false (display-only)
+        assertFalse(configs[0].fields[0].required)
     }
 }

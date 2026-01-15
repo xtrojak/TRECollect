@@ -14,6 +14,11 @@
           "required": true
         },
         {
+          "id": "divider",
+          "label": "Testing divider",
+          "type": "section"
+        },
+        {
           "id": "soil_site_gps",
           "label": "Soil Sampling GPS Coordinates",
           "type": "gps",
@@ -32,6 +37,12 @@
           "type": "select",
           "options": ["Entisol", "Inceptisol", "Mollisol", "Alfisol", "Ultisol", "Spodosol", "Histosol", "Other"],
           "required": true
+        },
+        {
+          "id": "site_image",
+          "label": "This is an example of a typical sampling site setup",
+          "type": "image_display",
+          "image": "images/site.png"
         },
         {
           "id": "soil_texture",

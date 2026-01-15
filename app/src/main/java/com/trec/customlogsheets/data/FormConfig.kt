@@ -22,6 +22,7 @@ data class FormFieldConfig(
     val required: Boolean = false,
     val options: List<String>? = null, // For select/multiselect (text-based)
     val imageOptions: List<ImageOption>? = null, // For select_image/multiselect_image (image-based)
+    val imagePath: String? = null, // For image_display: path to image in assets
     val inputType: String? = null, // For text fields: "text", "number", etc.
     val rows: List<String>? = null, // For table: row names
     val columns: List<String>? = null, // For table: column names
@@ -41,6 +42,7 @@ data class FormFieldConfig(
         PHOTO,
         BARCODE,
         SECTION, // Section header (display only, not collected)
+        IMAGE_DISPLAY, // Image display (display only, not collected)
         TABLE, // Table with rows and columns
         DYNAMIC // Dynamic/repeatable widget with sub-fields
     }
@@ -189,6 +191,7 @@ object FormConfigLoader {
                     "photo" -> FormFieldConfig.FieldType.PHOTO
                     "barcode" -> FormFieldConfig.FieldType.BARCODE
                     "section" -> FormFieldConfig.FieldType.SECTION
+                    "image_display" -> FormFieldConfig.FieldType.IMAGE_DISPLAY
                     "table" -> FormFieldConfig.FieldType.TABLE
                     "dynamic" -> FormFieldConfig.FieldType.DYNAMIC
                     else -> {
@@ -253,16 +256,25 @@ object FormConfigLoader {
                     null
                 }
                 
-                // Section headers don't need options, inputType, or required flag
+                // Parse imagePath for image_display type
+                val imagePath = if (fieldType == FormFieldConfig.FieldType.IMAGE_DISPLAY) {
+                    fieldObj.optString("image").takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+                
+                // Section headers and image displays don't need options, inputType, or required flag
+                val isDisplayOnly = fieldType == FormFieldConfig.FieldType.SECTION || fieldType == FormFieldConfig.FieldType.IMAGE_DISPLAY
                 fields.add(
                     FormFieldConfig(
                         id = fieldObj.getString("id"),
                         label = fieldObj.getString("label"),
                         type = fieldType,
-                        required = if (fieldType == FormFieldConfig.FieldType.SECTION) false else fieldObj.optBoolean("required", false),
-                        options = if (fieldType == FormFieldConfig.FieldType.SECTION) null else options,
+                        required = if (isDisplayOnly) false else fieldObj.optBoolean("required", false),
+                        options = if (isDisplayOnly) null else options,
                         imageOptions = imageOptions,
-                        inputType = if (fieldType == FormFieldConfig.FieldType.SECTION) null else fieldObj.optString("inputType").takeIf { it.isNotEmpty() },
+                        imagePath = imagePath,
+                        inputType = if (isDisplayOnly) null else fieldObj.optString("inputType").takeIf { it.isNotEmpty() },
                         rows = if (fieldType == FormFieldConfig.FieldType.TABLE) rows else null,
                         columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null,
                         subFields = subFields,
