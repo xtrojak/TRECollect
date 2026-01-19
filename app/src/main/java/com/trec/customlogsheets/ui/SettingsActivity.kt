@@ -144,20 +144,24 @@ class SettingsActivity : AppCompatActivity() {
                         // Automatically select the first subteam
                         val firstSubteam = currentSubteams[0]
                         settingsPreferences.setSamplingSubteam(firstSubteam)
+                        // Set selection without triggering onItemSelected (by temporarily removing listener)
+                        val subteamListener = subteamSpinner.onItemSelectedListener
+                        subteamSpinner.onItemSelectedListener = null
                         subteamSpinner.setSelection(0)
+                        subteamSpinner.onItemSelectedListener = subteamListener
                         // Clear form config cache since subteam was auto-selected
                         FormConfigLoader.clearCache()
                         PredefinedForms.clearCache()
                     }
                     
-                    // If folder is already selected, try to create folder structure now that team/subteam are set
+                    // If folder is already selected, verify folder structure exists (don't recreate)
                     val folderUri = settingsPreferences.getFolderUri()
                     if (folderUri.isNotEmpty()) {
                         try {
                             val uri = Uri.parse(folderUri)
-                            createFolderStructure(uri)
+                            verifyFolderStructure(uri)
                         } catch (e: Exception) {
-                            android.util.Log.w("SettingsActivity", "Error creating folder structure after team change: ${e.message}")
+                            android.util.Log.w("SettingsActivity", "Error verifying folder structure after team change: ${e.message}")
                         }
                     }
                 }
@@ -175,14 +179,14 @@ class SettingsActivity : AppCompatActivity() {
                     FormConfigLoader.clearCache()
                     PredefinedForms.clearCache()
                     
-                    // If folder is already selected, try to create folder structure now that subteam is set
+                    // If folder is already selected, verify folder structure exists (don't recreate)
                     val folderUri = settingsPreferences.getFolderUri()
                     if (folderUri.isNotEmpty()) {
                         try {
                             val uri = Uri.parse(folderUri)
-                            createFolderStructure(uri)
+                            verifyFolderStructure(uri)
                         } catch (e: Exception) {
-                            android.util.Log.w("SettingsActivity", "Error creating folder structure after subteam change: ${e.message}")
+                            android.util.Log.w("SettingsActivity", "Error verifying folder structure after subteam change: ${e.message}")
                         }
                     }
                 }
@@ -261,7 +265,11 @@ class SettingsActivity : AppCompatActivity() {
         if (currentTeam.isNotEmpty()) {
             val teamIndex = teams.indexOf(currentTeam)
             if (teamIndex >= 0) {
+                // Set selection without triggering onItemSelected (by temporarily removing listener)
+                val teamListener = teamSpinner.onItemSelectedListener
+                teamSpinner.onItemSelectedListener = null
                 teamSpinner.setSelection(teamIndex)
+                teamSpinner.onItemSelectedListener = teamListener
                 
                 // Update subteams for the current team and show spinner
                 // Set selection after subteams are loaded
@@ -271,7 +279,11 @@ class SettingsActivity : AppCompatActivity() {
                     if (currentSubteam.isNotEmpty() && currentSubteams.contains(currentSubteam)) {
                         val subteamIndex = currentSubteams.indexOf(currentSubteam)
                         if (subteamIndex >= 0) {
+                            // Set selection without triggering onItemSelected (by temporarily removing listener)
+                            val subteamListener = subteamSpinner.onItemSelectedListener
+                            subteamSpinner.onItemSelectedListener = null
                             subteamSpinner.setSelection(subteamIndex)
+                            subteamSpinner.onItemSelectedListener = subteamListener
                         }
                     }
                 }
@@ -434,7 +446,41 @@ class SettingsActivity : AppCompatActivity() {
                 return
             }
             
-            val trecFolder = folderHelper.ensureFolderStructure(baseUri, settingsPreferences)
+            // Check if the URI already points to TREC_logsheets folder
+            val docFile = DocumentFile.fromTreeUri(this, baseUri)
+            if (docFile == null) {
+                android.util.Log.e("SettingsActivity", "Could not create DocumentFile from URI: $baseUri")
+                Toast.makeText(this, "Error: Could not access selected folder", Toast.LENGTH_LONG).show()
+                return
+            }
+            
+            val folderName = docFile.name
+            val isTrecFolder = folderName == FolderStructureHelper.PARENT_FOLDER_NAME
+            
+            android.util.Log.d("SettingsActivity", "createFolderStructure: baseUri=$baseUri, folder name='$folderName', isTrecFolder=$isTrecFolder")
+            
+            val trecFolder = if (isTrecFolder) {
+                // URI already points to TREC_logsheets, use it directly - don't recreate
+                android.util.Log.d("SettingsActivity", "URI already points to TREC_logsheets folder, using existing folder")
+                docFile
+            } else {
+                // URI points to parent folder, create TREC_logsheets inside it (only if it doesn't exist)
+                android.util.Log.d("SettingsActivity", "URI points to parent folder '$folderName', creating TREC_logsheets inside it")
+                val createdTrecFolder = folderHelper.ensureFolderStructure(baseUri, settingsPreferences)
+                if (createdTrecFolder == null) {
+                    android.util.Log.e("SettingsActivity", "Failed to create TREC_logsheets folder in '$folderName'")
+                    Toast.makeText(this, "Error: Could not create TREC_logsheets folder in selected location", Toast.LENGTH_LONG).show()
+                    return
+                }
+                // Verify the created folder is actually TREC_logsheets
+                if (createdTrecFolder.name != FolderStructureHelper.PARENT_FOLDER_NAME) {
+                    android.util.Log.e("SettingsActivity", "Created folder has wrong name: '${createdTrecFolder.name}', expected '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
+                    Toast.makeText(this, "Error: Created folder has unexpected name: '${createdTrecFolder.name}'", Toast.LENGTH_LONG).show()
+                    return
+                }
+                android.util.Log.d("SettingsActivity", "Successfully created/verified TREC_logsheets folder")
+                createdTrecFolder
+            }
             
             if (trecFolder == null) {
                 Toast.makeText(this, "Error: Could not create folder structure", Toast.LENGTH_LONG).show()
@@ -444,6 +490,14 @@ class SettingsActivity : AppCompatActivity() {
             // Verify we have the TREC_logsheets folder
             if (trecFolder.name != FolderStructureHelper.PARENT_FOLDER_NAME) {
                 android.util.Log.w("SettingsActivity", "Warning: Folder name is '${trecFolder.name}', expected '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
+                Toast.makeText(this, "Warning: Folder structure may be incorrect", Toast.LENGTH_LONG).show()
+            }
+            
+            // Ensure subfolders exist (team/subteam/ongoing/finished/deleted)
+            // This will create team/subteam folders inside TREC_logsheets
+            if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
+                android.util.Log.w("SettingsActivity", "Could not ensure all subfolders exist")
+                Toast.makeText(this, "Warning: Could not create all subfolders", Toast.LENGTH_SHORT).show()
             }
             
             // Get the URI for the TREC_logsheets folder directly from the DocumentFile
@@ -468,7 +522,7 @@ class SettingsActivity : AppCompatActivity() {
             
             // Display the path with structure info (all teams use subteam structure now)
             val fullPath = getFullPath(trecFolderUri, trecFolder)
-            val structureInfo = "\n\nStructure created:\n• TREC_logsheets/\n  - $team/\n    - $subteam/\n      - ongoing/\n      - finished/\n      - deleted/"
+            val structureInfo = "\n\nStructure:\n• TREC_logsheets/\n  - $team/\n    - $subteam/\n      - ongoing/\n      - finished/\n      - deleted/"
             folderPathText.text = fullPath + structureInfo
             
             // Make it visually obvious that folder is selected
@@ -483,9 +537,38 @@ class SettingsActivity : AppCompatActivity() {
             // Verify the saved URI
             android.util.Log.d("SettingsActivity", "Verifying saved URI: ${settingsPreferences.getFolderUri()}")
             
-            Toast.makeText(this, "Folder structure created successfully", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Folder structure ready", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Error creating folder structure: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    /**
+     * Verifies that the folder structure exists without recreating it.
+     * This is called when team/subteam changes to ensure structure is still valid.
+     * Only ensures subfolders exist, doesn't recreate TREC_logsheets or team/subteam folders.
+     */
+    private fun verifyFolderStructure(uri: Uri) {
+        try {
+            val folderHelper = FolderStructureHelper(this)
+            val docFile = DocumentFile.fromTreeUri(this, uri)
+            
+            // Check if URI points to TREC_logsheets folder
+            if (docFile?.name == FolderStructureHelper.PARENT_FOLDER_NAME) {
+                // URI points to TREC_logsheets, just verify subfolders exist (team/subteam/ongoing/finished/deleted)
+                // This won't recreate anything, just ensures the subfolders exist
+                if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
+                    android.util.Log.w("SettingsActivity", "Some subfolders could not be verified/created")
+                } else {
+                    android.util.Log.d("SettingsActivity", "Folder structure verified successfully")
+                }
+            } else {
+                // URI points to parent folder - structure should already exist
+                // Don't do anything, just log
+                android.util.Log.d("SettingsActivity", "URI points to parent folder, structure should already exist")
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SettingsActivity", "Error verifying folder structure: ${e.message}")
         }
     }
     
