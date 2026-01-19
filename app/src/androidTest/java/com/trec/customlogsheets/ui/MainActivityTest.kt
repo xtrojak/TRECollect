@@ -44,6 +44,12 @@ class MainActivityTest {
         context = ApplicationProvider.getApplicationContext()
         device = UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
         
+        // Configure test settings to avoid "initial setup required" dialog
+        val settingsPreferences = com.trec.customlogsheets.data.SettingsPreferences(context)
+        settingsPreferences.setSamplingTeam("LSI")
+        settingsPreferences.setSamplingSubteam("Soil")
+        // Note: Folder URI is not set, but that's okay for UI tests
+        
         // Use in-memory database for tests
         database = Room.inMemoryDatabaseBuilder(
             context,

@@ -60,8 +60,7 @@ class SettingsPreferences(context: Context) {
     }
     
     fun isSamplingSubteamSet(): Boolean {
-        val team = getSamplingTeam()
-        // Both LSI and AML now require subteam selection
+        // All teams now require subteam selection
         // Return true only if subteam is set
         return getSamplingSubteam().isNotEmpty()
     }

@@ -72,7 +72,8 @@ class FolderStructureHelper(private val context: Context) {
     }
     
     /**
-     * Gets the team folder (LSI or AML) inside TREC_logsheets
+     * Gets the team folder inside TREC_logsheets
+     * Safely handles existing folders to avoid creating duplicates
      */
     private fun getTeamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
         val trecFolder = getTrecLogsheetsFolder(settingsPreferences) ?: return null
@@ -80,34 +81,106 @@ class FolderStructureHelper(private val context: Context) {
         if (team.isEmpty()) {
             return null
         }
+        
+        // First, try to find existing folder by name
         var teamFolder = trecFolder.findFile(team)
-        if (teamFolder == null || !teamFolder.exists()) {
-            teamFolder = trecFolder.createDirectory(team)
+        if (teamFolder != null && teamFolder.exists()) {
+            return teamFolder
         }
+        
+        // Also check by listing files (fallback in case findFile() doesn't work)
+        try {
+            val files = trecFolder.listFiles()
+            teamFolder = files?.firstOrNull { it.name == team && it.isDirectory && it.exists() }
+            if (teamFolder != null) {
+                return teamFolder
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("FolderStructureHelper", "Error listing files: ${e.message}")
+        }
+        
+        // Folder doesn't exist, create it
+        teamFolder = trecFolder.createDirectory(team)
+        
+        // Verify the created folder has the correct name (not a duplicate like "AML (1)")
+        if (teamFolder != null && teamFolder.name != team) {
+            // Created folder has wrong name, try to find the correct one
+            // This can happen if createDirectory() creates a duplicate when folder already exists
+            android.util.Log.w("FolderStructureHelper", "Created folder has unexpected name: '${teamFolder.name}' instead of '$team'. Looking for correct folder...")
+            // Try findFile again
+            val correctFolder = trecFolder.findFile(team)
+            if (correctFolder != null && correctFolder.exists()) {
+                return correctFolder
+            }
+            // Try listing files again
+            try {
+                val files = trecFolder.listFiles()
+                val foundFolder = files?.firstOrNull { it.name == team && it.isDirectory && it.exists() }
+                if (foundFolder != null) {
+                    return foundFolder
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("FolderStructureHelper", "Error listing files after duplicate creation: ${e.message}")
+            }
+        }
+        
         return teamFolder
     }
     
     /**
-     * Gets the subteam folder (for LSI) or returns team folder (for AML)
+     * Gets the subteam folder for the current team/subteam
+     * All teams now use the same structure: TREC_logsheets/{team}/{subteam}/
+     * Safely handles existing folders to avoid creating duplicates
      */
     private fun getSubteamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
         val teamFolder = getTeamFolder(settingsPreferences) ?: return null
-        val team = settingsPreferences.getSamplingTeam()
-        
-        if (team == "LSI") {
-            val subteam = settingsPreferences.getSamplingSubteam()
-            if (subteam.isEmpty()) {
-                return null
-            }
-            var subteamFolder = teamFolder.findFile(subteam)
-            if (subteamFolder == null || !subteamFolder.exists()) {
-                subteamFolder = teamFolder.createDirectory(subteam)
-            }
-            return subteamFolder
-        } else {
-            // For AML, return team folder directly
-            return teamFolder
+        val subteam = settingsPreferences.getSamplingSubteam()
+        if (subteam.isEmpty()) {
+            return null
         }
+        
+        // First, try to find existing folder by name
+        var subteamFolder = teamFolder.findFile(subteam)
+        if (subteamFolder != null && subteamFolder.exists()) {
+            return subteamFolder
+        }
+        
+        // Also check by listing files (fallback in case findFile() doesn't work)
+        try {
+            val files = teamFolder.listFiles()
+            subteamFolder = files?.firstOrNull { it.name == subteam && it.isDirectory && it.exists() }
+            if (subteamFolder != null) {
+                return subteamFolder
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("FolderStructureHelper", "Error listing subteam files: ${e.message}")
+        }
+        
+        // Folder doesn't exist, create it
+        subteamFolder = teamFolder.createDirectory(subteam)
+        
+        // Verify the created folder has the correct name (not a duplicate)
+        if (subteamFolder != null && subteamFolder.name != subteam) {
+            // Created folder has wrong name, try to find the correct one
+            android.util.Log.w("FolderStructureHelper", "Created subteam folder has unexpected name: '${subteamFolder.name}' instead of '$subteam'. Looking for correct folder...")
+            // Try findFile again
+            val correctFolder = teamFolder.findFile(subteam)
+            if (correctFolder != null && correctFolder.exists()) {
+                return correctFolder
+            }
+            // Try listing files again
+            try {
+                val files = teamFolder.listFiles()
+                val foundFolder = files?.firstOrNull { it.name == subteam && it.isDirectory && it.exists() }
+                if (foundFolder != null) {
+                    return foundFolder
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("FolderStructureHelper", "Error listing files after duplicate creation: ${e.message}")
+            }
+        }
+        
+        return subteamFolder
     }
     
     /**
@@ -149,8 +222,7 @@ class FolderStructureHelper(private val context: Context) {
     /**
      * Ensures the folder structure exists, creating it only if it doesn't exist
      * Structure: baseFolder/TREC_logsheets/{team}/{subteam}/{ongoing, finished, deleted}
-     * For LSI: baseFolder/TREC_logsheets/LSI/{Soil|Sediment|Shoreline}/{ongoing, finished, deleted}
-     * For AML: baseFolder/TREC_logsheets/AML/{ongoing, finished, deleted}
+     * All teams use the same structure with team and subteam folders
      */
     fun ensureFolderStructure(baseUri: Uri, settingsPreferences: SettingsPreferences): DocumentFile? {
         val baseFolder = DocumentFile.fromTreeUri(context, baseUri) ?: return null
@@ -171,9 +243,9 @@ class FolderStructureHelper(private val context: Context) {
             return trecFolder
         }
         
-        val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
-        if (team == "LSI" && (subteam == null || subteam.isEmpty())) {
-            android.util.Log.w("FolderStructureHelper", "Cannot create folder structure: LSI subteam not set")
+        val subteam = settingsPreferences.getSamplingSubteam()
+        if (subteam.isEmpty()) {
+            android.util.Log.w("FolderStructureHelper", "Cannot create folder structure: subteam not set")
             return trecFolder
         }
         
@@ -187,28 +259,23 @@ class FolderStructureHelper(private val context: Context) {
             }
         }
         
-        // For LSI, create subteam folder
-        val targetFolder = if (team == "LSI" && subteam != null) {
-            var subteamFolder = teamFolder.findFile(subteam)
-            if (subteamFolder == null || !subteamFolder.exists()) {
-                subteamFolder = teamFolder.createDirectory(subteam)
-                if (subteamFolder == null) {
-                    android.util.Log.e("FolderStructureHelper", "Failed to create subteam folder: $subteam")
-                    return trecFolder
-                }
+        // Create subteam folder (all teams use subteams now)
+        var subteamFolder = teamFolder.findFile(subteam)
+        if (subteamFolder == null || !subteamFolder.exists()) {
+            subteamFolder = teamFolder.createDirectory(subteam)
+            if (subteamFolder == null) {
+                android.util.Log.e("FolderStructureHelper", "Failed to create subteam folder: $subteam")
+                return trecFolder
             }
-            subteamFolder
-        } else {
-            teamFolder
         }
         
-        // Ensure all subfolders exist inside team/subteam folder
+        // Ensure all subfolders exist inside subteam folder
         val subfolders = listOf(ONGOING_FOLDER, FINISHED_FOLDER, DELETED_FOLDER)
         for (subfolderName in subfolders) {
-            var subfolder = targetFolder.findFile(subfolderName)
+            var subfolder = subteamFolder.findFile(subfolderName)
             if (subfolder == null || !subfolder.exists()) {
-                // Create the subfolder inside team/subteam folder
-                subfolder = targetFolder.createDirectory(subfolderName)
+                // Create the subfolder inside subteam folder
+                subfolder = subteamFolder.createDirectory(subfolderName)
                 if (subfolder == null) {
                     // Log error but continue with other folders
                     android.util.Log.e("FolderStructureHelper", "Failed to create subfolder: $subfolderName")

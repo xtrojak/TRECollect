@@ -320,7 +320,8 @@ class OwnCloudManager(private val context: Context) {
     
     /**
      * Ensures a folder exists (creates if it doesn't) with retry logic
-     * Creates the full structure: UUID/team/subteam (for LSI) or UUID/team (for AML)
+     * Creates the full structure: UUID/team/subteam
+     * All teams use the same structure with team and subteam folders
      */
     suspend fun ensureFolderExists(folderName: String, retries: Int = MAX_RETRIES): Boolean {
         // First ensure the target folder path exists
@@ -329,15 +330,15 @@ class OwnCloudManager(private val context: Context) {
         // Get team and subteam from settings
         val settingsPreferences = SettingsPreferences(context)
         val team = settingsPreferences.getSamplingTeam()
-        val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+        val subteam = settingsPreferences.getSamplingSubteam()
         
         // Check if team/subteam are set
         if (team.isEmpty()) {
             AppLogger.w(TAG, "Cannot create ownCloud folder structure: team not set")
             return false
         }
-        if (team == "LSI" && (subteam == null || subteam.isEmpty())) {
-            AppLogger.w(TAG, "Cannot create ownCloud folder structure: LSI subteam not set")
+        if (subteam.isEmpty()) {
+            AppLogger.w(TAG, "Cannot create ownCloud folder structure: subteam not set")
             return false
         }
         
@@ -359,15 +360,13 @@ class OwnCloudManager(private val context: Context) {
             }
         }
         
-        // For LSI, ensure subteam folder exists
-        if (team == "LSI" && subteam != null) {
-            val subteamPath = "$teamPath/$subteam"
-            val subteamExists = checkPathExists("$targetFolderUrl/$subteamPath")
-            if (!subteamExists) {
-                if (!createPath("$targetFolderUrl/$subteamPath")) {
-                    AppLogger.w(TAG, "Failed to create subteam folder: $subteamPath")
-                    return false
-                }
+        // Ensure subteam folder exists (all teams use subteams now)
+        val subteamPath = "$teamPath/$subteam"
+        val subteamExists = checkPathExists("$targetFolderUrl/$subteamPath")
+        if (!subteamExists) {
+            if (!createPath("$targetFolderUrl/$subteamPath")) {
+                AppLogger.w(TAG, "Failed to create subteam folder: $subteamPath")
+                return false
             }
         }
         
@@ -380,13 +379,10 @@ class OwnCloudManager(private val context: Context) {
     private fun getTeamSubteamPath(uuidFolder: String): String {
         val settingsPreferences = SettingsPreferences(context)
         val team = settingsPreferences.getSamplingTeam()
-        val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+        val subteam = settingsPreferences.getSamplingSubteam()
         
-        return if (team == "LSI" && subteam != null) {
-            "$uuidFolder/$team/$subteam"
-        } else {
-            "$uuidFolder/$team"
-        }
+        // All teams use the same structure: UUID/team/subteam
+        return "$uuidFolder/$team/$subteam"
     }
     
     /**

@@ -149,6 +149,17 @@ class SettingsActivity : AppCompatActivity() {
                         FormConfigLoader.clearCache()
                         PredefinedForms.clearCache()
                     }
+                    
+                    // If folder is already selected, try to create folder structure now that team/subteam are set
+                    val folderUri = settingsPreferences.getFolderUri()
+                    if (folderUri.isNotEmpty()) {
+                        try {
+                            val uri = Uri.parse(folderUri)
+                            createFolderStructure(uri)
+                        } catch (e: Exception) {
+                            android.util.Log.w("SettingsActivity", "Error creating folder structure after team change: ${e.message}")
+                        }
+                    }
                 }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -163,6 +174,17 @@ class SettingsActivity : AppCompatActivity() {
                     // Clear form config cache when subteam changes
                     FormConfigLoader.clearCache()
                     PredefinedForms.clearCache()
+                    
+                    // If folder is already selected, try to create folder structure now that subteam is set
+                    val folderUri = settingsPreferences.getFolderUri()
+                    if (folderUri.isNotEmpty()) {
+                        try {
+                            val uri = Uri.parse(folderUri)
+                            createFolderStructure(uri)
+                        } catch (e: Exception) {
+                            android.util.Log.w("SettingsActivity", "Error creating folder structure after subteam change: ${e.message}")
+                        }
+                    }
                 }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -324,9 +346,35 @@ class SettingsActivity : AppCompatActivity() {
             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            
+            // Try to set initial directory to a previously selected folder (Android 11+)
+            // This helps the picker open to a familiar location
+            val existingFolderUri = settingsPreferences.getFolderUri()
+            if (existingFolderUri.isNotEmpty()) {
+                try {
+                    val uri = Uri.parse(existingFolderUri)
+                    // Verify the URI is still accessible
+                    val docFile = DocumentFile.fromTreeUri(this@SettingsActivity, uri)
+                    if (docFile != null && docFile.exists()) {
+                        // Use the existing folder as initial location
+                        putExtra(DocumentsContract.EXTRA_INITIAL_URI, uri)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("SettingsActivity", "Could not use existing folder URI: ${e.message}")
+                }
+            }
         }
-        @Suppress("DEPRECATION")
-        startActivityForResult(intent, REQUEST_CODE_OPEN_FOLDER)
+        
+        try {
+            // Show helpful message to guide users
+            Toast.makeText(this, "Navigate to a writable folder (e.g., Downloads or Documents)", Toast.LENGTH_LONG).show()
+            
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_CODE_OPEN_FOLDER)
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsActivity", "Error opening folder picker: ${e.message}", e)
+            Toast.makeText(this, "Error opening folder picker. Please try again.", Toast.LENGTH_LONG).show()
+        }
     }
     
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -334,15 +382,36 @@ class SettingsActivity : AppCompatActivity() {
         
         if (requestCode == REQUEST_CODE_OPEN_FOLDER && resultCode == RESULT_OK) {
             data?.data?.let { uri ->
+                // Verify the selected folder is writable
+                val docFile = DocumentFile.fromTreeUri(this, uri)
+                if (docFile == null || !docFile.exists()) {
+                    Toast.makeText(this, "Error: Selected folder is not accessible", Toast.LENGTH_LONG).show()
+                    return
+                }
+                
+                if (!docFile.canWrite()) {
+                    Toast.makeText(this, "Error: Selected folder is not writable. Please choose a different folder (e.g., Downloads or Documents).", Toast.LENGTH_LONG).show()
+                    return
+                }
+                
                 // Take persistable URI permission
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                } catch (e: SecurityException) {
+                    Toast.makeText(this, "Error: Could not get write permission for selected folder. Please try again.", Toast.LENGTH_LONG).show()
+                    android.util.Log.e("SettingsActivity", "Security exception taking persistable permission: ${e.message}", e)
+                    return
+                }
                 
                 // Create the folder structure
                 createFolderStructure(uri)
             }
+        } else if (requestCode == REQUEST_CODE_OPEN_FOLDER && resultCode != RESULT_OK) {
+            // User cancelled or there was an error
+            android.util.Log.d("SettingsActivity", "Folder picker cancelled or failed with result code: $resultCode")
         }
     }
     
@@ -350,7 +419,21 @@ class SettingsActivity : AppCompatActivity() {
         try {
             val folderHelper = FolderStructureHelper(this)
             val team = settingsPreferences.getSamplingTeam()
-            val subteam = if (team == "LSI") settingsPreferences.getSamplingSubteam() else null
+            val subteam = settingsPreferences.getSamplingSubteam()
+            
+            // Check if team and subteam are set before creating folder structure
+            if (team.isEmpty() || subteam.isEmpty()) {
+                // Just save the base URI without creating full structure
+                // The structure will be created later when team/subteam are configured
+                settingsPreferences.setFolderUri(baseUri.toString())
+                folderPathText.text = getFullPath(baseUri, DocumentFile.fromTreeUri(this, baseUri))
+                folderPathLayout.setBackgroundColor(0xFFE8F5E9.toInt())
+                iconFolderSelected.visibility = android.view.View.VISIBLE
+                iconFolderSelected.setImageResource(android.R.drawable.checkbox_on_background)
+                Toast.makeText(this, "Folder selected. Please configure team and subteam to create folder structure.", Toast.LENGTH_LONG).show()
+                return
+            }
+            
             val trecFolder = folderHelper.ensureFolderStructure(baseUri, settingsPreferences)
             
             if (trecFolder == null) {
@@ -383,13 +466,9 @@ class SettingsActivity : AppCompatActivity() {
             android.util.Log.d("SettingsActivity", "Saved TREC_logsheets URI: $trecFolderUri")
             android.util.Log.d("SettingsActivity", "TREC_logsheets folder name: ${trecFolder.name}")
             
-            // Display the path with structure info
+            // Display the path with structure info (all teams use subteam structure now)
             val fullPath = getFullPath(trecFolderUri, trecFolder)
-            val structureInfo = if (team == "LSI" && subteam != null) {
-                "\n\nStructure created:\n• TREC_logsheets/\n  - $team/\n    - $subteam/\n      - ongoing/\n      - finished/\n      - deleted/"
-            } else {
-                "\n\nStructure created:\n• TREC_logsheets/\n  - $team/\n    - ongoing/\n    - finished/\n    - deleted/"
-            }
+            val structureInfo = "\n\nStructure created:\n• TREC_logsheets/\n  - $team/\n    - $subteam/\n      - ongoing/\n      - finished/\n      - deleted/"
             folderPathText.text = fullPath + structureInfo
             
             // Make it visually obvious that folder is selected
