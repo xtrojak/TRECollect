@@ -1159,10 +1159,23 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun updatePhotoFieldView(fieldId: String, fileName: String) {
-        val fieldView = fieldViews[fieldId] ?: return
-        val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
-        textFileName?.text = "Photo: $fileName"
-        textFileName?.visibility = View.VISIBLE
+        // Try to find the view in regular fields first
+        val fieldView = fieldViews[fieldId]
+        if (fieldView != null) {
+            val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
+            textFileName?.text = "Photo: $fileName"
+            textFileName?.visibility = View.VISIBLE
+            return
+        }
+        
+        // If not found, it might be a dynamic widget sub-field
+        // Use findViewWithTag to search the entire view hierarchy
+        val photoView = containerFields.findViewWithTag<View>(fieldId)
+        if (photoView != null) {
+            val textFileName = photoView.findViewById<TextView>(R.id.textFileName)
+            textFileName?.text = "Photo: $fileName"
+            textFileName?.visibility = View.VISIBLE
+        }
     }
     
     private fun createBarcodeField(fieldConfig: FormFieldConfig): View {
@@ -1628,6 +1641,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.PHOTO -> createPhotoFieldForSubField(subFieldConfig, uniqueFieldId)
                 else -> {
                     android.util.Log.w("FormEditActivity", "Unsupported sub-field type: ${subFieldConfig.type} in dynamic widget")
                     TextView(this).apply {
@@ -1921,6 +1935,50 @@ class FormEditActivity : AppCompatActivity() {
         return container
     }
     
+    private fun createPhotoFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_photo,
+            null,
+            false
+        ) as LinearLayout
+        
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        val buttonCapture = container.findViewById<MaterialButton>(R.id.buttonCapture)
+        val textFileName = container.findViewById<TextView>(R.id.textFileName)
+        
+        if (textLabel == null || buttonCapture == null || textFileName == null) {
+            android.util.Log.e("FormEditActivity", "Failed to find views in field_photo layout")
+            throw IllegalStateException("Failed to find required views in photo field layout")
+        }
+        
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = uniqueFieldId
+        
+        // Load existing photo filename
+        val existingValue = fieldValues[uniqueFieldId]
+        if (existingValue?.photoFileName != null) {
+            textFileName.text = "Photo: ${existingValue.photoFileName}"
+            textFileName.visibility = View.VISIBLE
+        }
+        
+        if (!isReadOnly) {
+            buttonCapture.setOnClickListener {
+                currentPhotoFieldId = uniqueFieldId
+                checkCameraPermissionAndCapture()
+            }
+        } else {
+            buttonCapture.isEnabled = false
+        }
+        
+        return container
+    }
+    
     private fun createBarcodeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
@@ -2102,6 +2160,11 @@ class FormEditActivity : AppCompatActivity() {
                 val uniqueFieldId = subFieldView.tag as? String
                 val fieldValue = uniqueFieldId?.let { fieldValues[it] }
                 fieldValue?.values?.isNotEmpty() ?: false
+            }
+            FormFieldConfig.FieldType.PHOTO -> {
+                val uniqueFieldId = subFieldView.tag as? String
+                val fieldValue = uniqueFieldId?.let { fieldValues[it] }
+                fieldValue?.photoFileName?.isNotEmpty() ?: false
             }
             else -> false
         }
@@ -2771,6 +2834,9 @@ class FormEditActivity : AppCompatActivity() {
                                         }
                                         FormFieldConfig.FieldType.MULTISELECT -> {
                                             subFieldValue?.values.isNullOrEmpty()
+                                        }
+                                        FormFieldConfig.FieldType.PHOTO -> {
+                                            subFieldValue?.photoFileName.isNullOrEmpty()
                                         }
                                         else -> false
                                     }

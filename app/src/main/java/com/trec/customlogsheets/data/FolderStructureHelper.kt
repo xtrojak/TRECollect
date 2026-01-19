@@ -91,7 +91,7 @@ class FolderStructureHelper(private val context: Context) {
         // Also check by listing files (fallback in case findFile() doesn't work)
         try {
             val files = trecFolder.listFiles()
-            teamFolder = files?.firstOrNull { it.name == team && it.isDirectory && it.exists() }
+            teamFolder = files.firstOrNull { it.name == team && it.isDirectory && it.exists() }
             if (teamFolder != null) {
                 return teamFolder
             }
@@ -115,7 +115,7 @@ class FolderStructureHelper(private val context: Context) {
             // Try listing files again
             try {
                 val files = trecFolder.listFiles()
-                val foundFolder = files?.firstOrNull { it.name == team && it.isDirectory && it.exists() }
+                val foundFolder = files.firstOrNull { it.name == team && it.isDirectory && it.exists() }
                 if (foundFolder != null) {
                     return foundFolder
                 }
@@ -148,7 +148,7 @@ class FolderStructureHelper(private val context: Context) {
         // Also check by listing files (fallback in case findFile() doesn't work)
         try {
             val files = teamFolder.listFiles()
-            subteamFolder = files?.firstOrNull { it.name == subteam && it.isDirectory && it.exists() }
+            subteamFolder = files.firstOrNull { it.name == subteam && it.isDirectory && it.exists() }
             if (subteamFolder != null) {
                 return subteamFolder
             }
@@ -171,7 +171,7 @@ class FolderStructureHelper(private val context: Context) {
             // Try listing files again
             try {
                 val files = teamFolder.listFiles()
-                val foundFolder = files?.firstOrNull { it.name == subteam && it.isDirectory && it.exists() }
+                val foundFolder = files.firstOrNull { it.name == subteam && it.isDirectory && it.exists() }
                 if (foundFolder != null) {
                     return foundFolder
                 }
