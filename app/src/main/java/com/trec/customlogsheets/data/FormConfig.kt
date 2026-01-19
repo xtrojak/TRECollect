@@ -8,7 +8,7 @@ import org.json.JSONObject
  */
 data class ImageOption(
     val value: String, // The value stored when selected
-    val imagePath: String, // Path to image in assets (e.g., "images/option1.png")
+    val imagePath: String, // Path to image (e.g., "images/option1.png")
     val label: String? = null // Optional text label to display with the image
 )
 
@@ -22,7 +22,7 @@ data class FormFieldConfig(
     val required: Boolean = false,
     val options: List<String>? = null, // For select/multiselect (text-based)
     val imageOptions: List<ImageOption>? = null, // For select_image/multiselect_image (image-based)
-    val imagePath: String? = null, // For image_display: path to image in assets
+    val imagePath: String? = null, // For image_display: path to image (e.g., "images/image.png")
     val inputType: String? = null, // For text fields: "text", "number", etc.
     val rows: List<String>? = null, // For table: row names
     val columns: List<String>? = null, // For table: column names
@@ -68,7 +68,7 @@ object FormConfigLoader {
     private var cachedTeam: String? = null
     private var cachedSubteam: String? = null
     
-    fun loadFromAssets(context: android.content.Context, team: String? = null, subteam: String? = null): List<FormConfig> {
+    fun load(context: android.content.Context, team: String? = null, subteam: String? = null): List<FormConfig> {
         // Get team/subteam from SettingsPreferences if not provided
         val actualTeam = team ?: SettingsPreferences(context).getSamplingTeam()
         val actualSubteam = subteam ?: SettingsPreferences(context).getSamplingSubteam()
@@ -78,50 +78,143 @@ object FormConfigLoader {
             return cachedConfigs!!
         }
         
-        // Determine the config file path based on team/subteam
-        val configPath = when {
-            actualTeam == "LSI" && actualSubteam.isNotEmpty() -> "teams/LSI/$actualSubteam/forms_config.json"
-            actualTeam == "AML" -> "teams/AML/forms_config.json"
-            else -> "forms_config.json" // Fallback to root for backwards compatibility
+        // Load from downloaded logsheets
+        val configs = loadFromDownloaded(context, actualTeam, actualSubteam)
+        cachedConfigs = configs
+        cachedTeam = actualTeam
+        cachedSubteam = actualSubteam
+        return configs
+    }
+    
+    /**
+     * Loads form configs from downloaded logsheets
+     * Uses team config to determine which logsheets to load
+     */
+    private fun loadFromDownloaded(context: android.content.Context, team: String, subteam: String): List<FormConfig> {
+        val downloader = LogsheetDownloader(context)
+        
+        // Find team config by matching team and name/subteam fields dynamically
+        // This allows us to discover team configs without hardcoding folder names
+        val teamConfigFile = downloader.findTeamConfigByTeamAndName(team, subteam.takeIf { it.isNotEmpty() })
+            ?: run {
+                android.util.Log.e("FormConfigLoader", "No team config found for team=$team, subteam=$subteam")
+                return emptyList()
+            }
+        val teamConfigJson = try {
+            teamConfigFile.readText()
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error reading team config: ${e.message}", e)
+            return emptyList()
         }
         
-        return try {
-            val inputStream = context.assets.open(configPath)
-            val jsonString = inputStream.bufferedReader().use { it.readText() }
-            val configs = parseJson(jsonString)
-            try {
-                android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms from $configPath: ${configs.map { it.id }}")
-            } catch (e: Exception) {
-                // Ignore logging errors in test environments
-            }
-            cachedConfigs = configs
-            cachedTeam = actualTeam
-            cachedSubteam = actualSubteam
-            configs
+        // Parse team config to get list of form IDs
+        val formIds = try {
+            parseTeamConfig(teamConfigJson)
         } catch (e: Exception) {
-            try {
-                android.util.Log.e("FormConfigLoader", "Error loading form config from $configPath: ${e.message}", e)
-                // Try fallback to root forms_config.json if team-specific config doesn't exist
-                if (configPath != "forms_config.json") {
-                    android.util.Log.d("FormConfigLoader", "Trying fallback to root forms_config.json")
-                    try {
-                        val fallbackStream = context.assets.open("forms_config.json")
-                        val fallbackJson = fallbackStream.bufferedReader().use { it.readText() }
-                        val fallbackConfigs = parseJson(fallbackJson)
-                        cachedConfigs = fallbackConfigs
-                        cachedTeam = actualTeam
-                        cachedSubteam = actualSubteam
-                        return fallbackConfigs
-                    } catch (fallbackError: Exception) {
-                        android.util.Log.e("FormConfigLoader", "Fallback also failed: ${fallbackError.message}")
-                    }
-                }
-            } catch (logError: Exception) {
-                // Ignore logging errors in test environments
-            }
-            e.printStackTrace()
-            emptyList()
+            android.util.Log.e("FormConfigLoader", "Error parsing team config: ${e.message}", e)
+            return emptyList()
         }
+        
+        // Load each logsheet config
+        val configs = mutableListOf<FormConfig>()
+        for (formId in formIds) {
+            val logsheetFile = downloader.getLogsheetFile(formId) ?: continue
+            val logsheetJson = try {
+                logsheetFile.readText()
+            } catch (e: Exception) {
+                android.util.Log.e("FormConfigLoader", "Error reading logsheet $formId: ${e.message}", e)
+                continue
+            }
+            
+            val config = try {
+                parseLogsheetConfig(logsheetJson, formId, teamConfigJson)
+            } catch (e: Exception) {
+                android.util.Log.e("FormConfigLoader", "Error parsing logsheet $formId: ${e.message}", e)
+                continue
+            }
+            
+            if (config != null) {
+                configs.add(config)
+            }
+        }
+        
+        try {
+            android.util.Log.d("FormConfigLoader", "Loaded ${configs.size} forms from downloaded logsheets: ${configs.map { it.id }}")
+        } catch (e: Exception) {
+            // Ignore logging errors in test environments
+        }
+        
+        return configs
+    }
+    
+    /**
+     * Parses team config JSON to extract form IDs and their organization
+     * Returns list of form IDs in order they appear in sections
+     */
+    private fun parseTeamConfig(teamConfigJson: String): List<String> {
+        val formIds = mutableListOf<String>()
+        val jsonObject = org.json.JSONObject(teamConfigJson)
+        val sectionsArray = jsonObject.getJSONArray("sections")
+        
+        for (i in 0 until sectionsArray.length()) {
+            val sectionObj = sectionsArray.getJSONObject(i)
+            val formsArray = sectionObj.getJSONArray("forms")
+            
+            for (j in 0 until formsArray.length()) {
+                val formObj = formsArray.getJSONObject(j)
+                val formId = formObj.getString("form_id")
+                formIds.add(formId)
+            }
+        }
+        
+        return formIds
+    }
+    
+    /**
+     * Parses a single logsheet config JSON and converts it to FormConfig
+     * Uses team config to get section and title information
+     */
+    private fun parseLogsheetConfig(logsheetJson: String, formId: String, teamConfigJson: String): FormConfig? {
+        val logsheetObj = org.json.JSONObject(logsheetJson)
+        val teamObj = org.json.JSONObject(teamConfigJson)
+        
+        // Find form info from team config
+        var formName = logsheetObj.optString("name", formId)
+        var formSection = "" // Default to empty string (no section name)
+        var formDescription = logsheetObj.optString("description").takeIf { it.isNotEmpty() }
+        var formMandatory = false
+        
+        // Search team config for this form_id
+        val sectionsArray = teamObj.getJSONArray("sections")
+        for (i in 0 until sectionsArray.length()) {
+            val sectionObj = sectionsArray.getJSONObject(i)
+            // Section name is optional - use empty string if not specified
+            val sectionName = sectionObj.optString("name", "")
+            val formsArray = sectionObj.getJSONArray("forms")
+            
+            for (j in 0 until formsArray.length()) {
+                val formObj = formsArray.getJSONObject(j)
+                if (formObj.getString("form_id") == formId) {
+                    formName = formObj.optString("title", formName)
+                    formSection = sectionName
+                    formMandatory = formObj.optBoolean("mandatory", false)
+                    break
+                }
+            }
+        }
+        
+        // Parse fields from logsheet config
+        val fieldsArray = logsheetObj.getJSONArray("fields")
+        val fields = parseFields(fieldsArray)
+        
+        return FormConfig(
+            id = formId,
+            name = formName,
+            section = formSection,
+            description = formDescription,
+            mandatory = formMandatory,
+            fields = fields
+        )
     }
     
     fun clearCache() {

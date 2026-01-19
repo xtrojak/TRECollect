@@ -18,6 +18,7 @@ class SettingsPreferences(context: Context) {
         private const val KEY_MAP_EXPIRY_DAYS = "map_expiry_days"
         private const val KEY_APP_UUID = "app_uuid"
         private const val KEY_OWNCLOUD_FOLDER_VERIFIED = "owncloud_folder_verified"
+        private const val KEY_LOGSHEETS_DOWNLOADED = "logsheets_downloaded"
         
         const val DEFAULT_MAP_EXPIRY_DAYS = 30L // Default: 30 days
     }
@@ -60,10 +61,8 @@ class SettingsPreferences(context: Context) {
     
     fun isSamplingSubteamSet(): Boolean {
         val team = getSamplingTeam()
-        if (team != "LSI") {
-            // For non-LSI teams, subteam is not required
-            return true
-        }
+        // Both LSI and AML now require subteam selection
+        // Return true only if subteam is set
         return getSamplingSubteam().isNotEmpty()
     }
     
@@ -105,6 +104,20 @@ class SettingsPreferences(context: Context) {
      */
     fun setOwnCloudFolderVerified(verified: Boolean) {
         prefs.edit().putBoolean(KEY_OWNCLOUD_FOLDER_VERIFIED, verified).apply()
+    }
+    
+    /**
+     * Checks if logsheets have been downloaded
+     */
+    fun areLogsheetsDownloaded(): Boolean {
+        return prefs.getBoolean(KEY_LOGSHEETS_DOWNLOADED, false)
+    }
+    
+    /**
+     * Marks logsheets as downloaded
+     */
+    fun setLogsheetsDownloaded(downloaded: Boolean) {
+        prefs.edit().putBoolean(KEY_LOGSHEETS_DOWNLOADED, downloaded).apply()
     }
 }
 

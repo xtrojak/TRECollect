@@ -23,8 +23,7 @@ object PredefinedForms {
     }
     
     /**
-     * Loads forms from JSON configuration
-     * Falls back to hardcoded list if config loading fails
+     * Loads forms from downloaded logsheet configurations
      */
     fun getForms(context: Context): List<Form> {
         // Cache forms per context to avoid reloading
@@ -32,30 +31,15 @@ object PredefinedForms {
             return cachedForms!!
         }
         
-        val configs = FormConfigLoader.loadFromAssets(context)
-        val forms = if (configs.isNotEmpty()) {
-            // Convert FormConfig to Form
-            configs.map { config ->
-                Form(
-                    id = config.id,
-                    name = config.name,
-                    section = config.section,
-                    description = config.description,
-                    mandatory = config.mandatory
-                )
-            }
-        } else {
-            // Fallback to hardcoded list
-            listOf(
-                Form("site_info", "Site Information", "Site Information", "Basic site details and location", true),
-                Form("site_conditions", "Site Conditions", "Site Information", "Environmental conditions at the site", false),
-                Form("sampling_protocol", "Sampling Protocol", "Sampling", "Protocol used for sampling", true),
-                Form("sample_collection", "Sample Collection", "Sampling", "Details of collected samples", true),
-                Form("sample_preservation", "Sample Preservation", "Sampling", "How samples were preserved", false),
-                Form("photographs", "Photographs", "Documentation", "Site and sample photographs", false),
-                Form("notes", "Field Notes", "Documentation", "Additional field observations", false),
-                Form("qc_checks", "Quality Control Checks", "Quality Control", "QC procedures performed", false),
-                Form("chain_of_custody", "Chain of Custody", "Quality Control", "Sample handling documentation", false)
+        val configs = FormConfigLoader.load(context)
+        // Convert FormConfig to Form
+        val forms = configs.map { config ->
+            Form(
+                id = config.id,
+                name = config.name,
+                section = config.section,
+                description = config.description,
+                mandatory = config.mandatory
             )
         }
         
@@ -73,7 +57,7 @@ object PredefinedForms {
     }
     
     fun getFormConfig(context: Context, formId: String): FormConfig? {
-        return FormConfigLoader.loadFromAssets(context).firstOrNull { it.id == formId }
+        return FormConfigLoader.load(context).firstOrNull { it.id == formId }
     }
     
     fun getMandatoryForms(context: Context): List<Form> {

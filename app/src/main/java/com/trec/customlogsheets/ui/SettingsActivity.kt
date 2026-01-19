@@ -13,6 +13,7 @@ import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.lifecycleScope
 import android.widget.TextView
 import android.widget.AdapterView
 import android.widget.LinearLayout
@@ -23,7 +24,9 @@ import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.data.FormConfigLoader
 import com.trec.customlogsheets.data.PredefinedForms
+import com.trec.customlogsheets.data.LogsheetDownloader
 import com.trec.customlogsheets.util.AppLogger
+import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var settingsPreferences: SettingsPreferences
@@ -37,8 +40,11 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var buttonOfflineMaps: MaterialButton
     private lateinit var buttonViewLogs: MaterialButton
     private lateinit var buttonCopyUuid: MaterialButton
+    private lateinit var buttonUpdateLogsheets: MaterialButton
+    private lateinit var textLogsheetsStatus: TextView
     private val teams = arrayOf("LSI", "AML")
-    private val lsiSubteams = arrayOf("Soil", "Sediment", "Shoreline")
+    private var currentSubteams: List<String> = emptyList()
+    private lateinit var subteamAdapter: ArrayAdapter<String>
     
     companion object {
         private const val REQUEST_CODE_OPEN_FOLDER = 1001
@@ -78,8 +84,8 @@ class SettingsActivity : AppCompatActivity() {
         teamSpinner = findViewById(R.id.spinnerTeam)
         teamSpinner.adapter = teamAdapter
         
-        // Setup subteam spinner
-        val subteamAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, lsiSubteams)
+        // Setup subteam spinner (will be populated dynamically)
+        subteamAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, mutableListOf<String>())
         subteamAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         subteamSpinner = findViewById(R.id.spinnerSubteam)
         subteamSpinner.adapter = subteamAdapter
@@ -109,22 +115,40 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "UUID copied to clipboard", Toast.LENGTH_SHORT).show()
         }
         
+        buttonUpdateLogsheets = findViewById(R.id.buttonUpdateLogsheets)
+        textLogsheetsStatus = findViewById(R.id.textLogsheetsStatus)
+        buttonUpdateLogsheets.setOnClickListener {
+            updateLogsheets()
+        }
+        
         teamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                 val selectedTeam = teams[position]
+                val previousTeam = settingsPreferences.getSamplingTeam()
+                val wasTeamChanged = previousTeam != selectedTeam
                 settingsPreferences.setSamplingTeam(selectedTeam)
+                
+                // Clear subteam when switching teams (old subteam might not be valid for new team)
+                if (wasTeamChanged) {
+                    settingsPreferences.setSamplingSubteam("")
+                }
                 
                 // Clear form config cache when team changes
                 FormConfigLoader.clearCache()
                 PredefinedForms.clearCache()
                 
-                // Show subteam spinner only for LSI
-                if (selectedTeam == "LSI") {
-                    subteamSpinner.visibility = android.view.View.VISIBLE
-                    subteamLabel.visibility = android.view.View.VISIBLE
-                } else {
-                    subteamSpinner.visibility = android.view.View.GONE
-                    subteamLabel.visibility = android.view.View.GONE
+                // Discover and populate subteams for the selected team
+                // If team was changed and no subteam is set, automatically select the first one
+                updateSubteamsForTeam(selectedTeam) {
+                    if (wasTeamChanged && settingsPreferences.getSamplingSubteam().isEmpty() && currentSubteams.isNotEmpty()) {
+                        // Automatically select the first subteam
+                        val firstSubteam = currentSubteams[0]
+                        settingsPreferences.setSamplingSubteam(firstSubteam)
+                        subteamSpinner.setSelection(0)
+                        // Clear form config cache since subteam was auto-selected
+                        FormConfigLoader.clearCache()
+                        PredefinedForms.clearCache()
+                    }
                 }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -132,12 +156,14 @@ class SettingsActivity : AppCompatActivity() {
         
         subteamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                val selectedSubteam = lsiSubteams[position]
-                settingsPreferences.setSamplingSubteam(selectedSubteam)
-                
-                // Clear form config cache when subteam changes
-                FormConfigLoader.clearCache()
-                PredefinedForms.clearCache()
+                if (position < currentSubteams.size) {
+                    val selectedSubteam = currentSubteams[position]
+                    settingsPreferences.setSamplingSubteam(selectedSubteam)
+                    
+                    // Clear form config cache when subteam changes
+                    FormConfigLoader.clearCache()
+                    PredefinedForms.clearCache()
+                }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
@@ -149,6 +175,43 @@ class SettingsActivity : AppCompatActivity() {
         }
         startActivity(intent)
         finish()
+    }
+    
+    /**
+     * Updates the subteam spinner with available subteams for the given team
+     * Shows/hides the spinner based on whether subteams are available
+     * @param onComplete Optional callback to execute after subteams are loaded (e.g., to set selection)
+     */
+    private fun updateSubteamsForTeam(team: String, onComplete: (() -> Unit)? = null) {
+        lifecycleScope.launch {
+            try {
+                val downloader = LogsheetDownloader(this@SettingsActivity)
+                val subteams = downloader.getAvailableSubteams(team)
+                currentSubteams = subteams
+                
+                // Update adapter with new subteams
+                subteamAdapter.clear()
+                subteamAdapter.addAll(subteams)
+                subteamAdapter.notifyDataSetChanged()
+                
+                // Show subteam spinner if there are subteams available
+                if (subteams.isNotEmpty()) {
+                    subteamSpinner.visibility = android.view.View.VISIBLE
+                    subteamLabel.visibility = android.view.View.VISIBLE
+                } else {
+                    subteamSpinner.visibility = android.view.View.GONE
+                    subteamLabel.visibility = android.view.View.GONE
+                }
+                
+                // Execute callback if provided
+                onComplete?.invoke()
+            } catch (e: Exception) {
+                AppLogger.e("SettingsActivity", "Error loading subteams: ${e.message}", e)
+                // Hide spinner on error
+                subteamSpinner.visibility = android.view.View.GONE
+                subteamLabel.visibility = android.view.View.GONE
+            }
+        }
     }
     
     private fun loadCurrentSettings() {
@@ -178,22 +241,17 @@ class SettingsActivity : AppCompatActivity() {
             if (teamIndex >= 0) {
                 teamSpinner.setSelection(teamIndex)
                 
-                // Show subteam spinner if LSI is selected
-                if (currentTeam == "LSI") {
-                    subteamSpinner.visibility = android.view.View.VISIBLE
-                    subteamLabel.visibility = android.view.View.VISIBLE
-                    
-                    // Load current subteam
+                // Update subteams for the current team and show spinner
+                // Set selection after subteams are loaded
+                updateSubteamsForTeam(currentTeam) {
+                    // Load current subteam after subteams are populated
                     val currentSubteam = settingsPreferences.getSamplingSubteam()
-                    if (currentSubteam.isNotEmpty()) {
-                        val subteamIndex = lsiSubteams.indexOf(currentSubteam)
+                    if (currentSubteam.isNotEmpty() && currentSubteams.contains(currentSubteam)) {
+                        val subteamIndex = currentSubteams.indexOf(currentSubteam)
                         if (subteamIndex >= 0) {
                             subteamSpinner.setSelection(subteamIndex)
                         }
                     }
-                } else {
-                    subteamSpinner.visibility = android.view.View.GONE
-                    subteamLabel.visibility = android.view.View.GONE
                 }
             }
         } else {
@@ -206,6 +264,26 @@ class SettingsActivity : AppCompatActivity() {
         val appUuid = settingsPreferences.getAppUuid()
         val uuidText = findViewById<TextView>(R.id.textAppUuid)
         uuidText.text = appUuid
+        
+        // Load and display logsheets status
+        updateLogsheetsStatus()
+    }
+    
+    private fun updateLogsheetsStatus() {
+        val downloader = LogsheetDownloader(this)
+        val hasDownloaded = downloader.hasDownloadedLogsheets()
+        val isDownloaded = settingsPreferences.areLogsheetsDownloaded()
+        
+        if (hasDownloaded && isDownloaded) {
+            textLogsheetsStatus.text = "Status: Up to date"
+            textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
+        } else if (hasDownloaded && !isDownloaded) {
+            textLogsheetsStatus.text = "Status: Partially downloaded"
+            textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_orange_dark))
+        } else {
+            textLogsheetsStatus.text = "Status: Not downloaded"
+            textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
+        }
     }
     
     private fun resetFolderVisualState() {
@@ -329,6 +407,42 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "Folder structure created successfully", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Error creating folder structure: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun updateLogsheets() {
+        buttonUpdateLogsheets.isEnabled = false
+        buttonUpdateLogsheets.text = "Downloading..."
+        textLogsheetsStatus.text = "Status: Downloading..."
+        textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_blue_dark))
+        
+        lifecycleScope.launch {
+            try {
+                val downloader = LogsheetDownloader(this@SettingsActivity)
+                val success = downloader.downloadAll()
+                
+                if (success) {
+                    settingsPreferences.setLogsheetsDownloaded(true)
+                    // Clear form config cache to reload from downloaded files
+                    FormConfigLoader.clearCache()
+                    PredefinedForms.clearCache()
+                    textLogsheetsStatus.text = "Status: Up to date"
+                    textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
+                    Toast.makeText(this@SettingsActivity, "Logsheets updated successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    textLogsheetsStatus.text = "Status: Update failed"
+                    textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
+                    Toast.makeText(this@SettingsActivity, "Some logsheets failed to update. Check logs for details.", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SettingsActivity", "Error updating logsheets: ${e.message}", e)
+                textLogsheetsStatus.text = "Status: Error - ${e.message?.take(50)}"
+                textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
+                Toast.makeText(this@SettingsActivity, "Error updating logsheets: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                buttonUpdateLogsheets.isEnabled = true
+                buttonUpdateLogsheets.text = "Update Logsheets"
+            }
         }
     }
 }
