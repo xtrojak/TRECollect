@@ -337,9 +337,20 @@ class MainViewModel(
             return CreateSiteResult.Error("Cannot access ongoing folder. Please check permissions.")
         }
         
-        // Check if folder for this site already exists
-        val siteFolder = ongoingFolder.findFile(siteName)
+        // Check if folder for this site already exists (use both findFile and listFiles for reliability)
+        var siteFolder = ongoingFolder.findFile(siteName)
+        if (siteFolder == null || !siteFolder.exists()) {
+            // Also check by listing files (fallback in case findFile() doesn't work reliably)
+            try {
+                val files = ongoingFolder.listFiles()
+                siteFolder = files.firstOrNull { it.name == siteName && it.isDirectory && it.exists() }
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Error listing files to check for existing site: ${e.message}")
+            }
+        }
+        
         if (siteFolder != null && siteFolder.exists()) {
+            AppLogger.i("MainViewModel", "Site folder already exists: name='$siteName'")
             return CreateSiteResult.Error("A folder for this site already exists.")
         }
         
@@ -348,6 +359,31 @@ class MainViewModel(
         if (createdFolder == null) {
             AppLogger.e("MainViewModel", "Failed to create site folder: name='$siteName'")
             return CreateSiteResult.Error("Could not create site folder in TREC_logsheets/ongoing/")
+        }
+        
+        // Verify the created folder has the correct name (not a duplicate like "Site (1)")
+        if (createdFolder.name != siteName) {
+            AppLogger.w("MainViewModel", "Created folder has unexpected name: '${createdFolder.name}' instead of '$siteName'. This indicates a duplicate was created.")
+            // Try to find the correct folder that might have existed
+            try {
+                val files = ongoingFolder.listFiles()
+                val correctFolder = files.firstOrNull { it.name == siteName && it.isDirectory && it.exists() }
+                if (correctFolder != null) {
+                    AppLogger.i("MainViewModel", "Found existing folder with correct name '$siteName'. Deleting duplicate '${createdFolder.name}'.")
+                    // Delete the duplicate folder we just created
+                    try {
+                        createdFolder.delete()
+                    } catch (e: Exception) {
+                        android.util.Log.w("MainViewModel", "Could not delete duplicate folder: ${e.message}")
+                    }
+                    return CreateSiteResult.Error("A folder for this site already exists.")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("MainViewModel", "Error listing files after folder creation: ${e.message}")
+            }
+            // If we can't find the correct folder, something went wrong
+            AppLogger.e("MainViewModel", "Created folder with wrong name and could not find correct folder. Created: '${createdFolder.name}', expected: '$siteName'")
+            return CreateSiteResult.Error("Could not create site folder with correct name. Created folder: '${createdFolder.name}'")
         }
         
         AppLogger.i("MainViewModel", "Site created successfully: name='$siteName'")
