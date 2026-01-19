@@ -302,19 +302,7 @@ class SettingsPreferencesTest {
     }
     
     @Test
-    fun `isSamplingSubteamSet returns true for non-LSI team`() {
-        whenever(mockSharedPreferences.getString("sampling_team", ""))
-            .thenReturn("AML")
-        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
-            .thenReturn("")
-        
-        val result = settingsPreferences.isSamplingSubteamSet()
-        
-        assertTrue(result) // Non-LSI teams don't need subteam
-    }
-    
-    @Test
-    fun `isSamplingSubteamSet returns false for LSI without subteam`() {
+    fun `isSamplingSubteamSet returns false for team without subteam`() {
         whenever(mockSharedPreferences.getString("sampling_team", ""))
             .thenReturn("LSI")
         whenever(mockSharedPreferences.getString("sampling_subteam", ""))
@@ -322,15 +310,27 @@ class SettingsPreferencesTest {
         
         val result = settingsPreferences.isSamplingSubteamSet()
         
-        assertFalse(result)
+        assertFalse(result) // All teams now require subteam
     }
     
     @Test
-    fun `isSamplingSubteamSet returns true for LSI with subteam`() {
+    fun `isSamplingSubteamSet returns true for team with subteam`() {
         whenever(mockSharedPreferences.getString("sampling_team", ""))
             .thenReturn("LSI")
         whenever(mockSharedPreferences.getString("sampling_subteam", ""))
             .thenReturn("Soil")
+        
+        val result = settingsPreferences.isSamplingSubteamSet()
+        
+        assertTrue(result)
+    }
+    
+    @Test
+    fun `isSamplingSubteamSet returns true for AML with subteam`() {
+        whenever(mockSharedPreferences.getString("sampling_team", ""))
+            .thenReturn("AML")
+        whenever(mockSharedPreferences.getString("sampling_subteam", ""))
+            .thenReturn("AML - placeholder")
         
         val result = settingsPreferences.isSamplingSubteamSet()
         
