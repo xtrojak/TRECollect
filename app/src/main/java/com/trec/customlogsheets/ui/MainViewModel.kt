@@ -46,11 +46,12 @@ class MainViewModel(
     /**
      * Loads sites from the folder structure (ongoing and finished folders)
      * Includes debouncing to prevent excessive reloads
+     * @param force If true, bypasses debounce and forces immediate reload
      */
-    fun loadSitesFromFolders() {
+    fun loadSitesFromFolders(force: Boolean = false) {
         val currentTime = System.currentTimeMillis()
-        // Debounce: skip if called too soon after last load
-        if (currentTime - lastLoadTime < LOAD_DEBOUNCE_MS && lastLoadTime > 0) {
+        // Debounce: skip if called too soon after last load (unless forced)
+        if (!force && currentTime - lastLoadTime < LOAD_DEBOUNCE_MS && lastLoadTime > 0) {
             AppLogger.d("MainViewModel", "Skipping loadSitesFromFolders - debounced (last load ${currentTime - lastLoadTime}ms ago)")
             return
         }

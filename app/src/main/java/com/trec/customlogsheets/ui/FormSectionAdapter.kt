@@ -53,7 +53,13 @@ class FormSectionAdapter(
         }
 
         fun bind(section: String, forms: List<Form>, completedFormIds: Set<String>, draftFormIds: Set<String>) {
-            sectionTitleText.text = section
+            // Hide section title if section name is empty
+            if (section.isEmpty()) {
+                sectionTitleText.visibility = android.view.View.GONE
+            } else {
+                sectionTitleText.visibility = android.view.View.VISIBLE
+                sectionTitleText.text = section
+            }
             formAdapter.submitList(forms)
             formAdapter.setCompletedFormIds(completedFormIds)
             formAdapter.setDraftFormIds(draftFormIds)

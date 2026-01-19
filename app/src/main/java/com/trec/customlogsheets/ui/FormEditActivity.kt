@@ -474,14 +474,22 @@ class FormEditActivity : AppCompatActivity() {
         val imageView = container.findViewById<ImageView>(R.id.imageViewDisplay)
         val textDescription = container.findViewById<TextView>(R.id.textImageDescription)
         
-        // Load image from assets
+        // Load image from downloaded files
         val imagePath = fieldConfig.imagePath
         if (imagePath != null) {
             try {
-                val inputStream = assets.open(imagePath)
-                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                imageView.setImageBitmap(bitmap)
-                inputStream.close()
+                val downloader = LogsheetDownloader(this)
+                val imageFile = downloader.getImageFile(imagePath)
+                
+                if (imageFile != null && imageFile.exists()) {
+                    // Load from downloaded file
+                    val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
+                    imageView.setImageBitmap(bitmap)
+                } else {
+                    android.util.Log.w("FormEditActivity", "Image not found: $imagePath")
+                    // Set a placeholder or error icon
+                    imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("FormEditActivity", "Error loading image ${imagePath}: ${e.message}", e)
                 // Set a placeholder or error icon
@@ -2952,12 +2960,20 @@ private class ImageOptionAdapter(
         private val cardView: com.google.android.material.card.MaterialCardView = itemView as com.google.android.material.card.MaterialCardView
         
         fun bind(option: com.trec.customlogsheets.data.ImageOption, isSelected: Boolean, onClick: () -> Unit) {
-            // Load image from assets
+            // Load image from downloaded files
             try {
-                val inputStream = itemView.context.assets.open(option.imagePath)
-                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                imageView.setImageBitmap(bitmap)
-                inputStream.close()
+                val downloader = LogsheetDownloader(itemView.context)
+                val imageFile = downloader.getImageFile(option.imagePath)
+                
+                if (imageFile != null && imageFile.exists()) {
+                    // Load from downloaded file
+                    val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
+                    imageView.setImageBitmap(bitmap)
+                } else {
+                    android.util.Log.w("ImageOptionAdapter", "Image not found: ${option.imagePath}")
+                    // Set a placeholder or error icon
+                    imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("ImageOptionAdapter", "Error loading image ${option.imagePath}: ${e.message}", e)
                 // Set a placeholder or error icon

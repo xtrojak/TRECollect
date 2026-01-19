@@ -4,5 +4,6 @@
     <string name="hello_world">Hello World!</string>
     <string name="owncloud_url">https://oc.embl.de/public.php/webdav/</string>
     <string name="owncloud_access_token">0rxu1scmLhgmWQs</string>
+    <string name="owncloud_logsheets_token">omGjxPLJdR1uGPF</string>
 </resources>
 

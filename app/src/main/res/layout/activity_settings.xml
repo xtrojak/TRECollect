@@ -266,6 +266,54 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Logsheets Section -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Logsheets"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Download the latest versions of logsheets, team configs, and images from the server."
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:layout_marginBottom="16dp" />
+
+                    <TextView
+                        android:id="@+id/textLogsheetsStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:layout_marginBottom="12dp"
+                        android:text="Status: Not checked" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonUpdateLogsheets"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Update Logsheets" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- App Logs Section -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

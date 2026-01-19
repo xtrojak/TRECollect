@@ -22,6 +22,9 @@ import com.trec.customlogsheets.ui.SiteDetailActivity
 import com.trec.customlogsheets.ui.DownloadRegionActivity
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.data.OwnCloudManager
+import com.trec.customlogsheets.data.LogsheetDownloader
+import com.trec.customlogsheets.data.FormConfigLoader
+import com.trec.customlogsheets.data.PredefinedForms
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.launch
 
@@ -29,6 +32,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewModel: MainViewModel
     private lateinit var ongoingAdapter: SamplingSiteAdapter
     private lateinit var finishedAdapter: SamplingSiteAdapter
+    
+    // Track last known team/subteam to detect changes
+    private var lastKnownTeam: String = ""
+    private var lastKnownSubteam: String = ""
+    private var lastResumeTime = 0L
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +56,11 @@ class MainActivity : AppCompatActivity() {
         setupUploadAllButton()
         observeData()
         
+        // Initialize last known team/subteam
+        val settingsPreferences = SettingsPreferences(this)
+        lastKnownTeam = settingsPreferences.getSamplingTeam()
+        lastKnownSubteam = settingsPreferences.getSamplingSubteam()
+        
         // Cleanup expired offline maps on startup
         lifecycleScope.launch {
             val mapsManager = OfflineMapsManager(this@MainActivity)
@@ -55,19 +68,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private var lastResumeTime = 0L
-    
     override fun onResume() {
         super.onResume()
         
         // Check if team and folder are configured
         checkInitialSetup()
         
+        val settingsPreferences = SettingsPreferences(this)
+        val currentTeam = settingsPreferences.getSamplingTeam()
+        val currentSubteam = settingsPreferences.getSamplingSubteam()
+        
+        // Check if team or subteam has changed
+        val teamChanged = currentTeam != lastKnownTeam || currentSubteam != lastKnownSubteam
+        
         val currentTime = System.currentTimeMillis()
-        // Only reload if we've been away for more than 2 seconds to avoid unnecessary reloads
-        // This prevents reloading when just pausing/resuming quickly (e.g., opening settings)
-        if (lastResumeTime == 0L || (currentTime - lastResumeTime) > 2000) {
-            viewModel.loadSitesFromFolders()
+        // Reload if:
+        // 1. Team/subteam changed (force reload regardless of time)
+        // 2. We've been away for more than 2 seconds (to avoid unnecessary reloads)
+        if (teamChanged || lastResumeTime == 0L || (currentTime - lastResumeTime) > 2000) {
+            if (teamChanged) {
+                AppLogger.d("MainActivity", "Team/subteam changed: team='$lastKnownTeam'->'$currentTeam', subteam='$lastKnownSubteam'->'$currentSubteam'")
+                // Clear form config cache when team changes
+                FormConfigLoader.clearCache()
+                PredefinedForms.clearCache()
+                // Force reload by bypassing debounce
+                viewModel.loadSitesFromFolders(force = true)
+            } else {
+                // Normal reload (with debounce)
+                viewModel.loadSitesFromFolders()
+            }
+            // Update last known values AFTER calling loadSitesFromFolders
+            lastKnownTeam = currentTeam
+            lastKnownSubteam = currentSubteam
         }
         lastResumeTime = currentTime
         
@@ -87,8 +119,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (team.isEmpty()) {
             missingItems.add("sampling team")
-        } else if (team == "LSI" && !subteamSet) {
-            missingItems.add("LSI subteam")
+        } else if (!subteamSet) {
+            // Both LSI and AML require subteam selection now
+            val teamDisplayName = if (team == "LSI") "LSI subteam" else "$team subteam"
+            missingItems.add(teamDisplayName)
         }
         
         if (missingItems.isNotEmpty()) {
@@ -151,8 +185,8 @@ class MainActivity : AppCompatActivity() {
             val subteamSet = settingsPreferences.isSamplingSubteamSet()
             val folderUri = settingsPreferences.getFolderUri()
             
-            // Check if setup is complete
-            if (team.isEmpty() || (team == "LSI" && !subteamSet) || folderUri.isEmpty()) {
+            // Check if setup is complete (both LSI and AML now require subteam)
+            if (team.isEmpty() || !subteamSet || folderUri.isEmpty()) {
                 android.widget.Toast.makeText(
                     this,
                     "Please configure team and output folder in Settings first",
