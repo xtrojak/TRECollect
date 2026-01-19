@@ -13,9 +13,84 @@ import java.io.OutputStream
  */
 class FormFileHelper(private val context: Context) {
     
+    companion object {
+        /**
+         * Sanitizes a section name for use in filenames.
+         * Replaces spaces with underscores and removes/sanitizes special characters.
+         * Empty or null section names are converted to "default".
+         * 
+         * @param sectionName The section name to sanitize
+         * @return Sanitized section name safe for use in filenames
+         */
+        fun sanitizeSectionName(sectionName: String?): String {
+            if (sectionName.isNullOrBlank()) {
+                return "default"
+            }
+            
+            // Replace spaces with underscores
+            var sanitized = sectionName.replace(" ", "_")
+            
+            // Remove or replace special characters that are problematic in filenames
+            // Characters to remove: / \ : * ? " < > |
+            // Replace with underscore: / \ : | (common path/command separators)
+            sanitized = sanitized
+                .replace("/", "_")
+                .replace("\\", "_")
+                .replace(":", "_")
+                .replace("|", "_")
+                .replace("*", "")
+                .replace("?", "")
+                .replace("\"", "")
+                .replace("<", "")
+                .replace(">", "")
+            
+            // Remove leading/trailing underscores and dots (Windows doesn't allow these)
+            sanitized = sanitized.trim('_', '.')
+            
+            // If empty after sanitization, use "default"
+            if (sanitized.isEmpty()) {
+                return "default"
+            }
+            
+            return sanitized
+        }
+        
+        /**
+         * Generates a filename for a form based on section name, form ID, and order in section.
+         * Pattern: ${sectionName}_${formId}_${orderInSection}.xml
+         * 
+         * @param sectionName The section name (will be sanitized)
+         * @param formId The form ID
+         * @param orderInSection The 0-based index of the form within its section
+         * @return The generated filename
+         */
+        fun generateFileName(sectionName: String?, formId: String, orderInSection: Int): String {
+            val sanitizedSection = sanitizeSectionName(sectionName)
+            return "${sanitizedSection}_${formId}_${orderInSection}.xml"
+        }
+        
+        /**
+         * Gets the order index of a form within its section.
+         * 
+         * @param context The context
+         * @param formId The form ID
+         * @return The 0-based index of the form in its section, or null if form not found
+         */
+        fun getOrderInSection(context: Context, formId: String): Int? {
+            val forms = PredefinedForms.getForms(context)
+            val formConfig = forms.firstOrNull { it.id == formId } ?: return null
+            
+            val section = formConfig.section
+            val formsInSection = PredefinedForms.getFormsBySection(context, section)
+            
+            return formsInSection.indexOfFirst { it.id == formId }.takeIf { it >= 0 }
+        }
+    }
+    
     /**
      * Saves form data as XML file in the site's folder
      * Draft status is determined by the submittedAt field in the XML content
+     * Filename pattern: ${sectionName}_${formId}_${orderInSection}.xml
      * @param formData The form data to save
      * @return true if successful, false otherwise
      */
@@ -31,9 +106,22 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
-        // Always use regular filename (no _draft suffix)
-        // Draft status is determined by submittedAt field in XML
-        val fileName = "${formData.formId}.xml"
+        // Get form config to determine section and order
+        val formConfig = PredefinedForms.getFormConfig(context, formData.formId)
+            ?: run {
+                AppLogger.e("FormFileHelper", "Form config not found for formId: ${formData.formId}")
+                return false
+            }
+        
+        // Get order in section (0-based)
+        val orderInSection = getOrderInSection(context, formData.formId)
+            ?: run {
+                AppLogger.e("FormFileHelper", "Could not determine order in section for formId: ${formData.formId}")
+                return false
+            }
+        
+        // Generate filename using new pattern
+        val fileName = generateFileName(formConfig.section, formData.formId, orderInSection)
         
         // Create or update the XML file
         val existingFile = siteFolder.findFile(fileName)
@@ -83,8 +171,12 @@ class FormFileHelper(private val context: Context) {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
-        // Always use regular filename
-        val fileName = "${formId}.xml"
+        // Get form config to determine section and order
+        val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return null
+        val orderInSection = getOrderInSection(context, formId) ?: return null
+        
+        // Generate expected filename
+        val fileName = generateFileName(formConfig.section, formId, orderInSection)
         
         // Try ongoing folder first
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
@@ -97,8 +189,8 @@ class FormFileHelper(private val context: Context) {
                     val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
                     inputStream?.close()
                     val formData = FormData.fromXml(xmlContent)
-                    // Check if it matches the requested type (draft or submitted)
-                    if (formData != null) {
+                    // Verify it's the correct formId (safety check)
+                    if (formData != null && formData.formId == formId) {
                         val isDraft = formData.submittedAt == null
                         if ((loadDraft && isDraft) || (!loadDraft && !isDraft)) {
                             formData
@@ -127,8 +219,8 @@ class FormFileHelper(private val context: Context) {
                         val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
                         inputStream?.close()
                         val formData = FormData.fromXml(xmlContent)
-                        // Check if it matches the requested type (draft or submitted)
-                        if (formData != null) {
+                        // Verify it's the correct formId (safety check)
+                        if (formData != null && formData.formId == formId) {
                             val isDraft = formData.submittedAt == null
                             if ((loadDraft && isDraft) || (!loadDraft && !isDraft)) {
                                 formData
@@ -284,20 +376,41 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
-        // Always use regular filename (no _draft suffix)
-        val fileName = "${formId}.xml"
+        // Get form config to determine section and order
+        val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
+        val orderInSection = getOrderInSection(context, formId) ?: return false
+        
+        // Generate expected filename
+        val fileName = generateFileName(formConfig.section, formId, orderInSection)
         
         // Find and delete the file
         val file = siteFolder.findFile(fileName)
         return if (file != null && file.exists()) {
             try {
-                val deleted = file.delete()
-                if (deleted) {
-                    AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
+                // Verify it's the correct form before deleting
+                val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+                val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+                inputStream?.close()
+                val formData = FormData.fromXml(xmlContent)
+                
+                if (formData != null && formData.formId == formId) {
+                    val isDraftFile = formData.submittedAt == null
+                    if ((isDraft && isDraftFile) || (!isDraft && !isDraftFile)) {
+                        val deleted = file.delete()
+                        if (deleted) {
+                            AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
+                        } else {
+                            AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
+                        }
+                        deleted
+                    } else {
+                        AppLogger.w("FormFileHelper", "Form file type mismatch: expected isDraft=$isDraft but file isDraft=$isDraftFile")
+                        false
+                    }
                 } else {
-                    AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
+                    AppLogger.w("FormFileHelper", "Form ID mismatch in file: expected=$formId, found=${formData?.formId}")
+                    false
                 }
-                deleted
             } catch (e: Exception) {
                 AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
                 android.util.Log.e("FormFileHelper", "Error deleting form: ${e.message}", e)
