@@ -236,25 +236,58 @@ class FolderStructureHelper(private val context: Context) {
      * All teams use the same structure with team and subteam folders
      */
     fun ensureFolderStructure(baseUri: Uri, settingsPreferences: SettingsPreferences): DocumentFile? {
-        val baseFolder = DocumentFile.fromTreeUri(context, baseUri) ?: return null
-        if (!baseFolder.exists() || !baseFolder.canWrite()) return null
+        android.util.Log.d("FolderStructureHelper", "ensureFolderStructure called with URI: $baseUri")
+        val baseFolder = DocumentFile.fromTreeUri(context, baseUri)
+        if (baseFolder == null) {
+            android.util.Log.e("FolderStructureHelper", "Could not create DocumentFile from baseUri: $baseUri")
+            return null
+        }
+        
+        android.util.Log.d("FolderStructureHelper", "Base folder: name='${baseFolder.name}', exists=${baseFolder.exists()}, canWrite=${baseFolder.canWrite()}")
+        
+        if (!baseFolder.exists()) {
+            android.util.Log.e("FolderStructureHelper", "Base folder does not exist: ${baseFolder.name}")
+            return null
+        }
+        
+        if (!baseFolder.canWrite()) {
+            android.util.Log.e("FolderStructureHelper", "Base folder is not writable: ${baseFolder.name}")
+            return null
+        }
         
         // Check if TREC_logsheets folder already exists (use both findFile and listFiles for reliability)
+        android.util.Log.d("FolderStructureHelper", "Checking if TREC_logsheets folder exists...")
         var trecFolder = baseFolder.findFile(PARENT_FOLDER_NAME)
+        android.util.Log.d("FolderStructureHelper", "findFile result: ${if (trecFolder != null) "found (exists=${trecFolder.exists()})" else "null"}")
+        
         if (trecFolder == null || !trecFolder.exists()) {
             // Also check by listing files (fallback in case findFile() doesn't work reliably)
             try {
                 val files = baseFolder.listFiles()
+                android.util.Log.d("FolderStructureHelper", "Listed ${files.size} files in base folder")
                 trecFolder = files.firstOrNull { it.name == PARENT_FOLDER_NAME && it.isDirectory && it.exists() }
+                if (trecFolder != null) {
+                    android.util.Log.d("FolderStructureHelper", "Found TREC_logsheets via listFiles()")
+                }
             } catch (e: Exception) {
-                android.util.Log.w("FolderStructureHelper", "Error listing files to check for TREC_logsheets: ${e.message}")
+                android.util.Log.w("FolderStructureHelper", "Error listing files to check for TREC_logsheets: ${e.message}", e)
             }
         }
         
         if (trecFolder == null || !trecFolder.exists()) {
-            // Only create if it doesn't exist
-            trecFolder = baseFolder.createDirectory(PARENT_FOLDER_NAME)
-            if (trecFolder == null) return null
+            // Create TREC_logsheets folder - this should ALWAYS be created regardless of team/subteam
+            android.util.Log.i("FolderStructureHelper", "TREC_logsheets folder does not exist, creating it...")
+            try {
+                trecFolder = baseFolder.createDirectory(PARENT_FOLDER_NAME)
+                if (trecFolder == null) {
+                    android.util.Log.e("FolderStructureHelper", "createDirectory returned null for TREC_logsheets - this usually means permission denied or storage full")
+                    return null
+                }
+                android.util.Log.i("FolderStructureHelper", "createDirectory returned: name='${trecFolder.name}', exists=${trecFolder.exists()}, canWrite=${trecFolder.canWrite()}")
+            } catch (e: Exception) {
+                android.util.Log.e("FolderStructureHelper", "Exception during createDirectory: ${e.message}", e)
+                return null
+            }
             
             // Verify the created folder has the correct name (not a duplicate like "TREC_logsheets (1)")
             if (trecFolder.name != PARENT_FOLDER_NAME) {
@@ -278,26 +311,81 @@ class FolderStructureHelper(private val context: Context) {
                     android.util.Log.w("FolderStructureHelper", "Error listing files after TREC_logsheets creation: ${e.message}")
                 }
             }
+            
+            // Retry verification: Sometimes DocumentFile operations need a moment to propagate
+            // Try to verify the folder exists and is accessible with a retry loop
+            // Use listFiles() as a more reliable check than findFile() after creation
+            var verified = false
+            for (attempt in 1..5) {
+                // First check the folder we just created
+                if (trecFolder != null && trecFolder.exists() && trecFolder.canWrite()) {
+                    verified = true
+                    android.util.Log.d("FolderStructureHelper", "TREC_logsheets folder verified on attempt $attempt")
+                    break
+                }
+                
+                // Re-check by listing files (more reliable after creation)
+                try {
+                    val files = baseFolder.listFiles()
+                    val foundFolder = files.firstOrNull { it.name == PARENT_FOLDER_NAME && it.isDirectory && it.exists() }
+                    if (foundFolder != null && foundFolder.canWrite()) {
+                        trecFolder = foundFolder
+                        verified = true
+                        android.util.Log.d("FolderStructureHelper", "TREC_logsheets folder found via listFiles() on attempt $attempt")
+                        break
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("FolderStructureHelper", "Error re-checking TREC_logsheets folder (attempt $attempt): ${e.message}")
+                }
+                
+                // If not verified yet, try refreshing the DocumentFile reference
+                if (attempt < 5) {
+                    try {
+                        // Recreate DocumentFile from URI to get fresh state
+                        val refreshedFolder = baseFolder.findFile(PARENT_FOLDER_NAME)
+                        if (refreshedFolder != null && refreshedFolder.exists() && refreshedFolder.canWrite()) {
+                            trecFolder = refreshedFolder
+                            verified = true
+                            android.util.Log.d("FolderStructureHelper", "TREC_logsheets folder verified after refresh on attempt $attempt")
+                            break
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("FolderStructureHelper", "Error refreshing TREC_logsheets folder: ${e.message}")
+                    }
+                }
+            }
+            
+            if (!verified) {
+                android.util.Log.e("FolderStructureHelper", "TREC_logsheets folder could not be verified after creation (5 attempts)")
+                return null
+            }
         }
         
-        // Ensure trecFolder is not null at this point
-        if (trecFolder == null || !trecFolder.exists()) {
-            android.util.Log.e("FolderStructureHelper", "TREC_logsheets folder is null or doesn't exist after creation attempt")
+        // Final verification that trecFolder is valid
+        if (trecFolder == null || !trecFolder.exists() || !trecFolder.canWrite()) {
+            android.util.Log.e("FolderStructureHelper", "TREC_logsheets folder is null, doesn't exist, or is not writable")
             return null
         }
         
-        // Get team and subteam
+        android.util.Log.i("FolderStructureHelper", "TREC_logsheets folder successfully created/verified: ${trecFolder.uri}")
+        
+        // Get team and subteam - these are optional for now, deeper structure can be created later
         val team = settingsPreferences.getSamplingTeam()
+        val subteam = settingsPreferences.getSamplingSubteam()
+        
+        android.util.Log.d("FolderStructureHelper", "Team: '$team', Subteam: '$subteam'")
+        
         if (team.isEmpty()) {
-            android.util.Log.w("FolderStructureHelper", "Cannot create folder structure: team not set")
+            android.util.Log.i("FolderStructureHelper", "Team not set yet - TREC_logsheets folder created, team/subteam folders will be created later")
             return trecFolder
         }
         
-        val subteam = settingsPreferences.getSamplingSubteam()
         if (subteam.isEmpty()) {
-            android.util.Log.w("FolderStructureHelper", "Cannot create folder structure: subteam not set")
+            android.util.Log.i("FolderStructureHelper", "Subteam not set yet - TREC_logsheets folder created, team/subteam folders will be created later")
             return trecFolder
         }
+        
+        android.util.Log.d("FolderStructureHelper", "Team and subteam are set, creating deeper folder structure...")
         
         // Create team folder (with duplicate detection)
         var teamFolder = trecFolder.findFile(team)

@@ -428,23 +428,13 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun createFolderStructure(baseUri: Uri) {
+        android.util.Log.i("SettingsActivity", "createFolderStructure called with URI: $baseUri")
         try {
             val folderHelper = FolderStructureHelper(this)
             val team = settingsPreferences.getSamplingTeam()
             val subteam = settingsPreferences.getSamplingSubteam()
             
-            // Check if team and subteam are set before creating folder structure
-            if (team.isEmpty() || subteam.isEmpty()) {
-                // Just save the base URI without creating full structure
-                // The structure will be created later when team/subteam are configured
-                settingsPreferences.setFolderUri(baseUri.toString())
-                folderPathText.text = getFullPath(baseUri, DocumentFile.fromTreeUri(this, baseUri))
-                folderPathLayout.setBackgroundColor(0xFFE8F5E9.toInt())
-                iconFolderSelected.visibility = android.view.View.VISIBLE
-                iconFolderSelected.setImageResource(android.R.drawable.checkbox_on_background)
-                Toast.makeText(this, "Folder selected. Please configure team and subteam to create folder structure.", Toast.LENGTH_LONG).show()
-                return
-            }
+            android.util.Log.d("SettingsActivity", "Current team: '$team', subteam: '$subteam'")
             
             // Check if the URI already points to TREC_logsheets folder
             val docFile = DocumentFile.fromTreeUri(this, baseUri)
@@ -459,30 +449,38 @@ class SettingsActivity : AppCompatActivity() {
             
             android.util.Log.d("SettingsActivity", "createFolderStructure: baseUri=$baseUri, folder name='$folderName', isTrecFolder=$isTrecFolder")
             
+            // ALWAYS create TREC_logsheets folder, even if team/subteam are not set yet
+            // The deeper structure (team/subteam) will be created later when they are configured
             val trecFolder = if (isTrecFolder) {
                 // URI already points to TREC_logsheets, use it directly - don't recreate
-                android.util.Log.d("SettingsActivity", "URI already points to TREC_logsheets folder, using existing folder")
+                android.util.Log.i("SettingsActivity", "URI already points to TREC_logsheets folder, using existing folder")
                 docFile
             } else {
                 // URI points to parent folder, create TREC_logsheets inside it (only if it doesn't exist)
-                android.util.Log.d("SettingsActivity", "URI points to parent folder '$folderName', creating TREC_logsheets inside it")
+                android.util.Log.i("SettingsActivity", "URI points to parent folder '$folderName', creating TREC_logsheets inside it")
                 val createdTrecFolder = folderHelper.ensureFolderStructure(baseUri, settingsPreferences)
                 if (createdTrecFolder == null) {
                     android.util.Log.e("SettingsActivity", "Failed to create TREC_logsheets folder in '$folderName'")
-                    Toast.makeText(this, "Error: Could not create TREC_logsheets folder in selected location", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Error: Could not create TREC_logsheets folder. Please try selecting the folder again.", Toast.LENGTH_LONG).show()
                     return
                 }
-                // Verify the created folder is actually TREC_logsheets
+                android.util.Log.i("SettingsActivity", "TREC_logsheets folder created successfully: ${createdTrecFolder.uri}")
+                // Verify the created folder is actually TREC_logsheets and is accessible
                 if (createdTrecFolder.name != FolderStructureHelper.PARENT_FOLDER_NAME) {
                     android.util.Log.e("SettingsActivity", "Created folder has wrong name: '${createdTrecFolder.name}', expected '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
-                    Toast.makeText(this, "Error: Created folder has unexpected name: '${createdTrecFolder.name}'", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Error: Created folder has unexpected name: '${createdTrecFolder.name}'. Please try again.", Toast.LENGTH_LONG).show()
                     return
                 }
-                android.util.Log.d("SettingsActivity", "Successfully created/verified TREC_logsheets folder")
+                if (!createdTrecFolder.exists() || !createdTrecFolder.canWrite()) {
+                    android.util.Log.e("SettingsActivity", "Created TREC_logsheets folder exists but is not accessible or writable")
+                    Toast.makeText(this, "Error: TREC_logsheets folder is not accessible. Please try selecting the folder again.", Toast.LENGTH_LONG).show()
+                    return
+                }
                 createdTrecFolder
             }
             
             if (trecFolder == null) {
+                android.util.Log.e("SettingsActivity", "trecFolder is null after creation/verification")
                 Toast.makeText(this, "Error: Could not create folder structure", Toast.LENGTH_LONG).show()
                 return
             }
@@ -493,11 +491,21 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "Warning: Folder structure may be incorrect", Toast.LENGTH_LONG).show()
             }
             
-            // Ensure subfolders exist (team/subteam/ongoing/finished/deleted)
-            // This will create team/subteam folders inside TREC_logsheets
-            if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
-                android.util.Log.w("SettingsActivity", "Could not ensure all subfolders exist")
-                Toast.makeText(this, "Warning: Could not create all subfolders", Toast.LENGTH_SHORT).show()
+            android.util.Log.i("SettingsActivity", "TREC_logsheets folder ready: ${trecFolder.uri}")
+            
+            // Only create deeper structure (team/subteam) if team and subteam are set
+            if (team.isNotEmpty() && subteam.isNotEmpty()) {
+                android.util.Log.d("SettingsActivity", "Team and subteam are set, creating deeper folder structure...")
+                // Ensure subfolders exist (team/subteam/ongoing/finished/deleted)
+                // This will create team/subteam folders inside TREC_logsheets
+                if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
+                    android.util.Log.w("SettingsActivity", "Could not ensure all subfolders exist")
+                    Toast.makeText(this, "Warning: Could not create all subfolders", Toast.LENGTH_SHORT).show()
+                } else {
+                    android.util.Log.i("SettingsActivity", "Deeper folder structure created successfully")
+                }
+            } else {
+                android.util.Log.i("SettingsActivity", "Team or subteam not set yet - TREC_logsheets folder created, deeper structure will be created later")
             }
             
             // Get the URI for the TREC_logsheets folder directly from the DocumentFile
