@@ -320,6 +320,92 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
+     * Efficiently loads all form statuses for a site by reading all XML files once
+     * Returns a map of (formId, orderInSection) -> (isSubmitted: Boolean, hasDraft: Boolean)
+     * @param siteName The name of the site
+     * @param checkFinished If true, also checks the finished folder (for finalized sites)
+     * @return Map where key is "formId_orderInSection" and value is Pair(isSubmitted, hasDraft)
+     */
+    fun getAllFormStatuses(siteName: String, checkFinished: Boolean = true): Map<String, Pair<Boolean, Boolean>> {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        val statusMap = mutableMapOf<String, Pair<Boolean, Boolean>>()
+        
+        // Helper function to process files in a folder
+        fun processFolder(siteFolder: DocumentFile?) {
+            if (siteFolder != null && siteFolder.exists() && siteFolder.canRead()) {
+                val files = siteFolder.listFiles()
+                files
+                    .filter { file ->
+                        val fileName = file.name
+                        file.isFile && fileName != null && fileName.endsWith(".xml")
+                    }
+                    .forEach { file ->
+                        try {
+                            val fileName = file.name ?: return@forEach
+                            
+                            // Read XML first to get formId (more reliable than parsing filename)
+                            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+                            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+                            inputStream?.close()
+                            val formData = FormData.fromXml(xmlContent)
+                            
+                            if (formData == null) {
+                                return@forEach
+                            }
+                            
+                            // Parse filename to extract orderInSection
+                            // Pattern: ${sectionName}_${formId}_${orderInSection}.xml
+                            // Since section name might contain underscores, parse from the end
+                            val nameWithoutExt = fileName.removeSuffix(".xml")
+                            
+                            // Find the last underscore (before orderInSection)
+                            val lastUnderscoreIndex = nameWithoutExt.lastIndexOf("_")
+                            if (lastUnderscoreIndex < 0) {
+                                // Invalid format, skip
+                                return@forEach
+                            }
+                            
+                            // Last part is orderInSection
+                            val orderInSection = nameWithoutExt.substring(lastUnderscoreIndex + 1).toIntOrNull() ?: return@forEach
+                            
+                            // Use formId from XML (more reliable) and orderInSection from filename
+                            val formId = formData.formId
+                            val key = "${formId}_${orderInSection}"
+                            val isSubmitted = formData.submittedAt != null
+                            val hasDraft = formData.submittedAt == null
+                            
+                            // Update status map - if already exists, merge (submitted takes precedence)
+                            val existing = statusMap[key]
+                            if (existing == null) {
+                                statusMap[key] = Pair(isSubmitted, hasDraft)
+                            } else {
+                                // If we find a submitted version, it takes precedence
+                                statusMap[key] = Pair(isSubmitted || existing.first, hasDraft || existing.second)
+                            }
+                        } catch (e: Exception) {
+                            AppLogger.e("FormFileHelper", "Error reading form file: ${file.name}", e)
+                        }
+                    }
+            }
+        }
+        
+        // Check ongoing folder
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
+        processFolder(ongoingSiteFolder)
+        
+        // Check finished folder if requested
+        if (checkFinished) {
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+            val finishedSiteFolder = finishedFolder?.findFile(siteName)
+            processFolder(finishedSiteFolder)
+        }
+        
+        return statusMap
+    }
+    
+    /**
      * Gets all forms with draft versions for a site (forms with submittedAt not set)
      * @param siteName The name of the site
      * @param checkFinished If true, also checks the finished folder (for finalized sites)

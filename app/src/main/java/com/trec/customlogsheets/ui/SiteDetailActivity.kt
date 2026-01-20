@@ -31,6 +31,8 @@ import com.trec.customlogsheets.ui.DownloadRegionActivity
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class SiteDetailActivity : AppCompatActivity() {
     private lateinit var site: SamplingSite
@@ -312,21 +314,65 @@ class SiteDetailActivity : AppCompatActivity() {
         }
         
         val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
-        val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
         
-        // Check if all mandatory forms are submitted
-        return mandatoryForms.all { form ->
-            submittedFormIds.contains(form.id)
+        // Get all forms grouped by section to check all instances
+        val sections = PredefinedForms.getSections(this)
+        val formsBySection = sections.associateWith { section ->
+            PredefinedForms.getFormsBySection(this, section)
         }
+        
+        // Check if all mandatory form instances are submitted
+        val mandatoryFormIds = mandatoryForms.map { it.id }.toSet()
+        
+        return formsBySection.values.flatten()
+            .filter { mandatoryFormIds.contains(it.id) }
+            .all { form ->
+                // Calculate orderInSection for this instance
+                val formsInSection = formsBySection[form.section] ?: emptyList()
+                val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
+                var instanceIndex = 0
+                if (formPosition >= 0) {
+                    for (i in 0 until formPosition) {
+                        if (formsInSection[i].id == form.id) {
+                            instanceIndex++
+                        }
+                    }
+                }
+                // Check if this specific instance is submitted
+                formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
+            }
     }
     
     private fun showFinalizeConfirmationDialog() {
         lifecycleScope.launch {
             val mandatoryForms = PredefinedForms.getMandatoryForms(this@SiteDetailActivity)
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
-            val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
             
-            val missingForms = mandatoryForms.filter { !submittedFormIds.contains(it.id) }
+            // Get all forms grouped by section to check all instances
+            val sections = PredefinedForms.getSections(this@SiteDetailActivity)
+            val formsBySection = sections.associateWith { section ->
+                PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
+            }
+            
+            // Check which mandatory form instances are missing
+            val mandatoryFormIds = mandatoryForms.map { it.id }.toSet()
+            val missingForms = formsBySection.values.flatten()
+                .filter { mandatoryFormIds.contains(it.id) }
+                .filter { form ->
+                    // Calculate orderInSection for this instance
+                    val formsInSection = formsBySection[form.section] ?: emptyList()
+                    val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
+                    var instanceIndex = 0
+                    if (formPosition >= 0) {
+                        for (i in 0 until formPosition) {
+                            if (formsInSection[i].id == form.id) {
+                                instanceIndex++
+                            }
+                        }
+                    }
+                    // Check if this specific instance is NOT submitted
+                    !formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
+                }
             
             if (missingForms.isNotEmpty()) {
                 val missingNames = missingForms.joinToString(", ") { it.name }
@@ -477,18 +523,49 @@ class SiteDetailActivity : AppCompatActivity() {
     
     private fun loadFormCompletions() {
         lifecycleScope.launch {
-            // Check which forms are submitted and which have drafts using FormFileHelper
+            // Efficiently load all form statuses at once (reads all files once)
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
-            val submittedFormIds = formFileHelper.getSubmittedForms(site.name).toSet()
-            val allDraftFormIds = formFileHelper.getDraftForms(site.name).toSet()
-            // Only show drafts for forms that are not submitted
-            val draftFormIds = allDraftFormIds.filter { !submittedFormIds.contains(it) }.toSet()
+            val allStatuses = withContext(Dispatchers.IO) {
+                formFileHelper.getAllFormStatuses(site.name)
+            }
             
+            // Get all forms and calculate status per instance
             val sections = PredefinedForms.getSections(this@SiteDetailActivity)
             val formsBySection = sections.associateWith { section ->
                 PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
             }
-            formSectionAdapter.setData(sections, formsBySection, submittedFormIds, draftFormIds)
+            
+            // Build sets of form keys for submitted and draft forms
+            val submittedFormKeys = mutableSetOf<String>()
+            val draftFormKeys = mutableSetOf<String>()
+            
+            // Check each form instance using the pre-loaded status map
+            formsBySection.forEach { (section, forms) ->
+                forms.forEachIndexed { index, form ->
+                    // Calculate orderInSection for this specific instance
+                    var instanceIndex = 0
+                    for (i in 0 until index) {
+                        if (forms[i].id == form.id) {
+                            instanceIndex++
+                        }
+                    }
+                    
+                    // Use composite key to look up status
+                    val formKey = "${form.id}_$instanceIndex"
+                    val status = allStatuses[formKey]
+                    
+                    if (status != null) {
+                        val (isSubmitted, hasDraft) = status
+                        if (isSubmitted) {
+                            submittedFormKeys.add(formKey)
+                        } else if (hasDraft) {
+                            draftFormKeys.add(formKey)
+                        }
+                    }
+                }
+            }
+            
+            formSectionAdapter.setData(sections, formsBySection, submittedFormKeys, draftFormKeys)
             
             // Update canFinalize flag
             canFinalize = checkAllMandatoryFormsSubmitted()
