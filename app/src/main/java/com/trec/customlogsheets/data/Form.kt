@@ -13,6 +13,7 @@ data class Form(
 object PredefinedForms {
     private var cachedForms: List<Form>? = null
     private var cachedContext: Context? = null
+    private var cachedSiteName: String? = null // Cache for site-specific forms
     
     /**
      * Clears the forms cache (should be called when team/subteam changes)
@@ -20,14 +21,16 @@ object PredefinedForms {
     fun clearCache() {
         cachedForms = null
         cachedContext = null
+        cachedSiteName = null
     }
     
     /**
      * Loads forms from downloaded logsheet configurations
+     * For site-specific loading, use getFormsForSite() instead
      */
     fun getForms(context: Context): List<Form> {
-        // Cache forms per context to avoid reloading
-        if (cachedForms != null && cachedContext == context) {
+        // Cache forms per context to avoid reloading (only if not site-specific)
+        if (cachedForms != null && cachedContext == context && cachedSiteName == null) {
             return cachedForms!!
         }
         
@@ -45,6 +48,36 @@ object PredefinedForms {
         
         cachedForms = forms
         cachedContext = context
+        cachedSiteName = null
+        return forms
+    }
+    
+    /**
+     * Loads forms for a specific site, using the team config version from site metadata
+     * This ensures the site uses the same config version it was created with
+     */
+    fun getFormsForSite(context: Context, siteName: String): List<Form> {
+        // Check cache first
+        if (cachedForms != null && cachedContext == context && cachedSiteName == siteName) {
+            return cachedForms!!
+        }
+        
+        // Load configs for this specific site (uses pinned team config version)
+        val configs = FormConfigLoader.loadForSite(context, siteName)
+        // Convert FormConfig to Form
+        val forms = configs.map { config ->
+            Form(
+                id = config.id,
+                name = config.name,
+                section = config.section,
+                description = config.description,
+                mandatory = config.mandatory
+            )
+        }
+        
+        cachedForms = forms
+        cachedContext = context
+        cachedSiteName = siteName
         return forms
     }
     
@@ -52,16 +85,32 @@ object PredefinedForms {
         return getForms(context).map { it.section }.distinct()
     }
     
+    fun getSectionsForSite(context: Context, siteName: String): List<String> {
+        return getFormsForSite(context, siteName).map { it.section }.distinct()
+    }
+    
     fun getFormsBySection(context: Context, section: String): List<Form> {
         return getForms(context).filter { it.section == section }
+    }
+    
+    fun getFormsBySectionForSite(context: Context, siteName: String, section: String): List<Form> {
+        return getFormsForSite(context, siteName).filter { it.section == section }
     }
     
     fun getFormConfig(context: Context, formId: String): FormConfig? {
         return FormConfigLoader.load(context).firstOrNull { it.id == formId }
     }
     
+    fun getFormConfigForSite(context: Context, siteName: String, formId: String): FormConfig? {
+        return FormConfigLoader.loadForSite(context, siteName).firstOrNull { it.id == formId }
+    }
+    
     fun getMandatoryForms(context: Context): List<Form> {
         return getForms(context).filter { it.mandatory }
+    }
+    
+    fun getMandatoryFormsForSite(context: Context, siteName: String): List<Form> {
+        return getFormsForSite(context, siteName).filter { it.mandatory }
     }
 }
 

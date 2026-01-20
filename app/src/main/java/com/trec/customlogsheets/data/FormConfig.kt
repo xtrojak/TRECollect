@@ -67,6 +67,7 @@ object FormConfigLoader {
     private var cachedConfigs: List<FormConfig>? = null
     private var cachedTeam: String? = null
     private var cachedSubteam: String? = null
+    private var cachedSiteName: String? = null // Cache for site-specific configs
     
     fun load(context: android.content.Context, team: String? = null, subteam: String? = null): List<FormConfig> {
         // Get team/subteam from SettingsPreferences if not provided
@@ -74,7 +75,7 @@ object FormConfigLoader {
         val actualSubteam = subteam ?: SettingsPreferences(context).getSamplingSubteam()
         
         // Cache the configs to avoid reloading on every call (check if team/subteam changed)
-        if (cachedConfigs != null && cachedTeam == actualTeam && cachedSubteam == actualSubteam) {
+        if (cachedConfigs != null && cachedTeam == actualTeam && cachedSubteam == actualSubteam && cachedSiteName == null) {
             return cachedConfigs!!
         }
         
@@ -83,7 +84,105 @@ object FormConfigLoader {
         cachedConfigs = configs
         cachedTeam = actualTeam
         cachedSubteam = actualSubteam
+        cachedSiteName = null
         return configs
+    }
+    
+    /**
+     * Loads form configs for a specific site, using the team config version from site metadata
+     * Falls back to latest version if metadata is not available or version not found
+     */
+    fun loadForSite(context: android.content.Context, siteName: String): List<FormConfig> {
+        // Check cache first
+        if (cachedConfigs != null && cachedSiteName == siteName) {
+            return cachedConfigs!!
+        }
+        
+        val formFileHelper = FormFileHelper(context)
+        val metadata = formFileHelper.loadSiteMetadata(siteName)
+        
+        // Get team/subteam from SettingsPreferences
+        val settingsPreferences = SettingsPreferences(context)
+        val actualTeam = settingsPreferences.getSamplingTeam()
+        val actualSubteam = settingsPreferences.getSamplingSubteam()
+        
+        // If metadata has team config info, try to load that specific version
+        val configs = if (metadata != null && metadata.teamConfigId != null && metadata.teamConfigVersion != null) {
+            try {
+                loadFromDownloadedWithTeamConfigVersion(context, actualTeam, actualSubteam, metadata.teamConfigId, metadata.teamConfigVersion)
+                    ?: loadFromDownloaded(context, actualTeam, actualSubteam) // Fallback to latest
+            } catch (e: Exception) {
+                android.util.Log.w("FormConfigLoader", "Error loading config for site $siteName with version ${metadata.teamConfigVersion}, falling back to latest: ${e.message}")
+                loadFromDownloaded(context, actualTeam, actualSubteam) // Fallback to latest
+            }
+        } else {
+            // No metadata or version info, use latest
+            loadFromDownloaded(context, actualTeam, actualSubteam)
+        }
+        
+        // Cache the results
+        cachedConfigs = configs
+        cachedTeam = actualTeam
+        cachedSubteam = actualSubteam
+        cachedSiteName = siteName
+        return configs
+    }
+    
+    /**
+     * Loads form configs from downloaded logsheets using a specific team config version
+     * @param teamConfigId The team config folder ID
+     * @param teamConfigVersion The team config version (e.g., "1.0.0")
+     * @return List of FormConfig if successful, null if the specific version is not found
+     */
+    private fun loadFromDownloadedWithTeamConfigVersion(
+        context: android.content.Context,
+        team: String,
+        subteam: String,
+        teamConfigId: String,
+        teamConfigVersion: String
+    ): List<FormConfig>? {
+        val downloader = LogsheetDownloader(context)
+        
+        // Get the specific version of the team config
+        val teamConfigFile = downloader.getTeamConfigFile(teamConfigId, teamConfigVersion)
+            ?: run {
+                android.util.Log.w("FormConfigLoader", "Team config version $teamConfigVersion not found for ID $teamConfigId")
+                return null
+            }
+        
+        // Verify the team config matches the expected team/subteam
+        val teamConfigJson = try {
+            teamConfigFile.readText()
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error reading team config: ${e.message}", e)
+            return null
+        }
+        
+        // Verify it matches the expected team/subteam
+        try {
+            val configObj = org.json.JSONObject(teamConfigJson)
+            val configTeam = configObj.optString("team", "")
+            val configName = configObj.optString("name", "")
+            
+            if (configTeam != team) {
+                android.util.Log.w("FormConfigLoader", "Team config version $teamConfigVersion for ID $teamConfigId has team=$configTeam, expected $team")
+                return null
+            }
+            
+            // For LSI, verify subteam matches
+            if (team == "LSI" && subteam.isNotEmpty()) {
+                if (!configName.equals(subteam, ignoreCase = true)) {
+                    android.util.Log.w("FormConfigLoader", "Team config version $teamConfigVersion for ID $teamConfigId has name=$configName, expected $subteam")
+                    return null
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error verifying team config: ${e.message}", e)
+            return null
+        }
+        
+        // Parse and load forms using this team config
+        return loadFormsFromTeamConfig(context, downloader, teamConfigJson)
     }
     
     /**
@@ -107,6 +206,17 @@ object FormConfigLoader {
             return emptyList()
         }
         
+        return loadFormsFromTeamConfig(context, downloader, teamConfigJson)
+    }
+    
+    /**
+     * Helper method to load forms from a team config JSON
+     */
+    private fun loadFormsFromTeamConfig(
+        context: android.content.Context,
+        downloader: LogsheetDownloader,
+        teamConfigJson: String
+    ): List<FormConfig> {
         // Parse team config to get list of form entries with their positions
         val formEntries = try {
             parseTeamConfig(teamConfigJson)
@@ -235,6 +345,7 @@ object FormConfigLoader {
         cachedConfigs = null
         cachedTeam = null
         cachedSubteam = null
+        cachedSiteName = null
     }
     
     internal fun parseJson(jsonString: String): List<FormConfig> {
