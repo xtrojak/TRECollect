@@ -354,7 +354,8 @@ object FormConfigLoader {
         context: android.content.Context,
         formId: String,
         version: String,
-        siteName: String? = null
+        siteName: String? = null,
+        orderInSection: Int? = null
     ): FormConfig? {
         val downloader = LogsheetDownloader(context)
         
@@ -397,9 +398,26 @@ object FormConfigLoader {
         return if (teamConfigJson != null) {
             try {
                 val formEntries = parseTeamConfig(teamConfigJson)
-                val formEntry = formEntries.firstOrNull { it.formId == formId }
+                val formEntry = if (orderInSection != null) {
+                    // Find the specific instance by counting occurrences
+                    var instanceCount = 0
+                    formEntries.firstOrNull { entry ->
+                        if (entry.formId == formId) {
+                            if (instanceCount == orderInSection) {
+                                true
+                            } else {
+                                instanceCount++
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                } else {
+                    formEntries.firstOrNull { it.formId == formId }
+                }
                 if (formEntry != null) {
-                    parseLogsheetConfig(logsheetJson, formId, teamConfigJson, formEntry.sectionIndex, formEntry.formIndex)
+                    parseLogsheetConfig(logsheetJson, formEntry.formId, teamConfigJson, formEntry.sectionIndex, formEntry.formIndex)
                 } else {
                     // Form not found in team config, use defaults
                     parseLogsheetConfig(logsheetJson, formId, teamConfigJson, -1, -1)
