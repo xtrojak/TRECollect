@@ -308,7 +308,9 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private suspend fun checkAllMandatoryFormsSubmitted(): Boolean {
-        val mandatoryForms = PredefinedForms.getMandatoryForms(this)
+        val mandatoryForms = withContext(Dispatchers.IO) {
+            PredefinedForms.getMandatoryFormsForSite(this@SiteDetailActivity, site.name)
+        }
         if (mandatoryForms.isEmpty()) {
             return true // No mandatory forms, can finalize
         }
@@ -316,9 +318,11 @@ class SiteDetailActivity : AppCompatActivity() {
         val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
         
         // Get all forms grouped by section to check all instances
-        val sections = PredefinedForms.getSections(this)
+        val sections = withContext(Dispatchers.IO) {
+            PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+        }
         val formsBySection = sections.associateWith { section ->
-            PredefinedForms.getFormsBySection(this, section)
+            PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
         }
         
         // Check if all mandatory form instances are submitted
@@ -345,13 +349,17 @@ class SiteDetailActivity : AppCompatActivity() {
     
     private fun showFinalizeConfirmationDialog() {
         lifecycleScope.launch {
-            val mandatoryForms = PredefinedForms.getMandatoryForms(this@SiteDetailActivity)
+            val mandatoryForms = withContext(Dispatchers.IO) {
+                PredefinedForms.getMandatoryFormsForSite(this@SiteDetailActivity, site.name)
+            }
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
             
             // Get all forms grouped by section to check all instances
-            val sections = PredefinedForms.getSections(this@SiteDetailActivity)
+            val sections = withContext(Dispatchers.IO) {
+                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+            }
             val formsBySection = sections.associateWith { section ->
-                PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
+                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
             }
             
             // Check which mandatory form instances are missing
@@ -513,12 +521,16 @@ class SiteDetailActivity : AppCompatActivity() {
         }
         recyclerView.adapter = formSectionAdapter
         
-        // Initialize with all forms from config
-        val sections = PredefinedForms.getSections(this)
-        val formsBySection = sections.associateWith { section ->
-            PredefinedForms.getFormsBySection(this, section)
+        // Initialize with forms for this specific site (uses pinned team config version)
+        lifecycleScope.launch {
+            val sections = withContext(Dispatchers.IO) {
+                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+            }
+            val formsBySection = sections.associateWith { section ->
+                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
+            }
+            formSectionAdapter.setData(sections, formsBySection, emptySet(), emptySet())
         }
-        formSectionAdapter.setData(sections, formsBySection, emptySet(), emptySet())
     }
     
     private fun loadFormCompletions() {
@@ -529,10 +541,12 @@ class SiteDetailActivity : AppCompatActivity() {
                 formFileHelper.getAllFormStatuses(site.name)
             }
             
-            // Get all forms and calculate status per instance
-            val sections = PredefinedForms.getSections(this@SiteDetailActivity)
+            // Get all forms for this site and calculate status per instance
+            val sections = withContext(Dispatchers.IO) {
+                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+            }
             val formsBySection = sections.associateWith { section ->
-                PredefinedForms.getFormsBySection(this@SiteDetailActivity, section)
+                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
             }
             
             // Build sets of form keys for submitted and draft forms
@@ -576,7 +590,7 @@ class SiteDetailActivity : AppCompatActivity() {
     private fun onFormClick(form: Form) {
         // Calculate the position of this form instance in its section
         // This is needed because the same formId can appear multiple times in a section
-        val formsInSection = PredefinedForms.getFormsBySection(this, form.section)
+        val formsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, form.section)
         
         // Find the actual position of this form in the list (by matching both id and name)
         // Since forms with the same id can have different names (titles), we match both

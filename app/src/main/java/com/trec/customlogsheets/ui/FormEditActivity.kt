@@ -157,11 +157,11 @@ class FormEditActivity : AppCompatActivity() {
         // If not provided, calculate it (for backward compatibility)
         orderInSection = intent.getIntExtra("orderInSection", -1)
         if (orderInSection < 0) {
-            // Calculate it from the form list
-            val forms = PredefinedForms.getForms(this)
+            // Calculate it from the form list for this specific site
+            val forms = PredefinedForms.getFormsForSite(this, siteName)
             val formConfig = forms.firstOrNull { it.id == formId }
             if (formConfig != null) {
-                val formsInSection = PredefinedForms.getFormsBySection(this, formConfig.section)
+                val formsInSection = PredefinedForms.getFormsBySectionForSite(this, siteName, formConfig.section)
                 val positionInSection = formsInSection.indexOfFirst { it.id == formId }
                 if (positionInSection >= 0) {
                     // Count how many forms with this ID appear before this position
@@ -184,11 +184,11 @@ class FormEditActivity : AppCompatActivity() {
         
         formFileHelper = FormFileHelper(this)
         
-        // Load form configuration
+        // Load form configuration for this specific site (uses pinned team config version)
         try {
-            formConfig = PredefinedForms.getFormConfig(this, formId) ?: run {
-                android.util.Log.e("FormEditActivity", "Form config not found for formId: $formId")
-                android.util.Log.d("FormEditActivity", "Available forms: ${PredefinedForms.getForms(this).map { it.id }}")
+            formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId) ?: run {
+                android.util.Log.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
+                android.util.Log.d("FormEditActivity", "Available forms: ${PredefinedForms.getFormsForSite(this, siteName).map { it.id }}")
                 Toast.makeText(this, "Form configuration not found for: $formId", Toast.LENGTH_LONG).show()
                 finish()
                 return
