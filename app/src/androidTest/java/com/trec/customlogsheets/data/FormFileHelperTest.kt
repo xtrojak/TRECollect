@@ -68,6 +68,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "field1",
@@ -100,6 +101,7 @@ class FormFileHelperTest {
             isSubmitted = true,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = FormData.getCurrentTimestamp(),
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "field1",
@@ -124,6 +126,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = "2024-01-01T00:00:00Z",
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "text_field",
@@ -172,7 +175,7 @@ class FormFileHelperTest {
     fun formData_fromXml_deserializesCorrectly() {
         // Create XML string
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="2024-01-01T00:00:00Z">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="2024-01-01T00:00:00Z" logsheetVersion="1.0.0">
     <fields>
         <field id="text_field" value="Text value" />
         <field id="multiselect_field" values="Option1,Option2,Option3" />
@@ -228,6 +231,7 @@ class FormFileHelperTest {
             isSubmitted = true,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = FormData.getCurrentTimestamp(),
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "text_field",
@@ -308,6 +312,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "dynamic_field",
@@ -354,7 +359,7 @@ class FormFileHelperTest {
     fun formData_withDynamicFields_deserializesCorrectly() {
         // Create XML with dynamic fields
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="2024-01-01T00:00:00Z">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="2024-01-01T00:00:00Z" logsheetVersion="1.0.0">
     <fields>
         <field id="dynamic_field">
             <dynamicInstances>
@@ -403,6 +408,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "dynamic_field",
@@ -453,6 +459,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "table_field",
@@ -485,6 +492,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = "2024-01-01T00:00:00Z",
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "table_field",
@@ -547,6 +555,7 @@ class FormFileHelperTest {
             isSubmitted = false,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         
@@ -581,9 +590,9 @@ class FormFileHelperTest {
     
     @Test
     fun formData_missingAttributes_handlesGracefully() {
-        // Create XML with missing optional attributes
+        // Create XML with missing optional attributes (but logsheetVersion is required)
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" logsheetVersion="1.0.0">
     <fields>
         <field id="field1" value="test" />
     </fields>
@@ -602,10 +611,27 @@ class FormFileHelperTest {
     }
     
     @Test
+    fun formData_missingLogsheetVersion_returnsNull() {
+        // Create XML without required logsheetVersion attribute
+        val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false">
+    <fields>
+        <field id="field1" value="test" />
+    </fields>
+</form>"""
+        
+        // Deserialize from XML - should return null because logsheetVersion is required
+        val formData = FormData.fromXml(xml)
+        
+        // Should return null when logsheetVersion is missing
+        assertNull(formData)
+    }
+    
+    @Test
     fun formData_timestampFormats_handlesBothFormats() {
         // Test ISO 8601 format (current)
         val isoXml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="2024-01-01T00:00:00Z" submittedAt="2024-01-02T00:00:00Z">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="2024-01-01T00:00:00Z" submittedAt="2024-01-02T00:00:00Z" logsheetVersion="1.0.0">
     <fields />
 </form>"""
         
@@ -616,7 +642,7 @@ class FormFileHelperTest {
         
         // Test legacy Long format (milliseconds since epoch)
         val legacyXml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="1704067200000" submittedAt="1704153600000">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="1704067200000" submittedAt="1704153600000" logsheetVersion="1.0.0">
     <fields />
 </form>"""
         
@@ -694,6 +720,7 @@ class FormFileHelperTest {
             formId = longFormId,
             siteName = testSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         
@@ -711,6 +738,7 @@ class FormFileHelperTest {
             formId = testFormId,
             siteName = longSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         
@@ -728,6 +756,7 @@ class FormFileHelperTest {
             formId = specialFormId,
             siteName = testSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         
@@ -746,6 +775,7 @@ class FormFileHelperTest {
             formId = unicodeFormId,
             siteName = unicodeSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         
@@ -769,6 +799,7 @@ class FormFileHelperTest {
             formId = testFormId,
             siteName = testSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = largeFieldList
         )
         
@@ -786,6 +817,7 @@ class FormFileHelperTest {
             formId = testFormId,
             siteName = testSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue(
                     fieldId = "field1",
@@ -804,7 +836,7 @@ class FormFileHelperTest {
     @Test
     fun formData_invalidTimestampFormat_handlesGracefully() {
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="invalid-timestamp" submittedAt="also-invalid">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="invalid-timestamp" submittedAt="also-invalid" logsheetVersion="1.0.0">
     <fields />
 </form>"""
         
@@ -820,7 +852,7 @@ class FormFileHelperTest {
     @Test
     fun formData_negativeTimestamp_handlesGracefully() {
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="-1000" submittedAt="-2000">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" createdAt="-1000" submittedAt="-2000" logsheetVersion="1.0.0">
     <fields />
 </form>"""
         
@@ -835,12 +867,12 @@ class FormFileHelperTest {
     @Test
     fun formData_booleanStringVariations_handlesCorrectly() {
         val xml1 = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="true">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="true" logsheetVersion="1.0.0">
     <fields />
 </form>"""
         
         val xml2 = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" logsheetVersion="1.0.0">
     <fields />
 </form>"""
         
@@ -861,6 +893,7 @@ class FormFileHelperTest {
             isSubmitted = true,
             createdAt = FormData.getCurrentTimestamp(),
             submittedAt = FormData.getCurrentTimestamp(),
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("text", value = "text value"),
                 FormFieldValue("multiselect", values = listOf("opt1", "opt2")),
@@ -890,7 +923,7 @@ class FormFileHelperTest {
     fun formData_xmlWithComments_handlesGracefully() {
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <!-- This is a comment -->
-<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false">
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" logsheetVersion="1.0.0">
     <!-- Another comment -->
     <fields />
     <!-- End comment -->
@@ -905,7 +938,7 @@ class FormFileHelperTest {
     @Test
     fun formData_xmlWithWhitespace_handlesCorrectly() {
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<form   formId="$testFormId"   siteName="$testSiteName"   isSubmitted="false"   >
+<form   formId="$testFormId"   siteName="$testSiteName"   isSubmitted="false"   logsheetVersion="1.0.0"   >
     <fields   >
         <field   id="field1"   value="test"   />
     </fields   >
