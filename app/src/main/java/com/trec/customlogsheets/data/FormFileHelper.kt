@@ -92,9 +92,10 @@ class FormFileHelper(private val context: Context) {
      * Draft status is determined by the submittedAt field in the XML content
      * Filename pattern: ${sectionName}_${formId}_${orderInSection}.xml
      * @param formData The form data to save
+     * @param orderInSection The 0-based index of this specific form instance in its section (required when same formId appears multiple times)
      * @return true if successful, false otherwise
      */
-    fun saveFormData(formData: FormData): Boolean {
+    fun saveFormData(formData: FormData, orderInSection: Int? = null): Boolean {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
@@ -106,7 +107,7 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
-        // Get form config to determine section and order
+        // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formData.formId)
             ?: run {
                 AppLogger.e("FormFileHelper", "Form config not found for formId: ${formData.formId}")
@@ -114,14 +115,17 @@ class FormFileHelper(private val context: Context) {
             }
         
         // Get order in section (0-based)
-        val orderInSection = getOrderInSection(context, formData.formId)
+        // If provided, use it; otherwise calculate it (for backward compatibility)
+        val actualOrderInSection = orderInSection ?: getOrderInSection(context, formData.formId)
             ?: run {
                 AppLogger.e("FormFileHelper", "Could not determine order in section for formId: ${formData.formId}")
                 return false
             }
         
         // Generate filename using new pattern
-        val fileName = generateFileName(formConfig.section, formData.formId, orderInSection)
+        val fileName = generateFileName(formConfig.section, formData.formId, actualOrderInSection)
+        
+        AppLogger.d("FormFileHelper", "Saving form: site=${formData.siteName}, formId=${formData.formId}, orderInSection=$actualOrderInSection, fileName=$fileName")
         
         // Create or update the XML file
         val existingFile = siteFolder.findFile(fileName)
@@ -163,20 +167,26 @@ class FormFileHelper(private val context: Context) {
      * Loads form data from XML file
      * @param siteName The name of the site
      * @param formId The ID of the form
+     * @param orderInSection The 0-based index of this specific form instance in its section (required when same formId appears multiple times)
      * @param loadDraft If true, loads only if it's a draft (submittedAt is null), if false, loads only if submitted (submittedAt is set)
      * @param checkFinished If true, also checks the finished folder (for finalized sites)
      * @return FormData if found, null otherwise
      */
-    fun loadFormData(siteName: String, formId: String, loadDraft: Boolean = false, checkFinished: Boolean = true): FormData? {
+    fun loadFormData(siteName: String, formId: String, orderInSection: Int? = null, loadDraft: Boolean = false, checkFinished: Boolean = true): FormData? {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
-        // Get form config to determine section and order
+        // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return null
-        val orderInSection = getOrderInSection(context, formId) ?: return null
+        
+        // Get order in section (0-based)
+        // If provided, use it; otherwise calculate it (for backward compatibility)
+        val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return null
         
         // Generate expected filename
-        val fileName = generateFileName(formConfig.section, formId, orderInSection)
+        val fileName = generateFileName(formConfig.section, formId, actualOrderInSection)
+        
+        AppLogger.d("FormFileHelper", "Loading form: site=$siteName, formId=$formId, orderInSection=$actualOrderInSection, fileName=$fileName, loadDraft=$loadDraft")
         
         // Try ongoing folder first
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
@@ -243,17 +253,19 @@ class FormFileHelper(private val context: Context) {
     
     /**
      * Checks if a form has been submitted (not just saved as draft)
+     * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
      */
-    fun isFormSubmitted(siteName: String, formId: String): Boolean {
-        val formData = loadFormData(siteName, formId, loadDraft = false)
+    fun isFormSubmitted(siteName: String, formId: String, orderInSection: Int? = null): Boolean {
+        val formData = loadFormData(siteName, formId, orderInSection, loadDraft = false)
         return formData != null && formData.submittedAt != null
     }
     
     /**
      * Checks if a form has a draft version
+     * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
      */
-    fun hasDraft(siteName: String, formId: String): Boolean {
-        val formData = loadFormData(siteName, formId, loadDraft = true)
+    fun hasDraft(siteName: String, formId: String, orderInSection: Int? = null): Boolean {
+        val formData = loadFormData(siteName, formId, orderInSection, loadDraft = true)
         return formData != null && formData.submittedAt == null
     }
     
@@ -361,10 +373,11 @@ class FormFileHelper(private val context: Context) {
      * Deletes a form file (draft or submitted)
      * @param siteName The name of the site
      * @param formId The ID of the form
+     * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
      * @param isDraft If true, deletes draft version, if false, deletes submitted version
      * @return true if successful, false otherwise
      */
-    fun deleteForm(siteName: String, formId: String, isDraft: Boolean): Boolean {
+    fun deleteForm(siteName: String, formId: String, orderInSection: Int? = null, isDraft: Boolean): Boolean {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
@@ -376,12 +389,15 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
-        // Get form config to determine section and order
+        // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
-        val orderInSection = getOrderInSection(context, formId) ?: return false
+        
+        // Get order in section (0-based)
+        // If provided, use it; otherwise calculate it (for backward compatibility)
+        val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return false
         
         // Generate expected filename
-        val fileName = generateFileName(formConfig.section, formId, orderInSection)
+        val fileName = generateFileName(formConfig.section, formId, actualOrderInSection)
         
         // Find and delete the file
         val file = siteFolder.findFile(fileName)

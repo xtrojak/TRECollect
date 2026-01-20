@@ -497,10 +497,32 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private fun onFormClick(form: Form) {
+        // Calculate the position of this form instance in its section
+        // This is needed because the same formId can appear multiple times in a section
+        val formsInSection = PredefinedForms.getFormsBySection(this, form.section)
+        
+        // Find the actual position of this form in the list (by matching both id and name)
+        // Since forms with the same id can have different names (titles), we match both
+        val positionInSection = formsInSection.indexOfFirst { 
+            it.id == form.id && it.name == form.name 
+        }.takeIf { it >= 0 } ?: 0
+        
+        // Count how many forms with the same ID appear before this position
+        // This gives us the 0-based index of this specific instance of the form
+        var instanceIndex = 0
+        for (i in 0 until positionInSection) {
+            if (formsInSection[i].id == form.id) {
+                instanceIndex++
+            }
+        }
+        
+        android.util.Log.d("SiteDetailActivity", "Form clicked: id=${form.id}, name=${form.name}, position=$positionInSection, instanceIndex=$instanceIndex")
+        
         // Open form editing activity
         val intent = Intent(this, FormEditActivity::class.java).apply {
             putExtra("siteName", site.name)
             putExtra("formId", form.id)
+            putExtra("orderInSection", instanceIndex) // 0-based index of this specific instance
             putExtra("isReadOnly", site.status == com.trec.customlogsheets.data.SiteStatus.FINISHED)
         }
         startActivity(intent)
