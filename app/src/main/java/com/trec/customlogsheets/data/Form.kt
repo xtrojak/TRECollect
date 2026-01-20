@@ -101,8 +101,22 @@ object PredefinedForms {
         return FormConfigLoader.load(context).firstOrNull { it.id == formId }
     }
     
-    fun getFormConfigForSite(context: Context, siteName: String, formId: String): FormConfig? {
-        return FormConfigLoader.loadForSite(context, siteName).firstOrNull { it.id == formId }
+    fun getFormConfigForSite(context: Context, siteName: String, formId: String, orderInSection: Int? = null): FormConfig? {
+        val configs = FormConfigLoader.loadForSite(context, siteName)
+        if (orderInSection != null) {
+            // Find the specific instance by counting occurrences of the same formId
+            var instanceCount = 0
+            for (config in configs) {
+                if (config.id == formId) {
+                    if (instanceCount == orderInSection) {
+                        return config
+                    }
+                    instanceCount++
+                }
+            }
+            // If not found by orderInSection, fall back to first match
+        }
+        return configs.firstOrNull { it.id == formId }
     }
     
     fun getMandatoryForms(context: Context): List<Form> {

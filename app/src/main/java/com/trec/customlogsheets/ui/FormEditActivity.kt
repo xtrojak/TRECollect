@@ -185,9 +185,9 @@ class FormEditActivity : AppCompatActivity() {
         formFileHelper = FormFileHelper(this)
         
         // Load form configuration - we'll reload it after loading existing data if it has a version
-        // For now, use site-specific config as default
+        // Use orderInSection to get the correct instance (since same formId can appear multiple times with different titles)
         try {
-            formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId) ?: run {
+            formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId, orderInSection) ?: run {
                 android.util.Log.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
                 android.util.Log.d("FormEditActivity", "Available forms: ${PredefinedForms.getFormsForSite(this, siteName).map { it.id }}")
                 Toast.makeText(this, "Form configuration not found for: $formId", Toast.LENGTH_LONG).show()
@@ -209,7 +209,7 @@ class FormEditActivity : AppCompatActivity() {
         existingFormData?.let { data ->
             if (data.logsheetVersion.isNotEmpty()) {
                 try {
-                    val versionedConfig = FormConfigLoader.loadFormConfigForVersion(this, formId, data.logsheetVersion, siteName)
+                    val versionedConfig = FormConfigLoader.loadFormConfigForVersion(this, formId, data.logsheetVersion, siteName, orderInSection)
                     if (versionedConfig != null) {
                         formConfig = versionedConfig
                         android.util.Log.d("FormEditActivity", "Loaded form config version ${data.logsheetVersion} for formId: $formId")
