@@ -30,6 +30,7 @@ data class FormData(
     val isSubmitted: Boolean, // true = submitted, false = draft
     val createdAt: String? = null, // ISO 8601 UTC timestamp when form was first created (draft or submit)
     val submittedAt: String? = null, // ISO 8601 UTC timestamp when submitted (only set when actually submitted)
+    val logsheetVersion: String, // Version of the logsheet config used (e.g., "1.0.0")
     val fieldValues: List<FormFieldValue>
 ) {
     /**
@@ -51,6 +52,7 @@ data class FormData(
         if (submittedAt != null) {
             serializer.attribute(null, "submittedAt", submittedAt.toString())
         }
+        serializer.attribute(null, "logsheetVersion", logsheetVersion)
         
         serializer.startTag(null, "fields")
         for (fieldValue in fieldValues) {
@@ -166,6 +168,7 @@ data class FormData(
                 var isSubmitted = false
                 var createdAt: String? = null
                 var submittedAt: String? = null
+                var logsheetVersion: String = ""
                 val fieldValues = mutableListOf<FormFieldValue>()
                 
                 var eventType = parser.eventType
@@ -196,6 +199,7 @@ data class FormData(
                                     formId = parser.getAttributeValue(null, "formId") ?: ""
                                     siteName = parser.getAttributeValue(null, "siteName") ?: ""
                                     isSubmitted = parser.getAttributeValue(null, "isSubmitted")?.toBoolean() ?: false
+                                    logsheetVersion = parser.getAttributeValue(null, "logsheetVersion") ?: ""
                                     
                                     // Read createdAt - handle both ISO 8601 string and legacy Long format
                                     val createdAtAttr = parser.getAttributeValue(null, "createdAt")
@@ -374,14 +378,20 @@ data class FormData(
                     eventType = parser.next()
                 }
                 
-                FormData(
-                    formId = formId,
-                    siteName = siteName,
-                    isSubmitted = isSubmitted,
-                    createdAt = createdAt,
-                    submittedAt = submittedAt,
-                    fieldValues = fieldValues
-                )
+                if (logsheetVersion.isEmpty()) {
+                    android.util.Log.e("FormData", "Missing logsheetVersion in XML for formId: $formId")
+                    null
+                } else {
+                    FormData(
+                        formId = formId,
+                        siteName = siteName,
+                        isSubmitted = isSubmitted,
+                        createdAt = createdAt,
+                        submittedAt = submittedAt,
+                        logsheetVersion = logsheetVersion,
+                        fieldValues = fieldValues
+                    )
+                }
             } catch (e: Exception) {
                 android.util.Log.e("FormData", "Error parsing XML: ${e.message}", e)
                 null

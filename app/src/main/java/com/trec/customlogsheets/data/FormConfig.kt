@@ -341,6 +341,79 @@ object FormConfigLoader {
         )
     }
     
+    /**
+     * Loads a specific FormConfig for a formId and version
+     * This is used when loading a form submission that has a pinned version
+     * @param context The Android context
+     * @param formId The form ID
+     * @param version The logsheet version (e.g., "1.0.0")
+     * @param siteName Optional site name to get section/title info from team config
+     * @return The FormConfig if found, null otherwise
+     */
+    fun loadFormConfigForVersion(
+        context: android.content.Context,
+        formId: String,
+        version: String,
+        siteName: String? = null
+    ): FormConfig? {
+        val downloader = LogsheetDownloader(context)
+        
+        // Get the specific version of the logsheet
+        val logsheetFile = downloader.getLogsheetFile(formId, version)
+            ?: run {
+                android.util.Log.w("FormConfigLoader", "Logsheet version $version not found for formId $formId")
+                return null
+            }
+        
+        val logsheetJson = try {
+            logsheetFile.readText()
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error reading logsheet $formId version $version: ${e.message}", e)
+            return null
+        }
+        
+        // If siteName is provided, try to get team config for section/title info
+        // Otherwise, use defaults from logsheet config
+        val teamConfigJson = if (siteName != null) {
+            try {
+                val formFileHelper = FormFileHelper(context)
+                val metadata = formFileHelper.loadSiteMetadata(siteName)
+                if (metadata != null && metadata.teamConfigId != null && metadata.teamConfigVersion != null) {
+                    val teamConfigFile = downloader.getTeamConfigFile(metadata.teamConfigId, metadata.teamConfigVersion)
+                    teamConfigFile?.readText()
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("FormConfigLoader", "Could not load team config for site $siteName: ${e.message}")
+                null
+            }
+        } else {
+            null
+        }
+        
+        // If we have team config, try to find the form entry to get section/title
+        // Otherwise, use defaults from logsheet config
+        return if (teamConfigJson != null) {
+            try {
+                val formEntries = parseTeamConfig(teamConfigJson)
+                val formEntry = formEntries.firstOrNull { it.formId == formId }
+                if (formEntry != null) {
+                    parseLogsheetConfig(logsheetJson, formId, teamConfigJson, formEntry.sectionIndex, formEntry.formIndex)
+                } else {
+                    // Form not found in team config, use defaults
+                    parseLogsheetConfig(logsheetJson, formId, teamConfigJson, -1, -1)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("FormConfigLoader", "Error parsing team config for form $formId: ${e.message}")
+                parseLogsheetConfig(logsheetJson, formId, teamConfigJson, -1, -1)
+            }
+        } else {
+            // No team config, use defaults from logsheet config
+            parseLogsheetConfig(logsheetJson, formId, "{\"sections\":[]}", -1, -1)
+        }
+    }
+    
     fun clearCache() {
         cachedConfigs = null
         cachedTeam = null
