@@ -10,6 +10,7 @@ import com.trec.customlogsheets.data.AppDatabase
 import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.SettingsPreferences
+import com.trec.customlogsheets.data.SiteMetadata
 import com.trec.customlogsheets.data.SiteStatus
 import com.trec.customlogsheets.data.UploadStatus
 import com.trec.customlogsheets.data.OwnCloudManager
@@ -388,6 +389,34 @@ class MainViewModel(
         
         AppLogger.i("MainViewModel", "Site created successfully: name='$siteName'")
         
+        // Get team config info for metadata
+        val team = settingsPreferences.getSamplingTeam()
+        val subteam = settingsPreferences.getSamplingSubteam()
+        val downloader = com.trec.customlogsheets.data.LogsheetDownloader(context)
+        val teamConfigFile = downloader.findTeamConfigByTeamAndName(team, subteam.takeIf { it.isNotEmpty() })
+        
+        var teamConfigId: String? = null
+        var teamConfigVersion: String? = null
+        
+        if (teamConfigFile != null) {
+            // Extract team config ID (folder name) and version (filename without .json)
+            teamConfigId = teamConfigFile.parentFile?.name
+            teamConfigVersion = teamConfigFile.name.removeSuffix(".json")
+        }
+        
+        // Create and save site metadata
+        val metadata = SiteMetadata(
+            siteName = siteName,
+            createdAt = SiteMetadata.getCurrentTimestamp(),
+            teamConfigId = teamConfigId,
+            teamConfigVersion = teamConfigVersion
+        )
+        
+        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(context)
+        if (!formFileHelper.saveSiteMetadata(siteName, metadata)) {
+            AppLogger.w("MainViewModel", "Could not save site metadata for site: $siteName")
+        }
+        
         // Insert site into database
         val newSite = try {
             val site = SamplingSite(
@@ -579,6 +608,22 @@ class MainViewModel(
             if (!moveSuccess) {
                 return FinalizeSiteResult.Error("Could not move folder to finished")
             }
+        }
+        
+        // Update site metadata with submission timestamp (before moving folder)
+        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(context)
+        val existingMetadata = formFileHelper.loadSiteMetadata(site.name)
+        if (existingMetadata != null) {
+            val updatedMetadata = existingMetadata.copy(submittedAt = SiteMetadata.getCurrentTimestamp())
+            formFileHelper.saveSiteMetadata(site.name, updatedMetadata)
+        } else {
+            // Create new metadata if it doesn't exist (shouldn't happen, but handle gracefully)
+            val metadata = SiteMetadata(
+                siteName = site.name,
+                createdAt = SiteMetadata.getCurrentTimestamp(),
+                submittedAt = SiteMetadata.getCurrentTimestamp()
+            )
+            formFileHelper.saveSiteMetadata(site.name, metadata)
         }
         
         // Update site status to FINISHED with NOT_UPLOADED status
@@ -803,6 +848,28 @@ class MainViewModel(
             }
         } else {
             AppLogger.w("MainViewModel", "Site folder '${site.name}' not found in ongoing folder")
+        }
+        
+        // Update site metadata with deletion timestamp
+        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(context)
+        // Try to find site folder in ongoing or deleted folder to update metadata
+        val siteFolderForMetadata = ongoingFolder.findFile(site.name) 
+            ?: deletedFolder.findFile(site.name)
+        
+        if (siteFolderForMetadata != null && siteFolderForMetadata.exists()) {
+            val existingMetadata = formFileHelper.loadSiteMetadata(site.name)
+            if (existingMetadata != null) {
+                val updatedMetadata = existingMetadata.copy(deletedAt = SiteMetadata.getCurrentTimestamp())
+                formFileHelper.saveSiteMetadata(site.name, updatedMetadata)
+            } else {
+                // Create new metadata if it doesn't exist
+                val metadata = SiteMetadata(
+                    siteName = site.name,
+                    createdAt = SiteMetadata.getCurrentTimestamp(),
+                    deletedAt = SiteMetadata.getCurrentTimestamp()
+                )
+                formFileHelper.saveSiteMetadata(site.name, metadata)
+            }
         }
         
         // Delete form completions for this site (using site name)

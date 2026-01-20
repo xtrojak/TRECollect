@@ -524,5 +524,97 @@ class FormFileHelper(private val context: Context) {
             true
         }
     }
+    
+    /**
+     * Saves site metadata to site_metadata.xml in the site folder
+     * @param siteName The name of the site
+     * @param metadata The site metadata to save
+     * @return true if successful, false otherwise
+     */
+    fun saveSiteMetadata(siteName: String, metadata: SiteMetadata): Boolean {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        
+        // Try ongoing folder first, then finished folder
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        var siteFolder = ongoingFolder?.findFile(siteName)
+        
+        if (siteFolder == null || !siteFolder.exists()) {
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+            siteFolder = finishedFolder?.findFile(siteName)
+        }
+        
+        if (siteFolder == null || !siteFolder.exists() || !siteFolder.canWrite()) {
+            AppLogger.e("FormFileHelper", "Site folder not found or not writable: $siteName")
+            return false
+        }
+        
+        val fileName = "site_metadata.xml"
+        val existingFile = siteFolder.findFile(fileName)
+        val file = if (existingFile != null && existingFile.exists()) {
+            existingFile
+        } else {
+            siteFolder.createFile("text/xml", fileName)
+        }
+        
+        if (file == null || !file.exists()) {
+            AppLogger.e("FormFileHelper", "Failed to create/access site metadata file: $fileName for site=$siteName")
+            return false
+        }
+        
+        return try {
+            val xmlContent = SiteMetadata.toXml(metadata)
+            val outputStream: OutputStream? = context.contentResolver.openOutputStream(file.uri)
+            outputStream?.use { it.write(xmlContent.toByteArray()) }
+            val success = outputStream != null
+            if (success) {
+                AppLogger.i("FormFileHelper", "Saved site metadata: site=$siteName, teamConfig=${metadata.teamConfigId}/${metadata.teamConfigVersion}")
+            }
+            success
+        } catch (e: Exception) {
+            AppLogger.e("FormFileHelper", "Error saving site metadata: site=$siteName", e)
+            false
+        }
+    }
+    
+    /**
+     * Loads site metadata from site_metadata.xml in the site folder
+     * @param siteName The name of the site
+     * @return SiteMetadata if found, null otherwise
+     */
+    fun loadSiteMetadata(siteName: String): SiteMetadata? {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        
+        // Try ongoing folder first, then finished folder
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        var siteFolder = ongoingFolder?.findFile(siteName)
+        
+        if (siteFolder == null || !siteFolder.exists()) {
+            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+            siteFolder = finishedFolder?.findFile(siteName)
+        }
+        
+        if (siteFolder == null || !siteFolder.exists() || !siteFolder.canRead()) {
+            return null
+        }
+        
+        val fileName = "site_metadata.xml"
+        val file = siteFolder.findFile(fileName)
+        
+        if (file == null || !file.exists() || !file.canRead()) {
+            return null
+        }
+        
+        return try {
+            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+            inputStream?.close()
+            SiteMetadata.fromXml(xmlContent)
+        } catch (e: Exception) {
+            AppLogger.e("FormFileHelper", "Error loading site metadata: site=$siteName", e)
+            null
+        }
+    }
 }
 
