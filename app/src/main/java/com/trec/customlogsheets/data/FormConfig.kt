@@ -107,8 +107,8 @@ object FormConfigLoader {
             return emptyList()
         }
         
-        // Parse team config to get list of form IDs
-        val formIds = try {
+        // Parse team config to get list of form entries with their positions
+        val formEntries = try {
             parseTeamConfig(teamConfigJson)
         } catch (e: Exception) {
             android.util.Log.e("FormConfigLoader", "Error parsing team config: ${e.message}", e)
@@ -117,19 +117,19 @@ object FormConfigLoader {
         
         // Load each logsheet config
         val configs = mutableListOf<FormConfig>()
-        for (formId in formIds) {
-            val logsheetFile = downloader.getLogsheetFile(formId) ?: continue
+        for (formEntry in formEntries) {
+            val logsheetFile = downloader.getLogsheetFile(formEntry.formId) ?: continue
             val logsheetJson = try {
                 logsheetFile.readText()
             } catch (e: Exception) {
-                android.util.Log.e("FormConfigLoader", "Error reading logsheet $formId: ${e.message}", e)
+                android.util.Log.e("FormConfigLoader", "Error reading logsheet ${formEntry.formId}: ${e.message}", e)
                 continue
             }
             
             val config = try {
-                parseLogsheetConfig(logsheetJson, formId, teamConfigJson)
+                parseLogsheetConfig(logsheetJson, formEntry.formId, teamConfigJson, formEntry.sectionIndex, formEntry.formIndex)
             } catch (e: Exception) {
-                android.util.Log.e("FormConfigLoader", "Error parsing logsheet $formId: ${e.message}", e)
+                android.util.Log.e("FormConfigLoader", "Error parsing logsheet ${formEntry.formId}: ${e.message}", e)
                 continue
             }
             
@@ -148,11 +148,21 @@ object FormConfigLoader {
     }
     
     /**
-     * Parses team config JSON to extract form IDs and their organization
-     * Returns list of form IDs in order they appear in sections
+     * Data class to hold form entry information from team config
      */
-    private fun parseTeamConfig(teamConfigJson: String): List<String> {
-        val formIds = mutableListOf<String>()
+    private data class FormEntry(
+        val formId: String,
+        val sectionIndex: Int,
+        val formIndex: Int
+    )
+    
+    /**
+     * Parses team config JSON to extract form entries with their positions
+     * Returns list of form entries in order they appear in sections
+     * This preserves the ability to have the same form_id multiple times with different titles
+     */
+    private fun parseTeamConfig(teamConfigJson: String): List<FormEntry> {
+        val formEntries = mutableListOf<FormEntry>()
         val jsonObject = org.json.JSONObject(teamConfigJson)
         val sectionsArray = jsonObject.getJSONArray("sections")
         
@@ -163,42 +173,46 @@ object FormConfigLoader {
             for (j in 0 until formsArray.length()) {
                 val formObj = formsArray.getJSONObject(j)
                 val formId = formObj.getString("form_id")
-                formIds.add(formId)
+                formEntries.add(FormEntry(formId, i, j))
             }
         }
         
-        return formIds
+        return formEntries
     }
     
     /**
      * Parses a single logsheet config JSON and converts it to FormConfig
      * Uses team config to get section and title information
+     * @param sectionIndex The index of the section in the team config (to match specific occurrence)
+     * @param formIndex The index of the form within the section (to match specific occurrence)
      */
-    private fun parseLogsheetConfig(logsheetJson: String, formId: String, teamConfigJson: String): FormConfig? {
+    private fun parseLogsheetConfig(logsheetJson: String, formId: String, teamConfigJson: String, sectionIndex: Int, formIndex: Int): FormConfig? {
         val logsheetObj = org.json.JSONObject(logsheetJson)
         val teamObj = org.json.JSONObject(teamConfigJson)
         
-        // Find form info from team config
+        // Find form info from team config using the specific position
         var formName = logsheetObj.optString("name", formId)
         var formSection = "" // Default to empty string (no section name)
         var formDescription = logsheetObj.optString("description").takeIf { it.isNotEmpty() }
         var formMandatory = false
         
-        // Search team config for this form_id
+        // Get the specific form entry from team config using the position indices
         val sectionsArray = teamObj.getJSONArray("sections")
-        for (i in 0 until sectionsArray.length()) {
-            val sectionObj = sectionsArray.getJSONObject(i)
+        if (sectionIndex >= 0 && sectionIndex < sectionsArray.length()) {
+            val sectionObj = sectionsArray.getJSONObject(sectionIndex)
             // Section name is optional - use empty string if not specified
             val sectionName = sectionObj.optString("name", "")
             val formsArray = sectionObj.getJSONArray("forms")
             
-            for (j in 0 until formsArray.length()) {
-                val formObj = formsArray.getJSONObject(j)
+            if (formIndex >= 0 && formIndex < formsArray.length()) {
+                val formObj = formsArray.getJSONObject(formIndex)
+                // Verify this is the correct form_id (safety check)
                 if (formObj.getString("form_id") == formId) {
                     formName = formObj.optString("title", formName)
                     formSection = sectionName
                     formMandatory = formObj.optBoolean("mandatory", false)
-                    break
+                } else {
+                    android.util.Log.w("FormConfigLoader", "Form ID mismatch at section $sectionIndex, form $formIndex: expected '$formId', found '${formObj.getString("form_id")}'")
                 }
             }
         }
