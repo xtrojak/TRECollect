@@ -36,10 +36,24 @@ class FormAdapter(
 
     override fun onBindViewHolder(holder: FormViewHolder, position: Int) {
         val form = getItem(position)
+        
+        // Calculate orderInSection for this form instance
+        // The position parameter is the index in the section's form list
+        // Count how many forms with the same ID appear before this position
+        val formsList = currentList
+        var instanceIndex = 0
+        for (i in 0 until position) {
+            if (formsList[i].id == form.id) {
+                instanceIndex++
+            }
+        }
+        
+        // Use composite key: "formId_orderInSection"
+        val formKey = "${form.id}_$instanceIndex"
         holder.bind(
             form, 
-            completedFormIds.contains(form.id),
-            draftFormIds.contains(form.id)
+            completedFormIds.contains(formKey),
+            draftFormIds.contains(formKey)
         )
     }
 
