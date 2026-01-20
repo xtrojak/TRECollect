@@ -137,6 +137,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -156,6 +157,7 @@ class FormDataTest {
             isSubmitted = true,
             createdAt = timestamp,
             submittedAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("field1", value = "value1")
             )
@@ -177,6 +179,7 @@ class FormDataTest {
             isSubmitted = true,
             createdAt = timestamp,
             submittedAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(FormFieldValue("field1", value = "value1"))
         )
         val formData2 = FormData(
@@ -185,6 +188,7 @@ class FormDataTest {
             isSubmitted = true,
             createdAt = timestamp,
             submittedAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(FormFieldValue("field1", value = "value1"))
         )
 
@@ -342,6 +346,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = false,
             createdAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -356,6 +361,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = false,
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -369,6 +375,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("field1", value = "value1"),
                 FormFieldValue("field2", value = "value2"),
@@ -388,6 +395,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = true,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("text_field", value = "text value"),
                 FormFieldValue("multiselect_field", values = listOf("opt1", "opt2")),
@@ -439,6 +447,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         val formData2 = FormData(
@@ -446,6 +455,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -460,6 +470,7 @@ class FormDataTest {
             siteName = "Site 1",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         val formData2 = FormData(
@@ -467,6 +478,7 @@ class FormDataTest {
             siteName = "Site 2",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -481,6 +493,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = false,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
         val formData2 = FormData(
@@ -488,6 +501,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -519,6 +533,7 @@ class FormDataTest {
             formId = longFormId,
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -532,6 +547,7 @@ class FormDataTest {
             formId = "form1",
             siteName = longSiteName,
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -545,6 +561,7 @@ class FormDataTest {
             formId = specialFormId,
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -557,6 +574,7 @@ class FormDataTest {
             formId = "",
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -569,6 +587,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -587,6 +606,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = largeFieldList
         )
 
@@ -602,6 +622,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = false,
             submittedAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -617,6 +638,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = true,
             submittedAt = null,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -828,6 +850,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("field1", value = "value1"),
                 FormFieldValue("field1", value = "value2"),
@@ -848,6 +871,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = false,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("", value = "value1")
             )
@@ -864,6 +888,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("field1", value = "value1"),
                 FormFieldValue("field2", value = "value2")
@@ -874,6 +899,7 @@ class FormDataTest {
             siteName = "Test Site",
             isSubmitted = true,
             createdAt = timestamp,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("field2", value = "value2"),
                 FormFieldValue("field1", value = "value1")
@@ -894,6 +920,7 @@ class FormDataTest {
             isSubmitted = true,
             createdAt = createdAt,
             submittedAt = submittedAt,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -915,6 +942,7 @@ class FormDataTest {
             isSubmitted = true,
             createdAt = createdAt,
             submittedAt = submittedAt,
+            logsheetVersion = "1.0.0",
             fieldValues = emptyList()
         )
 
@@ -934,6 +962,7 @@ class FormDataTest {
             formId = "form1",
             siteName = "Test Site",
             isSubmitted = true,
+            logsheetVersion = "1.0.0",
             fieldValues = listOf(
                 FormFieldValue("text_field", value = "text value"),
                 FormFieldValue("section_field", value = "section header"), // Should not be in XML
