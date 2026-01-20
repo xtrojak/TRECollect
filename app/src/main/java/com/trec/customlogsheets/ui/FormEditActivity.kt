@@ -45,6 +45,7 @@ class FormEditActivity : AppCompatActivity() {
     private lateinit var formConfig: FormConfig
     private lateinit var formFileHelper: FormFileHelper
     private var isReadOnly: Boolean = false
+    private var orderInSection: Int = 0 // 0-based index of this form instance in its section
     
     private lateinit var containerFields: LinearLayout
     private lateinit var textFormName: TextView
@@ -150,6 +151,33 @@ class FormEditActivity : AppCompatActivity() {
         formId = intent.getStringExtra("formId") ?: run {
             finish()
             return
+        }
+        
+        // Get the order in section (0-based index of this specific form instance)
+        // If not provided, calculate it (for backward compatibility)
+        orderInSection = intent.getIntExtra("orderInSection", -1)
+        if (orderInSection < 0) {
+            // Calculate it from the form list
+            val forms = PredefinedForms.getForms(this)
+            val formConfig = forms.firstOrNull { it.id == formId }
+            if (formConfig != null) {
+                val formsInSection = PredefinedForms.getFormsBySection(this, formConfig.section)
+                val positionInSection = formsInSection.indexOfFirst { it.id == formId }
+                if (positionInSection >= 0) {
+                    // Count how many forms with this ID appear before this position
+                    var instanceIndex = 0
+                    for (i in 0 until positionInSection) {
+                        if (formsInSection[i].id == formId) {
+                            instanceIndex++
+                        }
+                    }
+                    orderInSection = instanceIndex
+                } else {
+                    orderInSection = 0
+                }
+            } else {
+                orderInSection = 0
+            }
         }
         
         isReadOnly = intent.getBooleanExtra("isReadOnly", false)
@@ -369,8 +397,9 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun loadExistingData() {
         // Try to load draft first, then submitted version
-        existingFormData = formFileHelper.loadFormData(siteName, formId, loadDraft = true)
-            ?: formFileHelper.loadFormData(siteName, formId, loadDraft = false)
+        // Pass orderInSection to load the correct file for this form instance
+        existingFormData = formFileHelper.loadFormData(siteName, formId, orderInSection, loadDraft = true)
+            ?: formFileHelper.loadFormData(siteName, formId, orderInSection, loadDraft = false)
         
         if (existingFormData != null) {
             for (fieldValue in existingFormData!!.fieldValues) {
@@ -2913,8 +2942,8 @@ class FormEditActivity : AppCompatActivity() {
             // Preserve createdAt from existing data, or set to current time if new form
             // Check both draft and submitted versions to find the earliest createdAt
             // Always check both draft and submitted versions to find the best createdAt
-            val existingDraft = formFileHelper.loadFormData(siteName, formId, loadDraft = true)
-            val existingSubmitted = formFileHelper.loadFormData(siteName, formId, loadDraft = false)
+            val existingDraft = formFileHelper.loadFormData(siteName, formId, orderInSection, loadDraft = true)
+            val existingSubmitted = formFileHelper.loadFormData(siteName, formId, orderInSection, loadDraft = false)
             
             // Priority: submitted version's createdAt > draft's createdAt > new timestamp
             // (submitted version's createdAt is the original creation time if it exists)
@@ -2931,7 +2960,7 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues = allValues.values.toList()
             )
             
-            val success = formFileHelper.saveFormData(formData)
+            val success = formFileHelper.saveFormData(formData, orderInSection)
             
             if (success) {
                 // Update initial state to match current state
