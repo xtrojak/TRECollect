@@ -670,6 +670,37 @@ class LogsheetDownloader(private val context: Context) {
     }
     
     /**
+     * Gets a specific version of a logsheet file
+     * @param logsheetId The logsheet ID (folder name)
+     * @param version The version string (e.g., "1.0.0")
+     * @return The logsheet file if found, null otherwise
+     */
+    fun getLogsheetFile(logsheetId: String, version: String): File? {
+        val logsheetFolder = File(logsheetsDir, logsheetId)
+        if (!logsheetFolder.exists() || !logsheetFolder.isDirectory) {
+            return null
+        }
+        
+        // Find the specific version file
+        val versionFile = File(logsheetFolder, "$version.json")
+        return if (versionFile.exists() && versionFile.isFile) {
+            versionFile
+        } else {
+            null
+        }
+    }
+    
+    /**
+     * Gets the version of the latest logsheet file
+     * @param logsheetId The logsheet ID (folder name)
+     * @return The version string (e.g., "1.0.0") if found, null otherwise
+     */
+    fun getLatestLogsheetVersion(logsheetId: String): String? {
+        val latestFile = getLogsheetFile(logsheetId)
+        return latestFile?.name?.removeSuffix(".json")
+    }
+    
+    /**
      * Gets the local file path for a team config by folder ID (returns the latest version)
      */
     fun getTeamConfigFile(teamId: String): File? {

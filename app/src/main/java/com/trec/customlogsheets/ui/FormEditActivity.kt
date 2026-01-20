@@ -184,7 +184,8 @@ class FormEditActivity : AppCompatActivity() {
         
         formFileHelper = FormFileHelper(this)
         
-        // Load form configuration for this specific site (uses pinned team config version)
+        // Load form configuration - we'll reload it after loading existing data if it has a version
+        // For now, use site-specific config as default
         try {
             formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId) ?: run {
                 android.util.Log.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
@@ -203,6 +204,35 @@ class FormEditActivity : AppCompatActivity() {
         setupToolbar()
         setupViews()
         loadExistingData()
+        
+        // After loading existing data, reload form config with the version from XML
+        existingFormData?.let { data ->
+            if (data.logsheetVersion.isNotEmpty()) {
+                try {
+                    val versionedConfig = FormConfigLoader.loadFormConfigForVersion(this, formId, data.logsheetVersion, siteName)
+                    if (versionedConfig != null) {
+                        formConfig = versionedConfig
+                        android.util.Log.d("FormEditActivity", "Loaded form config version ${data.logsheetVersion} for formId: $formId")
+                    } else {
+                        android.util.Log.e("FormEditActivity", "Could not load form config version ${data.logsheetVersion} for formId: $formId")
+                        Toast.makeText(this, "Error: Could not load form config version ${data.logsheetVersion}", Toast.LENGTH_LONG).show()
+                        finish()
+                        return
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("FormEditActivity", "Error loading form config version ${data.logsheetVersion}: ${e.message}", e)
+                    Toast.makeText(this, "Error loading form config: ${e.message}", Toast.LENGTH_LONG).show()
+                    finish()
+                    return
+                }
+            } else {
+                android.util.Log.e("FormEditActivity", "Existing form data missing logsheetVersion for formId: $formId")
+                Toast.makeText(this, "Error: Form data missing version information", Toast.LENGTH_LONG).show()
+                finish()
+                return
+            }
+        }
+        
         renderFields()
     }
     
@@ -2951,12 +2981,31 @@ class FormEditActivity : AppCompatActivity() {
                 ?: existingDraft?.createdAt
                 ?: FormData.getCurrentTimestamp()
             
+            // Get logsheet version from existing data, or get latest for new submissions
+            // Note: saveFormData will also set the version, but we need it here for FormData constructor
+            val logsheetVersion: String? = existingSubmitted?.logsheetVersion
+                ?: existingDraft?.logsheetVersion
+                ?: run {
+                    val downloader = LogsheetDownloader(this@FormEditActivity)
+                    downloader.getLatestLogsheetVersion(formId)
+                }
+            
+            if (logsheetVersion == null || logsheetVersion.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FormEditActivity, "Error: Could not determine logsheet version", Toast.LENGTH_LONG).show()
+                }
+                return@launch
+            }
+            
+            val finalLogsheetVersion = logsheetVersion
+            
             val formData = FormData(
                 formId = formId,
                 siteName = siteName,
                 isSubmitted = !isDraft,
                 createdAt = createdAt,
                 submittedAt = if (!isDraft) FormData.getCurrentTimestamp() else null,
+                logsheetVersion = finalLogsheetVersion,
                 fieldValues = allValues.values.toList()
             )
             

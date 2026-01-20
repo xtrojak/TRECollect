@@ -130,6 +130,42 @@ class FormFileHelper(private val context: Context) {
         // Create or update the XML file
         val existingFile = siteFolder.findFile(fileName)
         val isNewFile = existingFile == null || !existingFile.exists()
+        
+        // Verify that formData has a valid version
+        if (formData.logsheetVersion.isEmpty()) {
+            AppLogger.e("FormFileHelper", "FormData missing logsheetVersion for formId: ${formData.formId}")
+            return false
+        }
+        
+        // If updating an existing file, verify the version matches (don't allow version changes)
+        if (!isNewFile) {
+            existingFile?.let { file ->
+                try {
+                    val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+                    val existingXml = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+                    inputStream?.close()
+                    val existingFormData = FormData.fromXml(existingXml)
+                    if (existingFormData == null || existingFormData.logsheetVersion.isEmpty()) {
+                        AppLogger.e("FormFileHelper", "Existing file missing logsheetVersion for formId: ${formData.formId}")
+                        return false
+                    }
+                    if (existingFormData.logsheetVersion != formData.logsheetVersion) {
+                        AppLogger.e("FormFileHelper", "Version mismatch: existing=${existingFormData.logsheetVersion}, new=${formData.logsheetVersion}")
+                        return false
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e("FormFileHelper", "Could not read existing file to verify version: ${e.message}", e)
+                    return false
+                }
+            } ?: run {
+                AppLogger.e("FormFileHelper", "Existing file is null for formId: ${formData.formId}")
+                return false
+            }
+        }
+        
+        // Use the version from formData (already set)
+        val formDataWithVersion = formData
+        
         val file = if (existingFile != null && existingFile.exists()) {
             existingFile
         } else {
@@ -143,7 +179,7 @@ class FormFileHelper(private val context: Context) {
         
         // Write XML content
         return try {
-            val xmlContent = formData.toXml()
+            val xmlContent = formDataWithVersion.toXml()
             val outputStream: OutputStream? = context.contentResolver.openOutputStream(file.uri)
             outputStream?.use { it.write(xmlContent.toByteArray()) }
             val success = outputStream != null
