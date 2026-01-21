@@ -456,27 +456,39 @@ class FormEditActivity : AppCompatActivity() {
                     if (fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
                         fieldViews[fieldConfig.id] = fieldView
                         
-                        // Load existing value if available
-                        val existingValue = fieldValues[fieldConfig.id]
-                        if (existingValue != null) {
-                            setFieldValue(fieldView, fieldConfig, existingValue)
-                        }
+                    // Load existing value if available
+                    val existingValue = fieldValues[fieldConfig.id]
+                    if (existingValue != null) {
+                        setFieldValue(fieldView, fieldConfig, existingValue)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("FormEditActivity", "Error creating field ${fieldConfig.id}: ${e.message}", e)
-                    // Create a simple error view instead of crashing
-                    val errorView = TextView(this).apply {
-                        text = "Error loading field: ${fieldConfig.label}"
-                        setTextColor(android.graphics.Color.RED)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FormEditActivity", "Error creating field ${fieldConfig.id}: ${e.message}", e)
+                // Create a simple error view instead of crashing
+                val errorView = TextView(this).apply {
+                    text = "Error loading field: ${fieldConfig.label}"
+                    setTextColor(android.graphics.Color.RED)
+                }
+                containerFields.addView(errorView)
+            }
+        }
+        
+        // Apply default values if this is a new form (not draft or submitted)
+        if (existingFormData == null) {
+            for (fieldConfig in formConfig.fields) {
+                if (fieldConfig.defaultValue != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
+                    val fieldView = fieldViews[fieldConfig.id]
+                    if (fieldView != null && fieldValues[fieldConfig.id] == null) {
+                        applyDefaultValue(fieldView, fieldConfig)
                     }
-                    containerFields.addView(errorView)
                 }
             }
-        } catch (e: Exception) {
-            android.util.Log.e("FormEditActivity", "Error rendering fields: ${e.message}", e)
-            Toast.makeText(this, "Error rendering form fields: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    } catch (e: Exception) {
+        android.util.Log.e("FormEditActivity", "Error rendering fields: ${e.message}", e)
+        Toast.makeText(this, "Error rendering form fields: ${e.message}", Toast.LENGTH_LONG).show()
     }
+}
     
     private fun createFieldView(fieldConfig: FormFieldConfig): View {
         return try {
@@ -2619,6 +2631,131 @@ class FormEditActivity : AppCompatActivity() {
             else -> {
                 // Handle other types later
             }
+        }
+    }
+    
+    /**
+     * Applies default value to a field view based on field configuration
+     * Only called for new forms (when existingFormData is null)
+     */
+    private fun applyDefaultValue(fieldView: View, fieldConfig: FormFieldConfig) {
+        val defaultValue = fieldConfig.defaultValue ?: return
+        
+        try {
+            when (fieldConfig.type) {
+                FormFieldConfig.FieldType.TEXT,
+                FormFieldConfig.FieldType.TEXTAREA -> {
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(defaultValue)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = defaultValue)
+                }
+                
+                FormFieldConfig.FieldType.SELECT -> {
+                    // Validate that default value is in options
+                    val options = fieldConfig.options
+                    if (options != null && options.contains(defaultValue)) {
+                        val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                        editText?.setText(defaultValue)
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = defaultValue)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "Default value '$defaultValue' not found in options for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.MULTISELECT -> {
+                    // Parse comma-separated values or JSON array
+                    val options = fieldConfig.options ?: return
+                    val defaultValues = parseMultiSelectDefault(defaultValue)
+                    // Validate all values are in options
+                    val validValues = defaultValues.filter { options.contains(it) }
+                    if (validValues.isNotEmpty()) {
+                        val textView = fieldView.findViewById<TextView>(R.id.textSelected)
+                        textView?.text = validValues.joinToString(", ")
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = validValues)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "None of the default values found in options for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.SELECT_IMAGE -> {
+                    // Validate that default value is in imageOptions
+                    val imageOptions = fieldConfig.imageOptions
+                    if (imageOptions != null && imageOptions.any { it.value == defaultValue }) {
+                        val recyclerView = fieldView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOptions)
+                        val adapter = recyclerView?.adapter as? ImageOptionAdapter
+                        adapter?.setSelectedValue(defaultValue)
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = defaultValue)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "Default value '$defaultValue' not found in imageOptions for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.MULTISELECT_IMAGE -> {
+                    // Parse comma-separated values
+                    val imageOptions = fieldConfig.imageOptions ?: return
+                    val defaultValues = parseMultiSelectDefault(defaultValue)
+                    // Validate all values are in imageOptions
+                    val validValues = defaultValues.filter { imageOptions.any { opt -> opt.value == it } }
+                    if (validValues.isNotEmpty()) {
+                        val recyclerView = fieldView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOptions)
+                        val adapter = recyclerView?.adapter as? ImageOptionAdapter
+                        adapter?.setSelectedValues(validValues.toSet())
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = validValues)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "None of the default values found in imageOptions for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.DATE -> {
+                    val dateValue = if (defaultValue.lowercase() == "now") {
+                        // Get current date in yyyy-MM-dd format
+                        val calendar = java.util.Calendar.getInstance()
+                        String.format("%04d-%02d-%02d", calendar.get(java.util.Calendar.YEAR),
+                            calendar.get(java.util.Calendar.MONTH) + 1,
+                            calendar.get(java.util.Calendar.DAY_OF_MONTH))
+                    } else {
+                        defaultValue
+                    }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(dateValue)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = dateValue)
+                }
+                
+                FormFieldConfig.FieldType.TIME -> {
+                    val timeValue = if (defaultValue.lowercase() == "now") {
+                        // Get current time in HH:mm format
+                        val calendar = java.util.Calendar.getInstance()
+                        String.format("%02d:%02d", calendar.get(java.util.Calendar.HOUR_OF_DAY),
+                            calendar.get(java.util.Calendar.MINUTE))
+                    } else {
+                        defaultValue
+                    }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(timeValue)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = timeValue)
+                }
+                
+                else -> {
+                    // Default values not supported for this field type
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error applying default value for field ${fieldConfig.id}: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Parses default value for multiselect fields
+     * Supports comma-separated values or JSON array format
+     */
+    private fun parseMultiSelectDefault(defaultValue: String): List<String> {
+        return try {
+            // Try parsing as JSON array first
+            val jsonArray = org.json.JSONArray(defaultValue)
+            (0 until jsonArray.length()).mapNotNull { jsonArray.optString(it).takeIf { it.isNotEmpty() } }
+        } catch (e: Exception) {
+            // If not JSON, treat as comma-separated values
+            defaultValue.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         }
     }
     
