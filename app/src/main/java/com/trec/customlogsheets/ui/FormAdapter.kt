@@ -230,8 +230,23 @@ class FormAdapter(
                 buttonAddDynamicForm.visibility = View.VISIBLE
                 buttonAddDynamicForm.text = baseForm.dynamicButtonName
                 
-                // Enable/disable based on whether all instances are saved
-                val canAdd = canAddDynamicForm?.invoke(baseForm) ?: true
+                // Enable/disable based on whether all instances are saved AND the latest instance is saved
+                // Check if the current form (latest instance) is saved
+                val currentFormSubIndex = subIndex
+                val isCurrentFormSaved = if (currentFormSubIndex != null) {
+                    // Check if this instance has a draft or submitted file
+                    isCompleted || isDraft
+                } else {
+                    true // Not a dynamic instance, shouldn't happen here
+                }
+                
+                // Also check if all previous instances are saved
+                val canAddAllSaved = canAddDynamicForm?.invoke(baseForm) ?: true
+                
+                // Can add only if all instances are saved AND the current (latest) instance is saved
+                val canAdd = canAddAllSaved && isCurrentFormSaved
+                
+                AppLogger.d("FormAdapter", "Button enable check: canAddAllSaved=$canAddAllSaved, isCurrentFormSaved=$isCurrentFormSaved, canAdd=$canAdd")
                 buttonAddDynamicForm.isEnabled = canAdd
                 
                 AppLogger.d("FormAdapter", "Button setup: visible=${buttonAddDynamicForm.visibility == View.VISIBLE}, enabled=$canAdd, callback=${onAddDynamicForm != null}")
