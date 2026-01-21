@@ -578,6 +578,8 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             
             // Set up canAddDynamicForm callback
+            // This checks if all existing saved instances are saved
+            // The FormAdapter will also check if the current (latest) instance is saved
             val canAddCallback: (Form) -> Boolean = { form ->
                 if (!form.isDynamic) {
                     false
@@ -593,6 +595,7 @@ class SiteDetailActivity : AppCompatActivity() {
                             instanceIndex++
                         }
                     }
+                    // Check if all existing saved instances are saved
                     formFileHelper.canAddDynamicFormInstance(site.name, form.id, instanceIndex)
                 }
             }
