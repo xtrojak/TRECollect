@@ -36,7 +36,7 @@ import kotlinx.coroutines.withContext
 
 class SiteDetailActivity : AppCompatActivity() {
     private lateinit var site: SamplingSite
-    private lateinit var formSectionAdapter: FormSectionAdapter
+    private var formSectionAdapter: FormSectionAdapter? = null
     private lateinit var database: AppDatabase
     private lateinit var viewModel: MainViewModel
     private lateinit var siteNameText: TextView
@@ -45,6 +45,7 @@ class SiteDetailActivity : AppCompatActivity() {
     private lateinit var textViewUploadStatus: TextView
     private lateinit var buttonRetryUpload: MaterialButton
     private var canFinalize: Boolean = false
+    private var savedScrollPosition: Int = 0 // Save scroll position when refreshing
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +99,9 @@ class SiteDetailActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
+        // Save scroll position before refreshing
+        saveScrollPosition()
+        
         // Reload forms list to pick up any new dynamic instances
         setupFormsList()
         loadFormCompletions()
@@ -120,6 +124,7 @@ class SiteDetailActivity : AppCompatActivity() {
         loadFormCompletions()
         // Update menu to refresh finalize button state
         invalidateOptionsMenu()
+        // Note: Scroll position will be restored in setupFormsList() after data is loaded
     }
     
     private fun setupUploadStatus() {
@@ -348,7 +353,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
                 // Check if this specific instance is submitted
                 formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
-            }
+        }
     }
     
     private fun showFinalizeConfirmationDialog() {
@@ -516,19 +521,60 @@ class SiteDetailActivity : AppCompatActivity() {
             .show()
     }
     
+    private fun saveScrollPosition() {
+        val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
+        if (layoutManager != null) {
+            val firstVisible = layoutManager.findFirstVisibleItemPosition()
+            if (firstVisible >= 0) {
+                savedScrollPosition = firstVisible
+                AppLogger.d("SiteDetailActivity", "Saved scroll position: $savedScrollPosition")
+            }
+        }
+    }
+    
+    private fun restoreScrollPosition() {
+        val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
+        val adapter = formSectionAdapter
+        if (layoutManager != null && adapter != null && savedScrollPosition >= 0) {
+            AppLogger.d("SiteDetailActivity", "Restoring scroll position: $savedScrollPosition (adapter has ${adapter.itemCount} items)")
+            // Post to ensure the layout is complete before scrolling
+            recyclerView.post {
+                // Double-check the position is still valid after layout
+                val currentAdapter = formSectionAdapter
+                if (currentAdapter != null) {
+                    val targetPosition = if (savedScrollPosition < currentAdapter.itemCount) {
+                        savedScrollPosition
+                    } else {
+                        currentAdapter.itemCount - 1
+                    }.coerceAtLeast(0)
+                    
+                    if (targetPosition >= 0) {
+                        AppLogger.d("SiteDetailActivity", "Scrolling to position: $targetPosition")
+                        layoutManager.scrollToPositionWithOffset(targetPosition, 0)
+                    }
+                }
+            }
+        }
+    }
+    
     private fun setupFormsList() {
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
-        recyclerView.layoutManager = LinearLayoutManager(this)
         
-        formSectionAdapter = FormSectionAdapter(
-            onFormClick = { form -> onFormClick(form) },
-            onAddDynamicForm = { form -> 
-                AppLogger.d("SiteDetailActivity", "Callback received in FormSectionAdapter lambda for form: ${form.id}")
-                onAddDynamicForm(form) 
-            },
-            onDeleteDynamicForm = { form, subIndex -> onDeleteDynamicForm(form, subIndex) }
-        )
-        recyclerView.adapter = formSectionAdapter
+        // Only create adapter and layout manager once
+        if (formSectionAdapter == null) {
+            recyclerView.layoutManager = LinearLayoutManager(this)
+            formSectionAdapter = FormSectionAdapter(
+                onFormClick = { form -> onFormClick(form) },
+                onAddDynamicForm = { form -> 
+                    AppLogger.d("SiteDetailActivity", "Callback received in FormSectionAdapter lambda for form: ${form.id}")
+                    onAddDynamicForm(form) 
+                },
+                onDeleteDynamicForm = { form, subIndex -> onDeleteDynamicForm(form, subIndex) }
+            )
+            recyclerView.adapter = formSectionAdapter
+        }
         
         // Initialize with forms for this specific site (uses pinned team config version)
         lifecycleScope.launch {
@@ -692,7 +738,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
             }
             
-            formSectionAdapter.setData(sections, expandedFormsBySection, submittedFormKeys, draftFormKeys, canAddCallback, baseFormsBySection)
+            formSectionAdapter?.setData(sections, expandedFormsBySection, submittedFormKeys, draftFormKeys, canAddCallback, baseFormsBySection)
             
             // Update canFinalize flag
             canFinalize = checkAllMandatoryFormsSubmitted()
@@ -700,6 +746,21 @@ class SiteDetailActivity : AppCompatActivity() {
             
             val totalEndTime = System.currentTimeMillis()
             AppLogger.d("SiteDetailActivity", "Total setupFormsList took ${totalEndTime - totalStartTime}ms")
+            
+            // Restore scroll position after data is loaded (if it was saved)
+            // Use withContext(Main) to ensure we're on the main thread
+            withContext(Dispatchers.Main) {
+                if (savedScrollPosition > 0) {
+                    // Wait for layout to complete before restoring scroll
+                    val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+                    recyclerView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                        override fun onGlobalLayout() {
+                            recyclerView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                            restoreScrollPosition()
+                        }
+                    })
+                }
+            }
         }
     }
     
@@ -747,7 +808,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
                 
                 // First, try to find by adapter position (more reliable than childCount)
-                val sectionPosition = formSectionAdapter.sectionsList.indexOf(baseForm.section)
+                val sectionPosition = formSectionAdapter?.sectionsList?.indexOf(baseForm.section) ?: -1
                 
                 if (sectionPosition >= 0) {
                     // Try to find the viewholder for this section
@@ -807,9 +868,12 @@ class SiteDetailActivity : AppCompatActivity() {
                     }
                     if (success) {
                         Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
+                        // Save scroll position before refreshing
+                        saveScrollPosition()
                         // Reload forms list and completions
                         setupFormsList()
                         loadFormCompletions()
+                        // Note: Scroll position will be restored in setupFormsList() after data is loaded
                     } else {
                         Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
                     }
