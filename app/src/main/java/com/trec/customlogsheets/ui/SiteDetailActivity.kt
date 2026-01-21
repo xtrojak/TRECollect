@@ -532,6 +532,8 @@ class SiteDetailActivity : AppCompatActivity() {
         
         // Initialize with forms for this specific site (uses pinned team config version)
         lifecycleScope.launch {
+            val totalStartTime = System.currentTimeMillis()
+            
             val sections = withContext(Dispatchers.IO) {
                 PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
             }
@@ -540,26 +542,57 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             
             // Expand dynamic forms to include their instances
+            // OPTIMIZATION: Batch all file I/O operations into a single withContext block
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
-            val expandedFormsBySection = baseFormsBySection.mapValues { (_, forms) ->
-                forms.flatMap { form ->
+            
+            // Pre-calculate instance indices for all dynamic forms to avoid repeated calculations
+            val dynamicFormInstanceIndices = mutableMapOf<Pair<String, String>, Int>() // (formId, section) -> instanceIndex
+            baseFormsBySection.forEach { (section, forms) ->
+                forms.forEachIndexed { orderInSection, form ->
                     if (form.isDynamic) {
-                        // Get all instances of this dynamic form
-                        val formsInSection = baseFormsBySection[form.section] ?: emptyList()
-                        val orderInSection = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
-                            .takeIf { it >= 0 } ?: 0
-                        
-                        // Count how many forms with same ID appear before this position
                         var instanceIndex = 0
                         for (i in 0 until orderInSection) {
-                            if (formsInSection[i].id == form.id) {
+                            if (forms[i].id == form.id) {
                                 instanceIndex++
                             }
                         }
-                        
-                        val instances = withContext(Dispatchers.IO) {
-                            formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
-                        }
+                        dynamicFormInstanceIndices[Pair(form.id, section)] = instanceIndex
+                    }
+                }
+            }
+            
+            // OPTIMIZATION: Get statuses and file list ONCE, then use cached results
+            val getAllStatusesStartTime = System.currentTimeMillis()
+            val (allStatuses, cachedFiles) = withContext(Dispatchers.IO) {
+                val statusesStartTime = System.currentTimeMillis()
+                val result = formFileHelper.getAllFormStatusesWithCache(site.name)
+                val statusesEndTime = System.currentTimeMillis()
+                AppLogger.d("SiteDetailActivity", "getAllFormStatusesWithCache took ${statusesEndTime - statusesStartTime}ms, found ${result.fileList.size} files")
+                result.statusMap to result.fileList
+            }
+            val getAllStatusesEndTime = System.currentTimeMillis()
+            AppLogger.d("SiteDetailActivity", "getAllFormStatusesWithCache total took ${getAllStatusesEndTime - getAllStatusesStartTime}ms")
+            
+            // OPTIMIZATION: Use cached file list to get dynamic instances (no listFiles() calls)
+            val getInstancesStartTime = System.currentTimeMillis()
+            val allDynamicInstances = dynamicFormInstanceIndices.mapNotNull { (key, instanceIndex) ->
+                val (formId, section) = key
+                val instanceStartTime = System.currentTimeMillis()
+                val instances = formFileHelper.getDynamicFormInstancesFromCache(cachedFiles, formId, instanceIndex)
+                val instanceEndTime = System.currentTimeMillis()
+                AppLogger.d("SiteDetailActivity", "getDynamicFormInstancesFromCache for $formId took ${instanceEndTime - instanceStartTime}ms")
+                key to instances
+            }.toMap()
+            val getInstancesEndTime = System.currentTimeMillis()
+            AppLogger.d("SiteDetailActivity", "Total getDynamicFormInstancesFromCache calls took ${getInstancesEndTime - getInstancesStartTime}ms for ${dynamicFormInstanceIndices.size} forms")
+            
+            val expandedFormsBySection = baseFormsBySection.mapValues { (section, forms) ->
+                forms.flatMap { form ->
+                    if (form.isDynamic) {
+                        val orderInSection = forms.indexOfFirst { it.id == form.id && it.name == form.name }
+                            .takeIf { it >= 0 } ?: 0
+                        val instanceIndex = dynamicFormInstanceIndices[Pair(form.id, section)] ?: 0
+                        val instances = allDynamicInstances[Pair(form.id, section)] ?: emptyList()
                         
                         // For dynamic forms, show instances (at least one default instance #1)
                         if (instances.isEmpty()) {
@@ -577,16 +610,27 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
             }
             
-            // Set up canAddDynamicForm callback
-            // This checks if all existing saved instances are saved
-            // The FormAdapter will also check if the current (latest) instance is saved
+            // OPTIMIZATION: Use cached status map and instances to calculate canAdd (no XML loading)
+            val canAddStartTime = System.currentTimeMillis()
+            val canAddCache = mutableMapOf<Pair<String, Int>, Boolean>() // (formId, instanceIndex) -> canAdd
+            dynamicFormInstanceIndices.forEach { (key, instanceIndex) ->
+                val (formId, _) = key
+                val instances = allDynamicInstances[key] ?: emptyList()
+                canAddCache[Pair(formId, instanceIndex)] = formFileHelper.canAddDynamicFormInstanceFromStatus(
+                    allStatuses, formId, instanceIndex, instances
+                )
+            }
+            val canAddEndTime = System.currentTimeMillis()
+            AppLogger.d("SiteDetailActivity", "Total canAddDynamicFormInstanceFromStatus calls took ${canAddEndTime - canAddStartTime}ms for ${dynamicFormInstanceIndices.size} forms")
+            
+            // Set up canAddDynamicForm callback with cached results
             val canAddCallback: (Form) -> Boolean = { form ->
                 if (!form.isDynamic) {
                     false
                 } else {
                     // Get base form (remove # suffix if present)
                     val baseFormName = form.name.substringBefore(" #")
-                    val baseFormsInSection = PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, form.section)
+                    val baseFormsInSection = baseFormsBySection[form.section] ?: emptyList()
                     val orderInSection = baseFormsInSection.indexOfFirst { it.id == form.id && (it.name == baseFormName || it.name == form.name) }
                         .takeIf { it >= 0 } ?: 0
                     var instanceIndex = 0
@@ -595,14 +639,9 @@ class SiteDetailActivity : AppCompatActivity() {
                             instanceIndex++
                         }
                     }
-                    // Check if all existing saved instances are saved
-                    formFileHelper.canAddDynamicFormInstance(site.name, form.id, instanceIndex)
+                    // Use cached result instead of calling canAddDynamicFormInstance
+                    canAddCache[Pair(form.id, instanceIndex)] ?: false
                 }
-            }
-            
-            // Load form completions using the expanded forms
-            val allStatuses = withContext(Dispatchers.IO) {
-                formFileHelper.getAllFormStatuses(site.name)
             }
             
             // Build sets of form keys for submitted and draft forms using expanded forms
@@ -661,6 +700,9 @@ class SiteDetailActivity : AppCompatActivity() {
             // Update canFinalize flag
             canFinalize = checkAllMandatoryFormsSubmitted()
             invalidateOptionsMenu() // Refresh menu to update finalize button state
+            
+            val totalEndTime = System.currentTimeMillis()
+            AppLogger.d("SiteDetailActivity", "Total setupFormsList took ${totalEndTime - totalStartTime}ms")
         }
     }
     
@@ -670,8 +712,6 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private fun onAddDynamicForm(form: Form) {
-        AppLogger.d("SiteDetailActivity", "onAddDynamicForm called for form: ${form.id}, name=${form.name}")
-        
         // Get base form (remove # suffix if present)
         val baseFormName = form.name.substringBefore(" #")
         val baseForm = form.copy(name = baseFormName)
@@ -689,61 +729,58 @@ class SiteDetailActivity : AppCompatActivity() {
             }
         }
         
-        AppLogger.d("SiteDetailActivity", "Calculated: baseFormPosition=$baseFormPosition, instanceIndex=$instanceIndex")
-        
         val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
-        if (!formFileHelper.canAddDynamicFormInstance(site.name, baseForm.id, instanceIndex)) {
-            AppLogger.d("SiteDetailActivity", "Cannot add instance - not all instances are saved")
-            Toast.makeText(this, "Please save all existing instances before adding a new one", Toast.LENGTH_LONG).show()
-            return
-        }
         
-        // Get the next sub-index (from existing saved instances)
-        val instances = formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
-        val nextSubIndex = if (instances.isEmpty()) 0 else instances.maxOrNull()!! + 1
-        
-        AppLogger.d("SiteDetailActivity", "Next subIndex: $nextSubIndex, existing instances: $instances")
-        
-        // Find the section adapter and form adapter to add the new instance directly
-        val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
-        
-        // First, try to find by adapter position (more reliable than childCount)
-        val sectionPosition = formSectionAdapter.sectionsList.indexOf(baseForm.section)
-        AppLogger.d("SiteDetailActivity", "Looking for section: ${baseForm.section}, position=$sectionPosition")
-        
-        if (sectionPosition >= 0) {
-            // Try to find the viewholder for this section
-            var viewHolder: FormSectionAdapter.SectionViewHolder? = null
+        // OPTIMIZATION: Batch file operations
+        lifecycleScope.launch(Dispatchers.IO) {
+            val canAdd = formFileHelper.canAddDynamicFormInstance(site.name, baseForm.id, instanceIndex)
+            if (!canAdd) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@SiteDetailActivity, "Please save all existing instances before adding a new one", Toast.LENGTH_LONG).show()
+                }
+                return@launch
+            }
             
-            // First try: find by adapter position
-            viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+            // Get the next sub-index (from existing saved instances)
+            val instances = formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
+            val nextSubIndex = if (instances.isEmpty()) 0 else instances.maxOrNull()!! + 1
             
-            // Fallback: iterate through visible children
-            if (viewHolder == null) {
-                AppLogger.d("SiteDetailActivity", "ViewHolder not found via adapter position, trying visible children")
-                for (i in 0 until recyclerView.childCount) {
-                    val child = recyclerView.getChildAt(i)
-                    val vh = recyclerView.getChildViewHolder(child)
-                    if (vh is FormSectionAdapter.SectionViewHolder && vh.adapterPosition == sectionPosition) {
-                        viewHolder = vh
-                        AppLogger.d("SiteDetailActivity", "Found viewholder in visible children at index $i")
-                        break
+            withContext(Dispatchers.Main) {
+                // Find the section adapter and form adapter to add the new instance directly
+                val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+                
+                // First, try to find by adapter position (more reliable than childCount)
+                val sectionPosition = formSectionAdapter.sectionsList.indexOf(baseForm.section)
+                
+                if (sectionPosition >= 0) {
+                    // Try to find the viewholder for this section
+                    var viewHolder: FormSectionAdapter.SectionViewHolder? = null
+                    
+                    // First try: find by adapter position
+                    viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+                    
+                    // Fallback: iterate through visible children
+                    if (viewHolder == null) {
+                        for (i in 0 until recyclerView.childCount) {
+                            val child = recyclerView.getChildAt(i)
+                            val vh = recyclerView.getChildViewHolder(child)
+                            if (vh is FormSectionAdapter.SectionViewHolder && vh.adapterPosition == sectionPosition) {
+                                viewHolder = vh
+                                break
+                            }
+                        }
+                    }
+                    
+                    if (viewHolder != null) {
+                        viewHolder.addDynamicFormInstance(baseForm, nextSubIndex)
+                    } else {
+                        // Last resort: refresh the entire list
+                        setupFormsList()
                     }
                 }
             }
-            
-            if (viewHolder != null) {
-                AppLogger.d("SiteDetailActivity", "Found viewholder, adding instance")
-                viewHolder.addDynamicFormInstance(baseForm, nextSubIndex)
-            } else {
-                AppLogger.w("SiteDetailActivity", "ViewHolder not found for section position $sectionPosition. RecyclerView childCount=${recyclerView.childCount}, sectionsList size=${formSectionAdapter.sectionsList.size}")
-                // Last resort: refresh the entire list
-                AppLogger.d("SiteDetailActivity", "Refreshing forms list as fallback")
-                setupFormsList()
-            }
-        } else {
-            AppLogger.w("SiteDetailActivity", "Section not found in sections list: ${baseForm.section}")
         }
+        
     }
     
     private fun onDeleteDynamicForm(form: Form, subIndex: Int) {
