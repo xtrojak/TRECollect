@@ -16,25 +16,35 @@ class FormAdapter(
     private val onFormClick: (Form) -> Unit,
     private val onDeleteDynamicForm: ((Form, Int) -> Unit)? = null,
     private val onAddDynamicForm: ((Form) -> Unit)? = null
-) : ListAdapter<Form, FormAdapter.FormViewHolder>(FormDiffCallback()) {
+) : ListAdapter<FormListItem, RecyclerView.ViewHolder>(FormListItemDiffCallback()) {
+    
+    companion object {
+        private const val VIEW_TYPE_FORM = 0
+        private const val VIEW_TYPE_ADD_BUTTON = 1
+    }
 
-    private var completedFormIds: Set<String> = emptySet()
-    private var draftFormIds: Set<String> = emptySet()
-    private var baseFormsList: List<Form> = emptyList() // Base forms (without dynamic instances) for calculating instanceIndex
+    private var _completedFormIds: Set<String> = emptySet()
+    private var _draftFormIds: Set<String> = emptySet()
+    private var _baseFormsList: List<Form> = emptyList() // Base forms (without dynamic instances) for calculating instanceIndex
     private var canAddDynamicForm: ((Form) -> Boolean)? = null
+    
+    // Getters for FormSectionAdapter to access these properties
+    val completedFormIds: Set<String> get() = _completedFormIds
+    val draftFormIds: Set<String> get() = _draftFormIds
+    val baseFormsList: List<Form> get() = _baseFormsList
 
     fun setCompletedFormIds(completedIds: Set<String>) {
-        completedFormIds = completedIds
+        _completedFormIds = completedIds
         notifyDataSetChanged()
     }
     
     fun setDraftFormIds(draftIds: Set<String>) {
-        draftFormIds = draftIds
+        _draftFormIds = draftIds
         notifyDataSetChanged()
     }
     
     fun setBaseFormsList(baseForms: List<Form>) {
-        baseFormsList = baseForms
+        _baseFormsList = baseForms
         // Don't call notifyDataSetChanged() here - it will be called by submitList() or setCompletedFormIds/setDraftFormIds
     }
     
@@ -43,14 +53,73 @@ class FormAdapter(
         notifyDataSetChanged()
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FormViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_form, parent, false)
-        return FormViewHolder(view)
+    /**
+     * Updates the status of a specific form instance without full refresh
+     * Note: This only updates the status sets. The caller should call notifyItemChanged/notifyItemRangeChanged
+     * to trigger a rebind with the updated status.
+     */
+    fun updateFormStatus(formKey: String, isCompleted: Boolean, isDraft: Boolean) {
+        val currentCompleted = _completedFormIds.toMutableSet()
+        val currentDraft = _draftFormIds.toMutableSet()
+        
+        AppLogger.d("FormAdapter", "updateFormStatus: formKey=$formKey, isCompleted=$isCompleted, isDraft=$isDraft")
+        AppLogger.d("FormAdapter", "Before update - Completed: $currentCompleted, Draft: $currentDraft")
+        
+        if (isCompleted) {
+            currentCompleted.add(formKey)
+            currentDraft.remove(formKey)
+        } else if (isDraft) {
+            currentDraft.add(formKey)
+            currentCompleted.remove(formKey)
+        } else {
+            // Neither completed nor draft - remove from both sets (empty state)
+            currentCompleted.remove(formKey)
+            currentDraft.remove(formKey)
+        }
+        
+        _completedFormIds = currentCompleted
+        _draftFormIds = currentDraft
+        
+        AppLogger.d("FormAdapter", "After update - Completed: $_completedFormIds, Draft: $_draftFormIds")
+        // Don't call notifyDataSetChanged() here - let the caller decide what to notify
     }
 
-    override fun onBindViewHolder(holder: FormViewHolder, position: Int) {
-        val form = getItem(position)
+    override fun getItemViewType(position: Int): Int {
+        return when (getItem(position)) {
+            is FormListItem.FormItem -> VIEW_TYPE_FORM
+            is FormListItem.AddButtonItem -> VIEW_TYPE_ADD_BUTTON
+        }
+    }
+    
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return when (viewType) {
+            VIEW_TYPE_FORM -> {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_form, parent, false)
+                FormViewHolder(view)
+            }
+            VIEW_TYPE_ADD_BUTTON -> {
+                val view = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_add_button, parent, false)
+                AddButtonViewHolder(view)
+            }
+            else -> throw IllegalArgumentException("Unknown view type: $viewType")
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = getItem(position)) {
+            is FormListItem.FormItem -> {
+                val form = item.form
+                (holder as FormViewHolder).bindForm(form)
+            }
+            is FormListItem.AddButtonItem -> {
+                (holder as AddButtonViewHolder).bind(item.baseForm)
+            }
+        }
+    }
+    
+    private fun FormViewHolder.bindForm(form: Form) {
         
         // Check if this is a dynamic form instance (name contains " #")
         val isDynamicInstance = form.isDynamic && form.name.contains(" #")
@@ -73,7 +142,7 @@ class FormAdapter(
         // baseFormsInSection.indexOfFirst { it.id == form.id && it.name == baseFormName }
         // For regular forms, form.name == baseFormName, so we match by both id and name
         // For dynamic forms, we need to match by id and baseFormName (without the # suffix)
-        val baseFormPosition = baseFormsList.indexOfFirst { 
+        val baseFormPosition = _baseFormsList.indexOfFirst { 
             it.id == form.id && it.name == baseFormName
         }.takeIf { it >= 0 } ?: 0
         
@@ -86,7 +155,7 @@ class FormAdapter(
         // }
         var instanceIndex = 0
         for (i in 0 until baseFormPosition) {
-            if (baseFormsList[i].id == form.id) {
+            if (_baseFormsList[i].id == form.id) {
                 instanceIndex++
             }
         }
@@ -99,46 +168,22 @@ class FormAdapter(
             "${form.id}_${instanceIndex}"
         }
         
-        // OPTIMIZATION: Check if this is the last instance by only checking the next item (O(1) instead of O(n))
-        // This is the last instance if the next item is not part of the same dynamic form group
-        val isLastInstance = if (isDynamicInstance) {
-            val nextPosition = position + 1
-            if (nextPosition < itemCount) {
-                val nextForm = getItem(nextPosition)
-                // If next form is not an instance of the same dynamic form group, this is the last instance
-                val nextIsSameGroup = nextForm.isDynamic && 
-                    nextForm.id == form.id && 
-                    nextForm.name.contains(" #") &&
-                    nextForm.name.substringBefore(" #") == baseFormName
-                !nextIsSameGroup
-            } else {
-                true // Last item in list
-            }
-        } else {
-            false
+        val isCompleted = _completedFormIds.contains(formKey)
+        val isDraft = _draftFormIds.contains(formKey)
+        
+        // Debug logging for all dynamic instances to trace the issue
+        if (isDynamicInstance) {
+            AppLogger.d("FormAdapter", "Binding form: formKey=$formKey, name=${form.name}, isDraft=$isDraft, isCompleted=$isCompleted")
+            AppLogger.d("FormAdapter", "Draft set: ${_draftFormIds}, Completed set: ${_completedFormIds}")
+            AppLogger.d("FormAdapter", "Draft set contains $formKey: ${_draftFormIds.contains(formKey)}")
         }
         
-        // Get base form for the add button - use baseFormName we already calculated
-        val baseForm = if (isDynamicInstance) {
-            // Try to find by id and name first
-            val found = baseFormsList.firstOrNull { it.id == form.id && it.name == baseFormName }
-                // Fallback: find by id and section if name doesn't match
-                ?: baseFormsList.firstOrNull { it.id == form.id && it.section == form.section && it.isDynamic }
-            AppLogger.d("FormAdapter", "Looking for baseForm: formId=${form.id}, baseFormName=$baseFormName, found=${found?.id}, baseFormsList size=${baseFormsList.size}")
-            found
-        } else {
-            null
-        }
-        
-        holder.bind(
+        bind(
             form, 
-            completedFormIds.contains(formKey),
-            draftFormIds.contains(formKey),
+            isCompleted,
+            isDraft,
             isDynamicInstance,
-            subIndex,
-            isLastInstance,
-            baseForm,
-            onAddDynamicForm
+            subIndex
         )
     }
 
@@ -147,17 +192,14 @@ class FormAdapter(
         private val formDescriptionText: TextView = itemView.findViewById(R.id.textFormDescription)
         private val statusIcon: ImageView = itemView.findViewById(R.id.iconStatus)
         private val buttonDeleteDynamic: android.widget.ImageButton = itemView.findViewById(R.id.buttonDeleteDynamic)
-        private val buttonAddDynamicForm: com.google.android.material.button.MaterialButton = itemView.findViewById(R.id.buttonAddDynamicForm)
+        private val cardView: com.google.android.material.card.MaterialCardView = itemView as com.google.android.material.card.MaterialCardView
 
         fun bind(
             form: Form, 
             isCompleted: Boolean, 
             isDraft: Boolean, 
             isDynamicInstance: Boolean = false, 
-            subIndex: Int? = null,
-            isLastInstance: Boolean = false,
-            baseForm: Form? = null,
-            onAddDynamicForm: ((Form) -> Unit)? = null
+            subIndex: Int? = null
         ) {
             // Show mandatory indicator
             var formNameDisplay = if (form.mandatory) {
@@ -186,73 +228,45 @@ class FormAdapter(
             formDescriptionText.visibility = if (form.description != null) View.VISIBLE else View.GONE
 
             // Visual indication of completion status
+            // Use setCardBackgroundColor for MaterialCardView instead of setBackgroundColor
             if (isCompleted) {
                 statusIcon.setImageResource(android.R.drawable.checkbox_on_background)
-                itemView.setBackgroundColor(0xFFE8F5E9.toInt()) // Light green for completed
+                cardView.setCardBackgroundColor(0xFFE8F5E9.toInt()) // Light green for completed
             } else {
                 if (isDraft) {
                     // Show draft icon (edit icon or similar)
                     statusIcon.setImageResource(android.R.drawable.ic_menu_edit)
                     // Light yellow/orange background for drafts
-                    itemView.setBackgroundColor(0xFFFFF3E0.toInt()) // Light orange for drafts
+                    cardView.setCardBackgroundColor(0xFFFFF3E0.toInt()) // Light orange for drafts
                 } else {
                     statusIcon.setImageResource(android.R.drawable.checkbox_off_background)
                     if (form.mandatory) {
-                        itemView.setBackgroundColor(0xFFFFEBEE.toInt()) // Light red for mandatory incomplete
+                        cardView.setCardBackgroundColor(0xFFFFEBEE.toInt()) // Light red for mandatory incomplete
                     } else {
-                        itemView.setBackgroundColor(0xFFFFFFFF.toInt()) // White for not completed
+                        cardView.setCardBackgroundColor(0xFFFFFFFF.toInt()) // White for not completed
                     }
                 }
             }
 
             // Show delete button for dynamic instances
+            // Only enable if there's something to delete (draft or submitted)
             if (isDynamicInstance && subIndex != null) {
                 buttonDeleteDynamic.visibility = View.VISIBLE
+                // Disable button if there's no draft or submitted data
+                val hasData = isCompleted || isDraft
+                buttonDeleteDynamic.isEnabled = hasData
+                buttonDeleteDynamic.alpha = if (hasData) 1.0f else 0.5f
+                
                 buttonDeleteDynamic.setOnClickListener {
-                    onDeleteDynamicForm?.invoke(form, subIndex)
+                    if (hasData) {
+                        onDeleteDynamicForm?.invoke(form, subIndex)
+                    }
                 }
             } else {
                 buttonDeleteDynamic.visibility = View.GONE
             }
             
-            // Show add button for the last instance of each dynamic form
-            if (isLastInstance && baseForm != null && baseForm.isDynamic && baseForm.dynamicButtonName != null) {
-                buttonAddDynamicForm.visibility = View.VISIBLE
-                buttonAddDynamicForm.text = baseForm.dynamicButtonName
-                
-                // Enable/disable based on whether all instances are saved AND the latest instance is saved
-                // Check if the current form (latest instance) is saved
-                val currentFormSubIndex = subIndex
-                val isCurrentFormSaved = if (currentFormSubIndex != null) {
-                    // Check if this instance has a draft or submitted file
-                    isCompleted || isDraft
-                } else {
-                    true // Not a dynamic instance, shouldn't happen here
-                }
-                
-                // Also check if all previous instances are saved
-                val canAddAllSaved = canAddDynamicForm?.invoke(baseForm) ?: true
-                
-                // Can add only if all instances are saved AND the current (latest) instance is saved
-                val canAdd = canAddAllSaved && isCurrentFormSaved
-                
-                buttonAddDynamicForm.isEnabled = canAdd
-                
-                // Clear any existing listeners first
-                buttonAddDynamicForm.setOnClickListener(null)
-                buttonAddDynamicForm.setOnTouchListener(null)
-                
-                buttonAddDynamicForm.setOnClickListener { v ->
-                    // Stop event propagation to prevent card click
-                    v?.parent?.requestDisallowInterceptTouchEvent(true)
-                    if (canAdd && onAddDynamicForm != null) {
-                        onAddDynamicForm.invoke(baseForm)
-                    }
-                }
-            } else {
-                buttonAddDynamicForm.visibility = View.GONE
-                buttonAddDynamicForm.setOnClickListener(null)
-            }
+            // Add button is now handled at section level, not per card
             
             // Set click handler on the card content area (not the button)
             val cardContent = itemView.findViewById<View>(R.id.cardContent)
@@ -262,12 +276,95 @@ class FormAdapter(
         }
     }
 
-    class FormDiffCallback : DiffUtil.ItemCallback<Form>() {
-        override fun areItemsTheSame(oldItem: Form, newItem: Form): Boolean {
-            return oldItem.id == newItem.id
+    inner class AddButtonViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val button: com.google.android.material.button.MaterialButton = itemView as com.google.android.material.button.MaterialButton
+        
+        fun bind(baseForm: Form) {
+            button.text = baseForm.dynamicButtonName ?: "Add Form"
+            
+            // Check if we can add (all instances must be saved)
+            val canAddFromCallback = canAddDynamicForm?.invoke(baseForm) ?: false
+            
+            // Check if any instance of this dynamic form group is empty
+            val currentList = this@FormAdapter.currentList
+            val baseFormName = baseForm.name
+            val baseForms = this@FormAdapter.baseFormsList
+            val completedFormIds = this@FormAdapter.completedFormIds
+            val draftFormIds = this@FormAdapter.draftFormIds
+            
+            val hasEmptyInstance = currentList.any { item ->
+                when (item) {
+                    is FormListItem.FormItem -> {
+                        val form = item.form
+                        if (form.isDynamic && form.id == baseForm.id && form.name.contains(" #")) {
+                            val formBaseName = form.name.substringBefore(" #")
+                            // Match by base name (without # suffix)
+                            if (formBaseName == baseFormName) {
+                                val fSubIndex = Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+                                if (fSubIndex != null) {
+                                    val baseFormPosition = baseForms.indexOfFirst { it.id == form.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
+                                    var instanceIdx = 0
+                                    for (i in 0 until baseFormPosition) {
+                                        if (baseForms[i].id == form.id) instanceIdx++
+                                    }
+                                    val formKey = "${form.id}_${instanceIdx}_${fSubIndex}"
+                                    val isEmpty = !completedFormIds.contains(formKey) && !draftFormIds.contains(formKey)
+                                    if (isEmpty) {
+                                        AppLogger.d("FormAdapter", "Found empty instance: $formKey for form ${form.name}")
+                                    }
+                                    isEmpty
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                    is FormListItem.AddButtonItem -> false
+                }
+            }
+            
+            val canAdd = canAddFromCallback && !hasEmptyInstance
+            
+            // Log for debugging
+            AppLogger.d("FormAdapter", "Add button for ${baseForm.name}: canAddFromCallback=$canAddFromCallback, hasEmptyInstance=$hasEmptyInstance, canAdd=$canAdd")
+            AppLogger.d("FormAdapter", "Completed: $completedFormIds, Draft: $draftFormIds")
+            
+            // Ensure button is disabled if there are empty instances
+            button.isEnabled = canAdd
+            
+            // Visual feedback - make button appear disabled even if enabled state doesn't work
+            if (!canAdd) {
+                button.alpha = 0.5f
+            } else {
+                button.alpha = 1.0f
+            }
+            
+            button.setOnClickListener {
+                if (canAdd && onAddDynamicForm != null) {
+                    onAddDynamicForm.invoke(baseForm)
+                }
+            }
+        }
+    }
+
+    class FormListItemDiffCallback : DiffUtil.ItemCallback<FormListItem>() {
+        override fun areItemsTheSame(oldItem: FormListItem, newItem: FormListItem): Boolean {
+            return when {
+                oldItem is FormListItem.FormItem && newItem is FormListItem.FormItem -> {
+                    oldItem.form.id == newItem.form.id
+                }
+                oldItem is FormListItem.AddButtonItem && newItem is FormListItem.AddButtonItem -> {
+                    oldItem.baseForm.id == newItem.baseForm.id
+                }
+                else -> false
+            }
         }
 
-        override fun areContentsTheSame(oldItem: Form, newItem: Form): Boolean {
+        override fun areContentsTheSame(oldItem: FormListItem, newItem: FormListItem): Boolean {
             return oldItem == newItem
         }
     }
