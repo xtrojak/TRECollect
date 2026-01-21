@@ -576,7 +576,7 @@ class SiteDetailActivity : AppCompatActivity() {
             // OPTIMIZATION: Use cached file list to get dynamic instances (no listFiles() calls)
             val getInstancesStartTime = System.currentTimeMillis()
             val allDynamicInstances = dynamicFormInstanceIndices.mapNotNull { (key, instanceIndex) ->
-                val (formId, section) = key
+                val (formId, _) = key
                 val instanceStartTime = System.currentTimeMillis()
                 val instances = formFileHelper.getDynamicFormInstancesFromCache(cachedFiles, formId, instanceIndex)
                 val instanceEndTime = System.currentTimeMillis()
@@ -589,9 +589,6 @@ class SiteDetailActivity : AppCompatActivity() {
             val expandedFormsBySection = baseFormsBySection.mapValues { (section, forms) ->
                 forms.flatMap { form ->
                     if (form.isDynamic) {
-                        val orderInSection = forms.indexOfFirst { it.id == form.id && it.name == form.name }
-                            .takeIf { it >= 0 } ?: 0
-                        val instanceIndex = dynamicFormInstanceIndices[Pair(form.id, section)] ?: 0
                         val instances = allDynamicInstances[Pair(form.id, section)] ?: emptyList()
                         
                         // For dynamic forms, show instances (at least one default instance #1)
@@ -754,17 +751,15 @@ class SiteDetailActivity : AppCompatActivity() {
                 
                 if (sectionPosition >= 0) {
                     // Try to find the viewholder for this section
-                    var viewHolder: FormSectionAdapter.SectionViewHolder? = null
-                    
                     // First try: find by adapter position
-                    viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+                    var viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
                     
                     // Fallback: iterate through visible children
                     if (viewHolder == null) {
                         for (i in 0 until recyclerView.childCount) {
                             val child = recyclerView.getChildAt(i)
                             val vh = recyclerView.getChildViewHolder(child)
-                            if (vh is FormSectionAdapter.SectionViewHolder && vh.adapterPosition == sectionPosition) {
+                            if (vh is FormSectionAdapter.SectionViewHolder && vh.bindingAdapterPosition == sectionPosition) {
                                 viewHolder = vh
                                 break
                             }

@@ -184,7 +184,7 @@ object FormConfigLoader {
         }
         
         // Parse and load forms using this team config
-        return loadFormsFromTeamConfig(context, downloader, teamConfigJson)
+        return loadFormsFromTeamConfig(downloader, teamConfigJson)
     }
     
     /**
@@ -208,14 +208,13 @@ object FormConfigLoader {
             return emptyList()
         }
         
-        return loadFormsFromTeamConfig(context, downloader, teamConfigJson)
+        return loadFormsFromTeamConfig(downloader, teamConfigJson)
     }
     
     /**
      * Helper method to load forms from a team config JSON
      */
     private fun loadFormsFromTeamConfig(
-        context: android.content.Context,
         downloader: LogsheetDownloader,
         teamConfigJson: String
     ): List<FormConfig> {
