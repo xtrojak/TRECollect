@@ -1879,4 +1879,102 @@ class FormConfigLoaderTest {
         assertEquals("Default sub text", dynamicField.subFields!![0].defaultValue)
         assertEquals("opt1", dynamicField.subFields!![1].defaultValue)
     }
+
+    @Test
+    fun `FormConfig can store prefills from team config`() {
+        // Test that FormConfig structure supports prefills
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList(),
+            prefills = mapOf("transect_number" to "1", "transect_type" to "sediment")
+        )
+
+        assertEquals(2, formConfig.prefills.size)
+        assertEquals("1", formConfig.prefills["transect_number"])
+        assertEquals("sediment", formConfig.prefills["transect_type"])
+    }
+
+    @Test
+    fun `FormConfig has empty prefills when not provided`() {
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList()
+        )
+
+        assertTrue(formConfig.prefills.isEmpty())
+    }
+
+    @Test
+    fun `FormConfig prefills can contain multiple widget values`() {
+        val prefills = mapOf(
+            "widget1" to "value1",
+            "widget2" to "value2",
+            "widget3" to "value3"
+        )
+        
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList(),
+            prefills = prefills
+        )
+
+        assertEquals(3, formConfig.prefills.size)
+        assertEquals("value1", formConfig.prefills["widget1"])
+        assertEquals("value2", formConfig.prefills["widget2"])
+        assertEquals("value3", formConfig.prefills["widget3"])
+    }
+
+    @Test
+    fun `FormConfig prefills can contain special values like now`() {
+        val prefills = mapOf(
+            "date_field" to "now",
+            "time_field" to "now",
+            "text_field" to "default text"
+        )
+        
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList(),
+            prefills = prefills
+        )
+
+        assertEquals("now", formConfig.prefills["date_field"])
+        assertEquals("now", formConfig.prefills["time_field"])
+        assertEquals("default text", formConfig.prefills["text_field"])
+    }
+
+    @Test
+    fun `FormConfig prefills can contain multiselect values`() {
+        val prefills = mapOf(
+            "multiselect_field" to "option1,option2,option3"
+        )
+        
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList(),
+            prefills = prefills
+        )
+
+        assertEquals("option1,option2,option3", formConfig.prefills["multiselect_field"])
+    }
 }
