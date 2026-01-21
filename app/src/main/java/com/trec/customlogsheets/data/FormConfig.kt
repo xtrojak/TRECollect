@@ -60,7 +60,8 @@ data class FormConfig(
     val mandatory: Boolean,
     val isDynamic: Boolean = false,
     val dynamicButtonName: String? = null,
-    val fields: List<FormFieldConfig>
+    val fields: List<FormFieldConfig>,
+    val prefills: Map<String, String> = emptyMap() // Map of widget_id -> value for prefilling form fields
 )
 
 /**
@@ -339,6 +340,31 @@ object FormConfigLoader {
             }
         }
         
+        // Parse prefills from team config
+        val prefills = mutableMapOf<String, String>()
+        if (sectionIndex >= 0 && sectionIndex < sectionsArray.length()) {
+            val sectionObj = sectionsArray.getJSONObject(sectionIndex)
+            val formsArray = sectionObj.getJSONArray("forms")
+            
+            if (formIndex >= 0 && formIndex < formsArray.length()) {
+                val formObj = formsArray.getJSONObject(formIndex)
+                // Verify this is the correct form_id (safety check)
+                if (formObj.getString("form_id") == formId && formObj.has("prefills") && !formObj.isNull("prefills")) {
+                    try {
+                        val prefillsArray = formObj.getJSONArray("prefills")
+                        for (i in 0 until prefillsArray.length()) {
+                            val prefillObj = prefillsArray.getJSONObject(i)
+                            val widgetId = prefillObj.getString("widget_id")
+                            val value = prefillObj.getString("value")
+                            prefills[widgetId] = value
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("FormConfigLoader", "Error parsing prefills for form $formId: ${e.message}")
+                    }
+                }
+            }
+        }
+        
         // Parse fields from logsheet config
         val fieldsArray = logsheetObj.getJSONArray("fields")
         val fields = parseFields(fieldsArray)
@@ -355,7 +381,8 @@ object FormConfigLoader {
             mandatory = formMandatory,
             isDynamic = isDynamic,
             dynamicButtonName = dynamicButtonName,
-            fields = fields
+            fields = fields,
+            prefills = prefills
         )
     }
     
@@ -485,7 +512,8 @@ object FormConfigLoader {
                             section = formObj.getString("section"),
                             description = formObj.optString("description").takeIf { it.isNotEmpty() },
                             mandatory = formObj.optBoolean("mandatory", false),
-                            fields = fields
+                            fields = fields,
+                            prefills = emptyMap() // parseJson doesn't have team config, so no prefills
                         )
                     )
                 } catch (e: Exception) {

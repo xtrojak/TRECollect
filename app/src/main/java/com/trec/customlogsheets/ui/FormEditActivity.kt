@@ -473,11 +473,24 @@ class FormEditActivity : AppCompatActivity() {
             }
         }
         
-        // Apply default values if this is a new form (not draft or submitted)
+        // Apply prefills and default values if this is a new form (not draft or submitted)
         if (existingFormData == null) {
+            // First, apply prefills (they take precedence over default values)
+            for ((widgetId, prefillValue) in formConfig.prefills) {
+                val fieldConfig = formConfig.fields.firstOrNull { it.id == widgetId }
+                if (fieldConfig != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
+                    val fieldView = fieldViews[widgetId]
+                    if (fieldView != null && fieldValues[widgetId] == null) {
+                        applyPrefillValue(fieldView, fieldConfig, prefillValue)
+                    }
+                }
+            }
+            
+            // Then, apply default values (only if no prefill was applied)
             for (fieldConfig in formConfig.fields) {
                 if (fieldConfig.defaultValue != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
                     val fieldView = fieldViews[fieldConfig.id]
+                    // Only apply default if no prefill was applied (fieldValues[fieldConfig.id] is still null)
                     if (fieldView != null && fieldValues[fieldConfig.id] == null) {
                         applyDefaultValue(fieldView, fieldConfig)
                     }
@@ -2741,6 +2754,114 @@ class FormEditActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             android.util.Log.e("FormEditActivity", "Error applying default value for field ${fieldConfig.id}: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Applies a prefill value to a field view
+     * Similar to applyDefaultValue but uses the provided value directly
+     */
+    private fun applyPrefillValue(fieldView: View, fieldConfig: FormFieldConfig, prefillValue: String) {
+        try {
+            when (fieldConfig.type) {
+                FormFieldConfig.FieldType.TEXT,
+                FormFieldConfig.FieldType.TEXTAREA -> {
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(prefillValue)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = prefillValue)
+                }
+                
+                FormFieldConfig.FieldType.SELECT -> {
+                    // Validate that prefill value is in options
+                    val options = fieldConfig.options
+                    if (options != null && options.contains(prefillValue)) {
+                        val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                        editText?.setText(prefillValue)
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = prefillValue)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "Prefill value '$prefillValue' not found in options for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.MULTISELECT -> {
+                    // Parse comma-separated values or JSON array
+                    val options = fieldConfig.options ?: return
+                    val prefillValues = parseMultiSelectDefault(prefillValue)
+                    // Validate all values are in options
+                    val validValues = prefillValues.filter { options.contains(it) }
+                    if (validValues.isNotEmpty()) {
+                        val textView = fieldView.findViewById<TextView>(R.id.textSelected)
+                        textView?.text = validValues.joinToString(", ")
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = validValues)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "None of the prefill values found in options for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.SELECT_IMAGE -> {
+                    // Validate that prefill value is in imageOptions
+                    val imageOptions = fieldConfig.imageOptions
+                    if (imageOptions != null && imageOptions.any { it.value == prefillValue }) {
+                        val recyclerView = fieldView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOptions)
+                        val adapter = recyclerView?.adapter as? ImageOptionAdapter
+                        adapter?.setSelectedValue(prefillValue)
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = prefillValue)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "Prefill value '$prefillValue' not found in imageOptions for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.MULTISELECT_IMAGE -> {
+                    // Parse comma-separated values
+                    val imageOptions = fieldConfig.imageOptions ?: return
+                    val prefillValues = parseMultiSelectDefault(prefillValue)
+                    // Validate all values are in imageOptions
+                    val validValues = prefillValues.filter { imageOptions.any { opt -> opt.value == it } }
+                    if (validValues.isNotEmpty()) {
+                        val recyclerView = fieldView.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.recyclerViewOptions)
+                        val adapter = recyclerView?.adapter as? ImageOptionAdapter
+                        adapter?.setSelectedValues(validValues.toSet())
+                        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = validValues)
+                    } else {
+                        android.util.Log.w("FormEditActivity", "None of the prefill values found in imageOptions for field ${fieldConfig.id}")
+                    }
+                }
+                
+                FormFieldConfig.FieldType.DATE -> {
+                    val dateValue = if (prefillValue.lowercase() == "now") {
+                        // Get current date in yyyy-MM-dd format
+                        val calendar = java.util.Calendar.getInstance()
+                        String.format("%04d-%02d-%02d", calendar.get(java.util.Calendar.YEAR),
+                            calendar.get(java.util.Calendar.MONTH) + 1,
+                            calendar.get(java.util.Calendar.DAY_OF_MONTH))
+                    } else {
+                        prefillValue
+                    }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(dateValue)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = dateValue)
+                }
+                
+                FormFieldConfig.FieldType.TIME -> {
+                    val timeValue = if (prefillValue.lowercase() == "now") {
+                        // Get current time in HH:mm format
+                        val calendar = java.util.Calendar.getInstance()
+                        String.format("%02d:%02d", calendar.get(java.util.Calendar.HOUR_OF_DAY),
+                            calendar.get(java.util.Calendar.MINUTE))
+                    } else {
+                        prefillValue
+                    }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(timeValue)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = timeValue)
+                }
+                
+                else -> {
+                    // Prefills not supported for this field type
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error applying prefill value for field ${fieldConfig.id}: ${e.message}", e)
         }
     }
     
