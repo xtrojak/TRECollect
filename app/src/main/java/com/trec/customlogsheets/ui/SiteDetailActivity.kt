@@ -103,8 +103,8 @@ class SiteDetailActivity : AppCompatActivity() {
         saveScrollPosition()
         
         // Reload forms list to pick up any new dynamic instances
+        // Only call setupFormsList once - it will handle everything
         setupFormsList()
-        loadFormCompletions()
         
         // Reload site data to get updated upload status (only if site has valid ID and not finished)
         if (site.id > 0 && site.status != com.trec.customlogsheets.data.SiteStatus.FINISHED) {
@@ -120,8 +120,6 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
             }
         }
-        // Reload form completions when returning from form editing
-        loadFormCompletions()
         // Update menu to refresh finalize button state
         invalidateOptionsMenu()
         // Note: Scroll position will be restored in setupFormsList() after data is loaded
@@ -573,7 +571,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 },
                 onDeleteDynamicForm = { form, subIndex -> onDeleteDynamicForm(form, subIndex) }
             )
-            recyclerView.adapter = formSectionAdapter
+        recyclerView.adapter = formSectionAdapter
         }
         
         // Initialize with forms for this specific site (uses pinned team config version)
@@ -632,25 +630,38 @@ class SiteDetailActivity : AppCompatActivity() {
             val getInstancesEndTime = System.currentTimeMillis()
             AppLogger.d("SiteDetailActivity", "Total getDynamicFormInstancesFromCache calls took ${getInstancesEndTime - getInstancesStartTime}ms for ${dynamicFormInstanceIndices.size} forms")
             
+            // Build expanded forms from files only (source of truth)
+            // Unsaved instances will only exist in the adapter's current list until saved or page is refreshed
+            // Also insert add buttons after each dynamic form group
             val expandedFormsBySection = baseFormsBySection.mapValues { (section, forms) ->
-                forms.flatMap { form ->
+                val result = mutableListOf<com.trec.customlogsheets.ui.FormListItem>()
+                
+                forms.forEach { form ->
                     if (form.isDynamic) {
                         val instances = allDynamicInstances[Pair(form.id, section)] ?: emptyList()
                         
                         // For dynamic forms, show instances (at least one default instance #1)
-                        if (instances.isEmpty()) {
+                        val formInstances = if (instances.isEmpty()) {
                             // Show default instance #1 (subIndex 0)
                             listOf(form.copy(name = "${form.name} #1", isDynamic = true))
                         } else {
-                            // Show all existing instances
+                            // Show all existing instances from files
                             instances.map { subIndex ->
                                 form.copy(name = "${form.name} #${subIndex + 1}", isDynamic = true)
                             }
                         }
+                        
+                        // Add all instances
+                        result.addAll(formInstances.map { com.trec.customlogsheets.ui.FormListItem.FormItem(it) })
+                        
+                        // Add button after this dynamic form group
+                        result.add(com.trec.customlogsheets.ui.FormListItem.AddButtonItem(form))
                     } else {
-                        listOf(form)
+                        result.add(com.trec.customlogsheets.ui.FormListItem.FormItem(form))
                     }
                 }
+                
+                result
             }
             
             // OPTIMIZATION: Use cached status map and instances to calculate canAdd (no XML loading)
@@ -691,8 +702,12 @@ class SiteDetailActivity : AppCompatActivity() {
             val submittedFormKeys = mutableSetOf<String>()
             val draftFormKeys = mutableSetOf<String>()
             
-            expandedFormsBySection.forEach { (section, forms) ->
-                forms.forEach { form ->
+            expandedFormsBySection.forEach { (section, formListItems) ->
+                formListItems.forEach { item ->
+                    // Only process FormItem, skip AddButtonItem
+                    if (item !is com.trec.customlogsheets.ui.FormListItem.FormItem) return@forEach
+                    
+                    val form = item.form
                     // Check if this is a dynamic form instance (name contains " #")
                     val isDynamicInstance = form.isDynamic && form.name.contains(" #")
                     val subIndex = if (isDynamicInstance) {
@@ -765,8 +780,9 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private fun loadFormCompletions() {
-        // Reload the forms list to get updated statuses
-        setupFormsList()
+        // This function is now a no-op - setupFormsList() handles everything
+        // We keep it for backward compatibility but it doesn't need to do anything
+        // since setupFormsList() already loads form completions
     }
     
     private fun onAddDynamicForm(form: Form) {
@@ -813,7 +829,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 if (sectionPosition >= 0) {
                     // Try to find the viewholder for this section
                     // First try: find by adapter position
-                    var viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+                    var viewHolder: FormSectionAdapter.SectionViewHolder? = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
                     
                     // Fallback: iterate through visible children
                     if (viewHolder == null) {
@@ -827,8 +843,10 @@ class SiteDetailActivity : AppCompatActivity() {
                         }
                     }
                     
-                    if (viewHolder != null) {
-                        viewHolder.addDynamicFormInstance(baseForm, nextSubIndex)
+                    // Use a local val copy to allow smart cast
+                    val foundViewHolder = viewHolder
+                    if (foundViewHolder != null) {
+                        foundViewHolder.addDynamicFormInstance(baseForm, nextSubIndex)
                     } else {
                         // Last resort: refresh the entire list
                         setupFormsList()
@@ -856,61 +874,244 @@ class SiteDetailActivity : AppCompatActivity() {
             }
         }
         
-        // Show confirmation dialog
-        AlertDialog.Builder(this)
-            .setTitle("Delete Form Instance")
-            .setMessage("Are you sure you want to delete this instance of \"${baseForm.name}\"? This action cannot be undone.")
-            .setPositiveButton("Delete") { _, _ ->
-                lifecycleScope.launch {
-                    val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
-                    val success = withContext(Dispatchers.IO) {
-                        formFileHelper.deleteDynamicFormInstance(site.name, baseForm.id, instanceIndex, subIndex)
-                    }
-                    if (success) {
-                        Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
-                        
-                        // Find the section adapter and form adapter to delete the instance directly
-                        val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
-                        val sectionPosition = formSectionAdapter?.sectionsList?.indexOf(baseForm.section) ?: -1
-                        
-                        if (sectionPosition >= 0) {
-                            // Try to find the viewholder for this section
-                            var viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
-                            
-                            // Fallback: iterate through visible children
-                            if (viewHolder == null) {
-                                for (i in 0 until recyclerView.childCount) {
-                                    val child = recyclerView.getChildAt(i)
-                                    val vh = recyclerView.getChildViewHolder(child)
-                                    if (vh is FormSectionAdapter.SectionViewHolder && vh.bindingAdapterPosition == sectionPosition) {
-                                        viewHolder = vh
-                                        break
+        lifecycleScope.launch {
+            val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            
+            // Check if this is the last instance
+            // We need to check both file-based instances AND UI-based instances
+            val allFileInstances = withContext(Dispatchers.IO) {
+                formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
+            }
+            
+            // Also check UI list for any instances that come after this one
+            val currentFormsBySection = formSectionAdapter?.currentFormsBySection
+            val formsInSection = currentFormsBySection?.get(baseForm.section) ?: emptyList()
+            val baseFormName = baseForm.name
+            val currentInstanceNumber = subIndex + 1
+            val currentInstanceName = "$baseFormName #$currentInstanceNumber"
+            
+            // Find this instance in the UI list (only check FormItem, skip AddButtonItem)
+            val currentInstanceIndex = formsInSection.indexOfFirst { item ->
+                item is com.trec.customlogsheets.ui.FormListItem.FormItem && 
+                item.form.isDynamic && 
+                item.form.id == baseForm.id && 
+                item.form.name == currentInstanceName
+            }
+            
+            // Check if there are any instances after this one in the UI list
+            val hasLaterInstancesInUI = if (currentInstanceIndex >= 0) {
+                formsInSection.subList(currentInstanceIndex + 1, formsInSection.size).any { item ->
+                    item is com.trec.customlogsheets.ui.FormListItem.FormItem &&
+                    item.form.isDynamic && 
+                    item.form.id == baseForm.id && 
+                    item.form.name.contains(" #")
+                }
+            } else {
+                false
+            }
+            
+            // This is the last instance if:
+            // 1. It's the only file-based instance, AND
+            // 2. There are no later instances in the UI list
+            val isLastInstance = allFileInstances.size == 1 && 
+                                 allFileInstances.contains(subIndex) && 
+                                 !hasLaterInstancesInUI
+            
+            if (isLastInstance) {
+                // For the last instance, just delete the draft (not the whole instance)
+                // Check if there's a draft to delete
+                val hasDraft = withContext(Dispatchers.IO) {
+                    formFileHelper.hasDraft(site.name, baseForm.id, instanceIndex, subIndex)
+                }
+                val isSubmitted = withContext(Dispatchers.IO) {
+                    formFileHelper.isFormSubmitted(site.name, baseForm.id, instanceIndex, subIndex)
+                }
+                
+                AppLogger.d("SiteDetailActivity", "onDeleteDynamicForm - isLastInstance=true, hasDraft=$hasDraft, isSubmitted=$isSubmitted")
+                
+                // Switch to main thread for UI operations
+                withContext(Dispatchers.Main) {
+                    if (hasDraft) {
+                        AppLogger.d("SiteDetailActivity", "Showing confirmation dialog for clearing draft")
+                        // Show confirmation dialog before clearing draft
+                        AlertDialog.Builder(this@SiteDetailActivity)
+                            .setTitle("Clear Draft")
+                            .setMessage("Are you sure you want to clear the draft for this instance? The form will be reset to empty state.")
+                            .setPositiveButton("Clear") { _, _ ->
+                                AppLogger.d("SiteDetailActivity", "User confirmed clearing draft")
+                                lifecycleScope.launch {
+                                    val success = withContext(Dispatchers.IO) {
+                                        formFileHelper.deleteForm(site.name, baseForm.id, instanceIndex, subIndex, isDraft = true)
+                                    }
+                                    if (success) {
+                                        AppLogger.d("SiteDetailActivity", "Draft deleted successfully, updating UI in place")
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@SiteDetailActivity, "Draft cleared", Toast.LENGTH_SHORT).show()
+                                            
+                                            // Update status in place - card should remain but become empty
+                                            val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+                                            val sectionPosition = formSectionAdapter?.sectionsList?.indexOf(baseForm.section) ?: -1
+                                            
+                                            AppLogger.d("SiteDetailActivity", "Section position: $sectionPosition")
+                                            
+                                            if (sectionPosition >= 0) {
+                                                var viewHolder: FormSectionAdapter.SectionViewHolder? = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+                                                
+                                                if (viewHolder == null) {
+                                                    for (i in 0 until recyclerView.childCount) {
+                                                        val child = recyclerView.getChildAt(i)
+                                                        val vh = recyclerView.getChildViewHolder(child)
+                                                        if (vh is FormSectionAdapter.SectionViewHolder && vh.bindingAdapterPosition == sectionPosition) {
+                                                            viewHolder = vh
+                                                            break
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                // Use a local val copy to allow smart cast
+                                                val foundViewHolder = viewHolder
+                                                if (foundViewHolder != null) {
+                                                    AppLogger.d("SiteDetailActivity", "Found ViewHolder, updating status in place")
+                                                    // Remove any unsaved instances that come after this one
+                                                    val instancesRemoved = foundViewHolder.removeUnsavedInstancesAfter(baseForm, subIndex)
+                                                    
+                                                    // Use Handler.postDelayed to ensure the list update from removeUnsavedInstancesAfter completes
+                                                    // before we update the status and rebind (submitList is asynchronous)
+                                                    AppLogger.d("SiteDetailActivity", "Scheduling updateFormStatus with 100ms delay")
+                                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                                        AppLogger.d("SiteDetailActivity", "Handler.postDelayed executed, calling updateFormStatus")
+                                                        // Update status in place - card remains, just becomes empty
+                                                        foundViewHolder.updateFormStatus(form, subIndex, instanceIndex, isCompleted = false, isDraft = false)
+                                                        // Also update the add button state - recalculate canAdd after draft deletion
+                                                        lifecycleScope.launch {
+                                                            val instances = withContext(Dispatchers.IO) {
+                                                                formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
+                                                            }
+                                                            val statusMap = withContext(Dispatchers.IO) {
+                                                                formFileHelper.getAllFormStatusesWithCache(site.name).statusMap
+                                                            }
+                                                            val canAdd = formFileHelper.canAddDynamicFormInstanceFromStatus(
+                                                                statusMap, baseForm.id, instanceIndex, instances
+                                                            )
+                                                            withContext(Dispatchers.Main) {
+                                                                foundViewHolder.updateAddButtonState(baseForm) { f ->
+                                                                    if (f.id == baseForm.id && f.isDynamic) canAdd else false
+                                                                }
+                                                            }
+                                                        }
+                                                    }, 100) // Small delay to ensure submitList callback completes
+                                                } else {
+                                                    AppLogger.d("SiteDetailActivity", "ViewHolder not found, falling back to full refresh")
+                                                    // Fallback: full refresh
+                                                    saveScrollPosition()
+                                                    setupFormsList()
+                                                    loadFormCompletions()
+                                                }
+                                            } else {
+                                                AppLogger.d("SiteDetailActivity", "Section position invalid, falling back to full refresh")
+                                                // Fallback: full refresh
+                                                saveScrollPosition()
+                                                setupFormsList()
+                                                loadFormCompletions()
+                                            }
+                                        }
+                                    } else {
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(this@SiteDetailActivity, "Failed to clear draft", Toast.LENGTH_LONG).show()
+                                        }
                                     }
                                 }
                             }
-                            
-                            if (viewHolder != null) {
-                                // Delete the instance directly from the adapter (live update)
-                                viewHolder.deleteDynamicFormInstance(form, subIndex)
-                            } else {
-                                // Fallback: refresh the entire list
-                                saveScrollPosition()
-                                setupFormsList()
-                                loadFormCompletions()
+                            .setNegativeButton("Cancel") { _, _ ->
+                                AppLogger.d("SiteDetailActivity", "User cancelled clearing draft")
                             }
-                        } else {
-                            // Fallback: refresh the entire list
-                            saveScrollPosition()
-                            setupFormsList()
-                            loadFormCompletions()
-                        }
+                            .show()
+                    } else if (isSubmitted) {
+                        // Allow deleting submitted last instance (same as regular forms)
+                        AlertDialog.Builder(this@SiteDetailActivity)
+                            .setTitle("Delete Form Instance")
+                            .setMessage("Are you sure you want to delete this submitted instance? This action cannot be undone.")
+                            .setPositiveButton("Delete") { _, _ ->
+                                lifecycleScope.launch {
+                                    val success = withContext(Dispatchers.IO) {
+                                        formFileHelper.deleteForm(site.name, baseForm.id, instanceIndex, subIndex, isDraft = false)
+                                    }
+                                    if (success) {
+                                        Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
+                                        saveScrollPosition()
+                                        setupFormsList()
+                                        loadFormCompletions()
+                                    } else {
+                                        Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
                     } else {
-                        Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
+                        // Already empty, nothing to do
+                        Toast.makeText(this@SiteDetailActivity, "Form is already empty", Toast.LENGTH_SHORT).show()
                     }
                 }
+            } else {
+                // Not the last instance, delete the whole instance
+                AlertDialog.Builder(this@SiteDetailActivity)
+                    .setTitle("Delete Form Instance")
+                    .setMessage("Are you sure you want to delete this instance of \"${baseForm.name}\"? This action cannot be undone.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        lifecycleScope.launch {
+                            val success = withContext(Dispatchers.IO) {
+                                formFileHelper.deleteDynamicFormInstance(site.name, baseForm.id, instanceIndex, subIndex)
+                            }
+                            if (success) {
+                                Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
+                                
+                                // Find the section adapter and form adapter to delete the instance directly
+                                val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+                                val sectionPosition = formSectionAdapter?.sectionsList?.indexOf(baseForm.section) ?: -1
+                                
+                                if (sectionPosition >= 0) {
+                                    // Try to find the viewholder for this section
+                                    var viewHolder: FormSectionAdapter.SectionViewHolder? = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+                                    
+                                    // Fallback: iterate through visible children
+                                    if (viewHolder == null) {
+                                        for (i in 0 until recyclerView.childCount) {
+                                            val child = recyclerView.getChildAt(i)
+                                            val vh = recyclerView.getChildViewHolder(child)
+                                            if (vh is FormSectionAdapter.SectionViewHolder && vh.bindingAdapterPosition == sectionPosition) {
+                                                viewHolder = vh
+                                                break
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Use a local val copy to allow smart cast
+                                    val foundViewHolder = viewHolder
+                                    if (foundViewHolder != null) {
+                                        // Delete the instance directly from the adapter (live update)
+                                        foundViewHolder.deleteDynamicFormInstance(form, subIndex)
+                                    } else {
+                                        // Fallback: refresh the entire list
+                                        saveScrollPosition()
+                                        setupFormsList()
+                                        loadFormCompletions()
+                                    }
+                                } else {
+                                    // Fallback: refresh the entire list
+                                    saveScrollPosition()
+                                    setupFormsList()
+                                    loadFormCompletions()
+                                }
+                            } else {
+                                Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
     }
     
     private fun onFormClick(form: Form) {
