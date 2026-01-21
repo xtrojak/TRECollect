@@ -703,9 +703,9 @@ class SiteDetailActivity : AppCompatActivity() {
             val draftFormKeys = mutableSetOf<String>()
             
             expandedFormsBySection.forEach { (section, formListItems) ->
-                formListItems.forEach { item ->
+                formListItems.forEach innerForEach@{ item ->
                     // Only process FormItem, skip AddButtonItem
-                    if (item !is com.trec.customlogsheets.ui.FormListItem.FormItem) return@forEach
+                    if (item !is com.trec.customlogsheets.ui.FormListItem.FormItem) return@innerForEach
                     
                     val form = item.form
                     // Check if this is a dynamic form instance (name contains " #")
@@ -767,10 +767,10 @@ class SiteDetailActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 if (savedScrollPosition > 0) {
                     // Wait for layout to complete before restoring scroll
-                    val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
-                    recyclerView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                    val recyclerViewForScroll = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+                    recyclerViewForScroll.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
                         override fun onGlobalLayout() {
-                            recyclerView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                            recyclerViewForScroll.viewTreeObserver.removeOnGlobalLayoutListener(this)
                             restoreScrollPosition()
                         }
                     })
@@ -885,13 +885,13 @@ class SiteDetailActivity : AppCompatActivity() {
             
             // Also check UI list for any instances that come after this one
             val currentFormsBySection = formSectionAdapter?.currentFormsBySection
-            val formsInSection = currentFormsBySection?.get(baseForm.section) ?: emptyList()
-            val baseFormName = baseForm.name
+            val currentFormsInSection = currentFormsBySection?.get(baseForm.section) ?: emptyList()
+            val currentBaseFormName = baseForm.name
             val currentInstanceNumber = subIndex + 1
-            val currentInstanceName = "$baseFormName #$currentInstanceNumber"
+            val currentInstanceName = "$currentBaseFormName #$currentInstanceNumber"
             
             // Find this instance in the UI list (only check FormItem, skip AddButtonItem)
-            val currentInstanceIndex = formsInSection.indexOfFirst { item ->
+            val currentInstanceIndex = currentFormsInSection.indexOfFirst { item ->
                 item is com.trec.customlogsheets.ui.FormListItem.FormItem && 
                 item.form.isDynamic && 
                 item.form.id == baseForm.id && 
@@ -900,7 +900,7 @@ class SiteDetailActivity : AppCompatActivity() {
             
             // Check if there are any instances after this one in the UI list
             val hasLaterInstancesInUI = if (currentInstanceIndex >= 0) {
-                formsInSection.subList(currentInstanceIndex + 1, formsInSection.size).any { item ->
+                currentFormsInSection.subList(currentInstanceIndex + 1, currentFormsInSection.size).any { item ->
                     item is com.trec.customlogsheets.ui.FormListItem.FormItem &&
                     item.form.isDynamic && 
                     item.form.id == baseForm.id && 
@@ -973,7 +973,7 @@ class SiteDetailActivity : AppCompatActivity() {
                                                 if (foundViewHolder != null) {
                                                     AppLogger.d("SiteDetailActivity", "Found ViewHolder, updating status in place")
                                                     // Remove any unsaved instances that come after this one
-                                                    val instancesRemoved = foundViewHolder.removeUnsavedInstancesAfter(baseForm, subIndex)
+                                                    foundViewHolder.removeUnsavedInstancesAfter(baseForm, subIndex)
                                                     
                                                     // Use Handler.postDelayed to ensure the list update from removeUnsavedInstancesAfter completes
                                                     // before we update the status and rebind (submitList is asynchronous)
