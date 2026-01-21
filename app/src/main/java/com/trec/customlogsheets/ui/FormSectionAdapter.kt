@@ -106,21 +106,13 @@ class FormSectionAdapter(
         private var sectionName: String = ""
         
         fun addDynamicFormInstance(baseForm: Form, subIndex: Int) {
-            AppLogger.d("FormSectionAdapter", "addDynamicFormInstance called: section=$sectionName, formId=${baseForm.id}, subIndex=$subIndex")
-            
             // Get current list
             val currentList = formAdapter.currentList.toMutableList()
-            AppLogger.d("FormSectionAdapter", "Current list size: ${currentList.size}, section=$sectionName")
-            if (currentList.isNotEmpty()) {
-                AppLogger.d("FormSectionAdapter", "First form in list: ${currentList.first().name}, last: ${currentList.last().name}")
-            }
             
             // Find the last instance of this dynamic form
             val lastInstanceIndex = currentList.indexOfLast { 
                 it.isDynamic && it.id == baseForm.id && it.name.contains(" #")
             }
-            
-            AppLogger.d("FormSectionAdapter", "Last instance index: $lastInstanceIndex")
             
             if (lastInstanceIndex >= 0) {
                 // Insert the new instance right after the last one
@@ -129,24 +121,18 @@ class FormSectionAdapter(
                     name = "${baseForm.name} #$newInstanceNumber",
                     isDynamic = true
                 )
-                AppLogger.d("FormSectionAdapter", "Adding new instance: ${newInstance.name} at position ${lastInstanceIndex + 1}")
                 currentList.add(lastInstanceIndex + 1, newInstance)
                 
                 // Store the old last instance index before submitting
                 val oldLastInstanceIndex = lastInstanceIndex
                 
                 // Submit the new list - DiffUtil will handle rebinding
-                formAdapter.submitList(currentList)
-                
-                // Force rebind of the old last instance so its button gets hidden
-                // Since submitList is asynchronous, we post the notification to run after the list is updated
-                Handler(Looper.getMainLooper()).post {
-                    AppLogger.d("FormSectionAdapter", "Notifying old last instance at position $oldLastInstanceIndex to rebind")
+                formAdapter.submitList(currentList) {
+                    // This callback runs after DiffUtil has finished dispatching updates.
+                    // Now we can safely notify the old last instance to rebind.
                     // Notify the old last instance and the new one to ensure both are rebound
                     formAdapter.notifyItemRangeChanged(oldLastInstanceIndex, 2)
                 }
-                
-                AppLogger.d("FormSectionAdapter", "List updated, new size: ${formAdapter.currentList.size}")
             } else {
                 AppLogger.w("FormSectionAdapter", "Could not find last instance of form ${baseForm.id} in section $sectionName. Current list: ${currentList.map { "${it.name} (${it.id})" }}")
             }

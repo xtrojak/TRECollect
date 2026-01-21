@@ -1,10 +1,12 @@
 package com.trec.customlogsheets.data
 
 import android.content.Context
+import android.util.Xml
 import androidx.documentfile.provider.DocumentFile
 import com.trec.customlogsheets.data.FolderStructureHelper
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.util.AppLogger
+import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -447,67 +449,122 @@ class FormFileHelper(private val context: Context) {
      * @param checkFinished If true, also checks the finished folder (for finalized sites)
      * @return Map where key is "formId_orderInSection" and value is Pair(isSubmitted, hasDraft)
      */
+    /**
+     * OPTIMIZATION: Lightweight parser that only reads formId and submittedAt from the root <form> tag
+     * without parsing the entire XML file. This is much faster than full FormData.fromXml parsing.
+     */
+    private fun parseFormHeaderOnly(inputStream: InputStream): Pair<String?, String?>? {
+        return try {
+            val parser = Xml.newPullParser()
+            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+            parser.setInput(inputStream, null)
+            
+            var formId: String? = null
+            var submittedAt: String? = null
+            var eventType = parser.eventType
+            
+            // Only parse until we get the form tag attributes, then stop
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        if (parser.name == "form") {
+                            formId = parser.getAttributeValue(null, "formId")
+                            submittedAt = parser.getAttributeValue(null, "submittedAt")
+                            // We got what we need, break early
+                            break
+                        }
+                    }
+                }
+                eventType = parser.next()
+            }
+            
+            if (formId != null) {
+                Pair(formId, submittedAt)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    /**
+     * Data class to hold both status map and file list for caching
+     */
+    data class FormStatusResult(
+        val statusMap: Map<String, Pair<Boolean, Boolean>>,
+        val fileList: List<DocumentFile> // Cached file list for reuse
+    )
+    
     fun getAllFormStatuses(siteName: String, checkFinished: Boolean = true): Map<String, Pair<Boolean, Boolean>> {
+        return getAllFormStatusesWithCache(siteName, checkFinished).statusMap
+    }
+    
+    /**
+     * OPTIMIZATION: Returns both status map and cached file list to avoid multiple listFiles() calls
+     */
+    fun getAllFormStatusesWithCache(siteName: String, checkFinished: Boolean = true): FormStatusResult {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         val statusMap = mutableMapOf<String, Pair<Boolean, Boolean>>()
+        val allFiles = mutableListOf<DocumentFile>()
         
         // Helper function to process files in a folder
         fun processFolder(siteFolder: DocumentFile?) {
             if (siteFolder != null && siteFolder.exists() && siteFolder.canRead()) {
                 val files = siteFolder.listFiles()
-                files
-                    .filter { file ->
-                        val fileName = file.name
-                        file.isFile && fileName != null && fileName.endsWith(".xml")
-                    }
-                    .forEach { file ->
-                        try {
-                            val fileName = file.name ?: return@forEach
-                            
-                            // Read XML first to get formId (more reliable than parsing filename)
-                            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                            inputStream?.close()
-                            val formData = FormData.fromXml(xmlContent)
-                            
-                            if (formData == null) {
-                                return@forEach
-                            }
-                            
-                            // Use formId from XML (more reliable) to parse filename accurately
-                            val formId = formData.formId
-                            
-                            // Parse filename to extract orderInSection and subIndex using known formId
-                            val extracted = extractFormIdAndOrderAndSubIndex(fileName, formId)
-                            if (extracted == null) {
-                                // Invalid format, skip
-                                return@forEach
-                            }
-                            
-                            val (_, orderInSection, subIndex) = extracted
-                            val key = if (subIndex != null) {
-                                "${formId}_${orderInSection}_${subIndex}"
-                            } else {
-                                "${formId}_${orderInSection}"
-                            }
-                            val isSubmitted = formData.submittedAt != null
-                            val hasDraft = formData.submittedAt == null
-                            
-                            AppLogger.d("FormFileHelper", "getAllFormStatuses: fileName=$fileName, formId=$formId, orderInSection=$orderInSection, subIndex=$subIndex, key=$key, isSubmitted=$isSubmitted, hasDraft=$hasDraft")
-                            
-                            // Update status map - if already exists, merge (submitted takes precedence)
-                            val existing = statusMap[key]
-                            if (existing == null) {
-                                statusMap[key] = Pair(isSubmitted, hasDraft)
-                            } else {
-                                // If we find a submitted version, it takes precedence
-                                statusMap[key] = Pair(isSubmitted || existing.first, hasDraft || existing.second)
-                            }
-                        } catch (e: Exception) {
-                            AppLogger.e("FormFileHelper", "Error reading form file: ${file.name}", e)
+                val xmlFiles = files.filter { file ->
+                    val fileName = file.name
+                    file.isFile && fileName != null && fileName.endsWith(".xml")
+                }
+                allFiles.addAll(xmlFiles)
+                
+                xmlFiles.forEach { file ->
+                    try {
+                        val fileName = file.name ?: return@forEach
+                        
+                        // OPTIMIZATION: Only read formId and submittedAt from XML header, not full file
+                        // Use buffered input stream for better performance
+                        val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+                        val headerInfo = inputStream?.buffered()?.use { parseFormHeaderOnly(it) }
+                        
+                        if (headerInfo == null) {
+                            return@forEach
                         }
+                        
+                        val (formId, submittedAt) = headerInfo
+                        if (formId == null) {
+                            return@forEach
+                        }
+                        
+                        // Parse filename to extract orderInSection and subIndex using known formId
+                        val extracted = extractFormIdAndOrderAndSubIndex(fileName, formId)
+                        if (extracted == null) {
+                            // Invalid format, skip
+                            return@forEach
+                        }
+                        
+                        val (_, orderInSection, subIndex) = extracted
+                        val key = if (subIndex != null) {
+                            "${formId}_${orderInSection}_${subIndex}"
+                        } else {
+                            "${formId}_${orderInSection}"
+                        }
+                        val isSubmitted = submittedAt != null
+                        val hasDraft = submittedAt == null
+                        
+                        // Update status map - if already exists, merge (submitted takes precedence)
+                        val existing = statusMap[key]
+                        if (existing == null) {
+                            statusMap[key] = Pair(isSubmitted, hasDraft)
+                        } else {
+                            // If we find a submitted version, it takes precedence
+                            statusMap[key] = Pair(isSubmitted || existing.first, hasDraft || existing.second)
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e("FormFileHelper", "Error reading form file: ${file.name}", e)
                     }
+                }
             }
         }
         
@@ -523,7 +580,7 @@ class FormFileHelper(private val context: Context) {
             processFolder(finishedSiteFolder)
         }
         
-        return statusMap
+        return FormStatusResult(statusMap, allFiles)
     }
     
     /**
@@ -746,6 +803,7 @@ class FormFileHelper(private val context: Context) {
      * @return List of sub-indices that have saved forms (draft or submitted), sorted ascending
      */
     fun getDynamicFormInstances(siteName: String, formId: String, orderInSection: Int): List<Int> {
+        val startTime = System.currentTimeMillis()
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
@@ -763,7 +821,11 @@ class FormFileHelper(private val context: Context) {
         // Check both ongoing and finished folders
         listOfNotNull(ongoingSiteFolder, finishedSiteFolder).forEach outer@{ siteFolder ->
             if (siteFolder.exists() && siteFolder.canRead()) {
+                val listFilesStartTime = System.currentTimeMillis()
                 val files = siteFolder.listFiles()
+                val listFilesEndTime = System.currentTimeMillis()
+                AppLogger.d("FormFileHelper", "listFiles() for $siteName took ${listFilesEndTime - listFilesStartTime}ms, found ${files.size} files")
+                
                 files.forEach { file ->
                     val fileName = file.name ?: return@forEach
                     if (file.isFile && fileName.endsWith(".xml") && fileName != "site_metadata.xml") {
@@ -775,6 +837,31 @@ class FormFileHelper(private val context: Context) {
                                 instances.add(fileSubIndex)
                             }
                         }
+                    }
+                }
+            }
+        }
+        
+        val endTime = System.currentTimeMillis()
+        AppLogger.d("FormFileHelper", "getDynamicFormInstances($siteName, $formId, $orderInSection) took ${endTime - startTime}ms, found ${instances.size} instances")
+        return instances.sorted()
+    }
+    
+    /**
+     * OPTIMIZATION: Get dynamic form instances from cached file list (avoids listFiles() call)
+     */
+    fun getDynamicFormInstancesFromCache(files: List<DocumentFile>, formId: String, orderInSection: Int): List<Int> {
+        val instances = mutableSetOf<Int>()
+        
+        files.forEach { file ->
+            val fileName = file.name ?: return@forEach
+            if (fileName.endsWith(".xml") && fileName != "site_metadata.xml") {
+                // Use known formId to parse filename more accurately
+                val extracted = extractFormIdAndOrderAndSubIndex(fileName, formId)
+                if (extracted != null) {
+                    val (fileFormId, fileOrderInSection, fileSubIndex) = extracted
+                    if (fileFormId == formId && fileOrderInSection == orderInSection && fileSubIndex != null) {
+                        instances.add(fileSubIndex)
                     }
                 }
             }
@@ -802,6 +889,22 @@ class FormFileHelper(private val context: Context) {
             val draft = loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = true, checkFinished = true)
             val submitted = loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false, checkFinished = true)
             draft != null || submitted != null
+        }
+    }
+    
+    /**
+     * OPTIMIZATION: Check if can add dynamic form instance using cached status map (avoids loading XML files)
+     */
+    fun canAddDynamicFormInstanceFromStatus(statusMap: Map<String, Pair<Boolean, Boolean>>, formId: String, orderInSection: Int, instances: List<Int>): Boolean {
+        if (instances.isEmpty()) {
+            return true // No instances yet, can add first one
+        }
+        
+        // Check if all instances have at least a draft or submitted form using status map
+        return instances.all { subIndex ->
+            val key = "${formId}_${orderInSection}_${subIndex}"
+            val status = statusMap[key]
+            status != null && (status.first || status.second) // isSubmitted || hasDraft
         }
     }
     

@@ -44,7 +44,6 @@ class FormAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FormViewHolder {
-        AppLogger.d("FormAdapter", "onCreateViewHolder called")
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_form, parent, false)
         return FormViewHolder(view)
@@ -52,11 +51,9 @@ class FormAdapter(
 
     override fun onBindViewHolder(holder: FormViewHolder, position: Int) {
         val form = getItem(position)
-        AppLogger.d("FormAdapter", "onBindViewHolder: position=$position, form=${form.name}, isDynamic=${form.isDynamic}, baseFormsList size=${baseFormsList.size}")
         
         // Check if this is a dynamic form instance (name contains " #")
         val isDynamicInstance = form.isDynamic && form.name.contains(" #")
-        AppLogger.d("FormAdapter", "isDynamicInstance=$isDynamicInstance for form ${form.name}")
         val subIndex = if (isDynamicInstance) {
             Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
         } else {
@@ -102,27 +99,21 @@ class FormAdapter(
             "${form.id}_${instanceIndex}"
         }
         
-        // Check if this is the last instance of this dynamic form
-        // We need to find the last instance of this specific dynamic form group (same formId and instanceIndex)
+        // OPTIMIZATION: Check if this is the last instance by only checking the next item (O(1) instead of O(n))
+        // This is the last instance if the next item is not part of the same dynamic form group
         val isLastInstance = if (isDynamicInstance) {
-            // Find all instances of this dynamic form with the same instanceIndex
-            // (i.e., all instances that belong to the same "base form occurrence")
-            val sameGroupInstances = mutableListOf<Int>()
-            for (i in 0 until itemCount) {
-                val f = getItem(i)
-                if (f.isDynamic && f.id == form.id && f.name.contains(" #")) {
-                    // Extract the base form name to check if it's the same instance group
-                    val fBaseName = f.name.substringBefore(" #")
-                    val formBaseName = form.name.substringBefore(" #")
-                    if (fBaseName == formBaseName) {
-                        sameGroupInstances.add(i)
-                    }
-                }
+            val nextPosition = position + 1
+            if (nextPosition < itemCount) {
+                val nextForm = getItem(nextPosition)
+                // If next form is not an instance of the same dynamic form group, this is the last instance
+                val nextIsSameGroup = nextForm.isDynamic && 
+                    nextForm.id == form.id && 
+                    nextForm.name.contains(" #") &&
+                    nextForm.name.substringBefore(" #") == baseFormName
+                !nextIsSameGroup
+            } else {
+                true // Last item in list
             }
-            // This is the last instance if it's the last one in the same group
-            val result = sameGroupInstances.isNotEmpty() && sameGroupInstances.last() == position
-            AppLogger.d("FormAdapter", "Checking isLastInstance for ${form.name} at pos $position: sameGroupInstances=$sameGroupInstances, result=$result")
-            result
         } else {
             false
         }
@@ -226,7 +217,6 @@ class FormAdapter(
             
             // Show add button for the last instance of each dynamic form
             if (isLastInstance && baseForm != null && baseForm.isDynamic && baseForm.dynamicButtonName != null) {
-                AppLogger.d("FormAdapter", "Setting up add button for form: ${baseForm.id}, name=${baseForm.name}, isLastInstance=$isLastInstance")
                 buttonAddDynamicForm.visibility = View.VISIBLE
                 buttonAddDynamicForm.text = baseForm.dynamicButtonName
                 
@@ -246,34 +236,20 @@ class FormAdapter(
                 // Can add only if all instances are saved AND the current (latest) instance is saved
                 val canAdd = canAddAllSaved && isCurrentFormSaved
                 
-                AppLogger.d("FormAdapter", "Button enable check: canAddAllSaved=$canAddAllSaved, isCurrentFormSaved=$isCurrentFormSaved, canAdd=$canAdd")
                 buttonAddDynamicForm.isEnabled = canAdd
-                
-                AppLogger.d("FormAdapter", "Button setup: visible=${buttonAddDynamicForm.visibility == View.VISIBLE}, enabled=$canAdd, callback=${onAddDynamicForm != null}")
                 
                 // Clear any existing listeners first
                 buttonAddDynamicForm.setOnClickListener(null)
                 buttonAddDynamicForm.setOnTouchListener(null)
                 
                 buttonAddDynamicForm.setOnClickListener { v ->
-                    AppLogger.d("FormAdapter", "Add button clicked for form: ${baseForm.id}, canAdd=$canAdd, callback=${onAddDynamicForm != null}")
                     // Stop event propagation to prevent card click
                     v?.parent?.requestDisallowInterceptTouchEvent(true)
                     if (canAdd && onAddDynamicForm != null) {
-                        AppLogger.d("FormAdapter", "Invoking onAddDynamicForm callback")
                         onAddDynamicForm.invoke(baseForm)
-                    } else {
-                        AppLogger.w("FormAdapter", "Button click ignored: canAdd=$canAdd, callback=${onAddDynamicForm != null}")
                     }
                 }
-                
-                // Also set onTouchListener to ensure we capture the event
-                buttonAddDynamicForm.setOnTouchListener { v, event ->
-                    AppLogger.d("FormAdapter", "Button touch event: action=${event.action}, x=${event.x}, y=${event.y}")
-                    false // Let the click listener handle it
-                }
             } else {
-                AppLogger.d("FormAdapter", "Hiding add button: isLastInstance=$isLastInstance, baseForm=${baseForm?.id}, isDynamic=${baseForm?.isDynamic}, buttonName=${baseForm?.dynamicButtonName}")
                 buttonAddDynamicForm.visibility = View.GONE
                 buttonAddDynamicForm.setOnClickListener(null)
             }
