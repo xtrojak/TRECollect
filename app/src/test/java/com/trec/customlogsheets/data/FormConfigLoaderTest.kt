@@ -1390,4 +1390,493 @@ class FormConfigLoaderTest {
         // Image displays should always have required = false (display-only)
         assertFalse(configs[0].fields[0].required)
     }
+
+    @Test
+    fun `parseJson parses default_value for text field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "text_field",
+                            "label": "Text Field",
+                            "type": "text",
+                            "default_value": "Default text"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].fields.size)
+        assertEquals("Default text", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for textarea field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "textarea_field",
+                            "label": "Textarea Field",
+                            "type": "textarea",
+                            "default_value": "Default textarea content"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("Default textarea content", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for select field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "select_field",
+                            "label": "Select Field",
+                            "type": "select",
+                            "options": ["option1", "option2", "option3"],
+                            "default_value": "option2"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("option2", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for multiselect field with comma-separated values`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "multiselect_field",
+                            "label": "Multiselect Field",
+                            "type": "multiselect",
+                            "options": ["option1", "option2", "option3"],
+                            "default_value": "option1,option2"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("option1,option2", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for multiselect field with JSON array`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "multiselect_field",
+                            "label": "Multiselect Field",
+                            "type": "multiselect",
+                            "options": ["option1", "option2", "option3"],
+                            "default_value": "[\"option1\",\"option3\"]"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("[\"option1\",\"option3\"]", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for select_image field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "select_image_field",
+                            "label": "Select Image Field",
+                            "type": "select_image",
+                            "options": [
+                                {"value": "opt1", "image": "images/opt1.png"},
+                                {"value": "opt2", "image": "images/opt2.png"}
+                            ],
+                            "default_value": "opt1"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("opt1", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for multiselect_image field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "multiselect_image_field",
+                            "label": "Multiselect Image Field",
+                            "type": "multiselect_image",
+                            "options": [
+                                {"value": "opt1", "image": "images/opt1.png"},
+                                {"value": "opt2", "image": "images/opt2.png"}
+                            ],
+                            "default_value": "opt1,opt2"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("opt1,opt2", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value "now" for date field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "date_field",
+                            "label": "Date Field",
+                            "type": "date",
+                            "default_value": "now"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("now", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value "now" for time field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "time_field",
+                            "label": "Time Field",
+                            "type": "time",
+                            "default_value": "now"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("now", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for date field with specific date`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "date_field",
+                            "label": "Date Field",
+                            "type": "date",
+                            "default_value": "2024-01-15"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("2024-01-15", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value for time field with specific time`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "time_field",
+                            "label": "Time Field",
+                            "type": "time",
+                            "default_value": "14:30"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("14:30", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson ignores default_value for unsupported field types`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "gps_field",
+                            "label": "GPS Field",
+                            "type": "gps",
+                            "default_value": "should be ignored"
+                        },
+                        {
+                            "id": "photo_field",
+                            "label": "Photo Field",
+                            "type": "photo",
+                            "default_value": "should be ignored"
+                        },
+                        {
+                            "id": "section_field",
+                            "label": "Section Field",
+                            "type": "section",
+                            "default_value": "should be ignored"
+                        },
+                        {
+                            "id": "image_display_field",
+                            "label": "Image Display Field",
+                            "type": "image_display",
+                            "image": "images/test.png",
+                            "default_value": "should be ignored"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(4, configs[0].fields.size)
+        // All unsupported field types should have null defaultValue
+        assertNull(configs[0].fields[0].defaultValue) // GPS
+        assertNull(configs[0].fields[1].defaultValue) // Photo
+        assertNull(configs[0].fields[2].defaultValue) // Section
+        assertNull(configs[0].fields[3].defaultValue) // Image Display
+    }
+
+    @Test
+    fun `parseJson sets defaultValue to null when default_value is not provided`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "text_field",
+                            "label": "Text Field",
+                            "type": "text"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertNull(configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson sets defaultValue to null when default_value is empty string`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "text_field",
+                            "label": "Text Field",
+                            "type": "text",
+                            "default_value": ""
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertNull(configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson handles default_value in dynamic subFields`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "dynamic_field",
+                            "label": "Dynamic Field",
+                            "type": "dynamic",
+                            "subFields": [
+                                {
+                                    "id": "sub_text",
+                                    "label": "Sub Text",
+                                    "type": "text",
+                                    "default_value": "Default sub text"
+                                },
+                                {
+                                    "id": "sub_select",
+                                    "label": "Sub Select",
+                                    "type": "select",
+                                    "options": ["opt1", "opt2"],
+                                    "default_value": "opt1"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        val dynamicField = configs[0].fields[0]
+        assertEquals(FormFieldConfig.FieldType.DYNAMIC, dynamicField.type)
+        assertNotNull(dynamicField.subFields)
+        assertEquals(2, dynamicField.subFields!!.size)
+        assertEquals("Default sub text", dynamicField.subFields!![0].defaultValue)
+        assertEquals("opt1", dynamicField.subFields!![1].defaultValue)
+    }
 }
