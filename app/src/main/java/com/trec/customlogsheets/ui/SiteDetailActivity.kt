@@ -98,6 +98,10 @@ class SiteDetailActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
+        // Reload forms list to pick up any new dynamic instances
+        setupFormsList()
+        loadFormCompletions()
+        
         // Reload site data to get updated upload status (only if site has valid ID and not finished)
         if (site.id > 0 && site.status != com.trec.customlogsheets.data.SiteStatus.FINISHED) {
             lifecycleScope.launch {
@@ -516,9 +520,14 @@ class SiteDetailActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
         recyclerView.layoutManager = LinearLayoutManager(this)
         
-        formSectionAdapter = FormSectionAdapter { form ->
-            onFormClick(form)
-        }
+        formSectionAdapter = FormSectionAdapter(
+            onFormClick = { form -> onFormClick(form) },
+            onAddDynamicForm = { form -> 
+                AppLogger.d("SiteDetailActivity", "Callback received in FormSectionAdapter lambda for form: ${form.id}")
+                onAddDynamicForm(form) 
+            },
+            onDeleteDynamicForm = { form, subIndex -> onDeleteDynamicForm(form, subIndex) }
+        )
         recyclerView.adapter = formSectionAdapter
         
         // Initialize with forms for this specific site (uses pinned team config version)
@@ -526,46 +535,111 @@ class SiteDetailActivity : AppCompatActivity() {
             val sections = withContext(Dispatchers.IO) {
                 PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
             }
-            val formsBySection = sections.associateWith { section ->
+            val baseFormsBySection = sections.associateWith { section ->
                 PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
             }
-            formSectionAdapter.setData(sections, formsBySection, emptySet(), emptySet())
-        }
-    }
-    
-    private fun loadFormCompletions() {
-        lifecycleScope.launch {
-            // Efficiently load all form statuses at once (reads all files once)
+            
+            // Expand dynamic forms to include their instances
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            val expandedFormsBySection = baseFormsBySection.mapValues { (_, forms) ->
+                forms.flatMap { form ->
+                    if (form.isDynamic) {
+                        // Get all instances of this dynamic form
+                        val formsInSection = baseFormsBySection[form.section] ?: emptyList()
+                        val orderInSection = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
+                            .takeIf { it >= 0 } ?: 0
+                        
+                        // Count how many forms with same ID appear before this position
+                        var instanceIndex = 0
+                        for (i in 0 until orderInSection) {
+                            if (formsInSection[i].id == form.id) {
+                                instanceIndex++
+                            }
+                        }
+                        
+                        val instances = withContext(Dispatchers.IO) {
+                            formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
+                        }
+                        
+                        // For dynamic forms, show instances (at least one default instance #1)
+                        if (instances.isEmpty()) {
+                            // Show default instance #1 (subIndex 0)
+                            listOf(form.copy(name = "${form.name} #1", isDynamic = true))
+                        } else {
+                            // Show all existing instances
+                            instances.map { subIndex ->
+                                form.copy(name = "${form.name} #${subIndex + 1}", isDynamic = true)
+                            }
+                        }
+                    } else {
+                        listOf(form)
+                    }
+                }
+            }
+            
+            // Set up canAddDynamicForm callback
+            val canAddCallback: (Form) -> Boolean = { form ->
+                if (!form.isDynamic) {
+                    false
+                } else {
+                    // Get base form (remove # suffix if present)
+                    val baseFormName = form.name.substringBefore(" #")
+                    val baseFormsInSection = PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, form.section)
+                    val orderInSection = baseFormsInSection.indexOfFirst { it.id == form.id && (it.name == baseFormName || it.name == form.name) }
+                        .takeIf { it >= 0 } ?: 0
+                    var instanceIndex = 0
+                    for (i in 0 until orderInSection) {
+                        if (baseFormsInSection[i].id == form.id) {
+                            instanceIndex++
+                        }
+                    }
+                    formFileHelper.canAddDynamicFormInstance(site.name, form.id, instanceIndex)
+                }
+            }
+            
+            // Load form completions using the expanded forms
             val allStatuses = withContext(Dispatchers.IO) {
                 formFileHelper.getAllFormStatuses(site.name)
             }
             
-            // Get all forms for this site and calculate status per instance
-            val sections = withContext(Dispatchers.IO) {
-                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
-            }
-            val formsBySection = sections.associateWith { section ->
-                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
-            }
-            
-            // Build sets of form keys for submitted and draft forms
+            // Build sets of form keys for submitted and draft forms using expanded forms
             val submittedFormKeys = mutableSetOf<String>()
             val draftFormKeys = mutableSetOf<String>()
             
-            // Check each form instance using the pre-loaded status map
-            formsBySection.forEach { (section, forms) ->
-                forms.forEachIndexed { index, form ->
-                    // Calculate orderInSection for this specific instance
+            expandedFormsBySection.forEach { (section, forms) ->
+                forms.forEach { form ->
+                    // Check if this is a dynamic form instance (name contains " #")
+                    val isDynamicInstance = form.isDynamic && form.name.contains(" #")
+                    val subIndex = if (isDynamicInstance) {
+                        Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+                    } else {
+                        null
+                    }
+                    
+                    // Get base form to calculate orderInSection
+                    val baseFormName = if (isDynamicInstance) {
+                        form.name.substringBefore(" #")
+                    } else {
+                        form.name
+                    }
+                    val baseFormsInSection = baseFormsBySection[section] ?: emptyList()
+                    val baseFormPosition = baseFormsInSection.indexOfFirst { it.id == form.id && it.name == baseFormName }
+                        .takeIf { it >= 0 } ?: 0
+                    
+                    // Calculate orderInSection for the base form
                     var instanceIndex = 0
-                    for (i in 0 until index) {
-                        if (forms[i].id == form.id) {
+                    for (i in 0 until baseFormPosition) {
+                        if (baseFormsInSection[i].id == form.id) {
                             instanceIndex++
                         }
                     }
                     
-                    // Use composite key to look up status
-                    val formKey = "${form.id}_$instanceIndex"
+                    // Use composite key to look up status (include sub-index for dynamic forms)
+                    val formKey = if (subIndex != null) {
+                        "${form.id}_${instanceIndex}_${subIndex}"
+                    } else {
+                        "${form.id}_${instanceIndex}"
+                    }
                     val status = allStatuses[formKey]
                     
                     if (status != null) {
@@ -579,7 +653,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
             }
             
-            formSectionAdapter.setData(sections, formsBySection, submittedFormKeys, draftFormKeys)
+            formSectionAdapter.setData(sections, expandedFormsBySection, submittedFormKeys, draftFormKeys, canAddCallback, baseFormsBySection)
             
             // Update canFinalize flag
             canFinalize = checkAllMandatoryFormsSubmitted()
@@ -587,33 +661,171 @@ class SiteDetailActivity : AppCompatActivity() {
         }
     }
     
-    private fun onFormClick(form: Form) {
-        // Calculate the position of this form instance in its section
-        // This is needed because the same formId can appear multiple times in a section
-        val formsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, form.section)
+    private fun loadFormCompletions() {
+        // Reload the forms list to get updated statuses
+        setupFormsList()
+    }
+    
+    private fun onAddDynamicForm(form: Form) {
+        AppLogger.d("SiteDetailActivity", "onAddDynamicForm called for form: ${form.id}, name=${form.name}")
         
-        // Find the actual position of this form in the list (by matching both id and name)
-        // Since forms with the same id can have different names (titles), we match both
-        val positionInSection = formsInSection.indexOfFirst { 
-            it.id == form.id && it.name == form.name 
-        }.takeIf { it >= 0 } ?: 0
+        // Get base form (remove # suffix if present)
+        val baseFormName = form.name.substringBefore(" #")
+        val baseForm = form.copy(name = baseFormName)
         
-        // Count how many forms with the same ID appear before this position
-        // This gives us the 0-based index of this specific instance of the form
+        // Use the same calculation as setupFormsList() - get base forms for the section
+        val baseFormsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, baseForm.section)
+        val baseFormPosition = baseFormsInSection.indexOfFirst { it.id == baseForm.id && it.name == baseFormName }
+            .takeIf { it >= 0 } ?: 0
+        
+        // Count how many forms with same ID appear before this position (this is instanceIndex)
         var instanceIndex = 0
-        for (i in 0 until positionInSection) {
-            if (formsInSection[i].id == form.id) {
+        for (i in 0 until baseFormPosition) {
+            if (baseFormsInSection[i].id == baseForm.id) {
                 instanceIndex++
             }
         }
         
-        android.util.Log.d("SiteDetailActivity", "Form clicked: id=${form.id}, name=${form.name}, position=$positionInSection, instanceIndex=$instanceIndex")
+        AppLogger.d("SiteDetailActivity", "Calculated: baseFormPosition=$baseFormPosition, instanceIndex=$instanceIndex")
+        
+        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
+        if (!formFileHelper.canAddDynamicFormInstance(site.name, baseForm.id, instanceIndex)) {
+            AppLogger.d("SiteDetailActivity", "Cannot add instance - not all instances are saved")
+            Toast.makeText(this, "Please save all existing instances before adding a new one", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        // Get the next sub-index (from existing saved instances)
+        val instances = formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
+        val nextSubIndex = if (instances.isEmpty()) 0 else instances.maxOrNull()!! + 1
+        
+        AppLogger.d("SiteDetailActivity", "Next subIndex: $nextSubIndex, existing instances: $instances")
+        
+        // Find the section adapter and form adapter to add the new instance directly
+        val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+        
+        // First, try to find by adapter position (more reliable than childCount)
+        val sectionPosition = formSectionAdapter.sectionsList.indexOf(baseForm.section)
+        AppLogger.d("SiteDetailActivity", "Looking for section: ${baseForm.section}, position=$sectionPosition")
+        
+        if (sectionPosition >= 0) {
+            // Try to find the viewholder for this section
+            var viewHolder: FormSectionAdapter.SectionViewHolder? = null
+            
+            // First try: find by adapter position
+            viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+            
+            // Fallback: iterate through visible children
+            if (viewHolder == null) {
+                AppLogger.d("SiteDetailActivity", "ViewHolder not found via adapter position, trying visible children")
+                for (i in 0 until recyclerView.childCount) {
+                    val child = recyclerView.getChildAt(i)
+                    val vh = recyclerView.getChildViewHolder(child)
+                    if (vh is FormSectionAdapter.SectionViewHolder && vh.adapterPosition == sectionPosition) {
+                        viewHolder = vh
+                        AppLogger.d("SiteDetailActivity", "Found viewholder in visible children at index $i")
+                        break
+                    }
+                }
+            }
+            
+            if (viewHolder != null) {
+                AppLogger.d("SiteDetailActivity", "Found viewholder, adding instance")
+                viewHolder.addDynamicFormInstance(baseForm, nextSubIndex)
+            } else {
+                AppLogger.w("SiteDetailActivity", "ViewHolder not found for section position $sectionPosition. RecyclerView childCount=${recyclerView.childCount}, sectionsList size=${formSectionAdapter.sectionsList.size}")
+                // Last resort: refresh the entire list
+                AppLogger.d("SiteDetailActivity", "Refreshing forms list as fallback")
+                setupFormsList()
+            }
+        } else {
+            AppLogger.w("SiteDetailActivity", "Section not found in sections list: ${baseForm.section}")
+        }
+    }
+    
+    private fun onDeleteDynamicForm(form: Form, subIndex: Int) {
+        // Get base form (remove # suffix)
+        val baseFormName = form.name.substringBefore(" #")
+        val baseForm = form.copy(name = baseFormName)
+        
+        val formsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, baseForm.section)
+        val orderInSection = formsInSection.indexOfFirst { it.id == baseForm.id && it.name == baseForm.name }
+            .takeIf { it >= 0 } ?: 0
+        
+        // Count how many forms with same ID appear before this position
+        var instanceIndex = 0
+        for (i in 0 until orderInSection) {
+            if (formsInSection[i].id == baseForm.id) {
+                instanceIndex++
+            }
+        }
+        
+        // Show confirmation dialog
+        AlertDialog.Builder(this)
+            .setTitle("Delete Form Instance")
+            .setMessage("Are you sure you want to delete this instance of \"${baseForm.name}\"? This action cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                lifecycleScope.launch {
+                    val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+                    val success = withContext(Dispatchers.IO) {
+                        formFileHelper.deleteDynamicFormInstance(site.name, baseForm.id, instanceIndex, subIndex)
+                    }
+                    if (success) {
+                        Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
+                        // Reload forms list and completions
+                        setupFormsList()
+                        loadFormCompletions()
+                    } else {
+                        Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun onFormClick(form: Form) {
+        // Get base forms list (without # suffix)
+        val baseFormsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, form.section)
+        
+        // Check if this is a dynamic form instance (name contains " #")
+        val isDynamicInstance = form.isDynamic && form.name.contains(" #")
+        val baseFormName = if (isDynamicInstance) {
+            form.name.substringBefore(" #")
+        } else {
+            form.name
+        }
+        
+        // Find the actual position of the base form in the list
+        val positionInSection = baseFormsInSection.indexOfFirst { 
+            it.id == form.id && it.name == baseFormName
+        }.takeIf { it >= 0 } ?: 0
+        
+        // Count how many forms with the same ID appear before this position
+        var instanceIndex = 0
+        for (i in 0 until positionInSection) {
+            if (baseFormsInSection[i].id == form.id) {
+                instanceIndex++
+            }
+        }
+        
+        // Extract sub-index from name if it's a dynamic instance
+        val subIndex = if (isDynamicInstance) {
+            Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+        } else {
+            null
+        }
+        
+        android.util.Log.d("SiteDetailActivity", "Form clicked: id=${form.id}, name=${form.name}, position=$positionInSection, instanceIndex=$instanceIndex, subIndex=$subIndex")
         
         // Open form editing activity
         val intent = Intent(this, FormEditActivity::class.java).apply {
             putExtra("siteName", site.name)
             putExtra("formId", form.id)
-            putExtra("orderInSection", instanceIndex) // 0-based index of this specific instance
+            putExtra("orderInSection", instanceIndex)
+            if (subIndex != null) {
+                putExtra("subIndex", subIndex)
+            }
             putExtra("isReadOnly", site.status == com.trec.customlogsheets.data.SiteStatus.FINISHED)
         }
         startActivity(intent)

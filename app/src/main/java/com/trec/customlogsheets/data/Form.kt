@@ -7,7 +7,9 @@ data class Form(
     val name: String,
     val section: String,
     val description: String? = null,
-    val mandatory: Boolean = false
+    val mandatory: Boolean = false,
+    val isDynamic: Boolean = false,
+    val dynamicButtonName: String? = null
 )
 
 object PredefinedForms {
@@ -42,7 +44,9 @@ object PredefinedForms {
                 name = config.name,
                 section = config.section,
                 description = config.description,
-                mandatory = config.mandatory
+                mandatory = config.mandatory,
+                isDynamic = config.isDynamic,
+                dynamicButtonName = config.dynamicButtonName
             )
         }
         
@@ -71,7 +75,9 @@ object PredefinedForms {
                 name = config.name,
                 section = config.section,
                 description = config.description,
-                mandatory = config.mandatory
+                mandatory = config.mandatory,
+                isDynamic = config.isDynamic,
+                dynamicButtonName = config.dynamicButtonName
             )
         }
         
