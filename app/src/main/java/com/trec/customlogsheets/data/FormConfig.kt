@@ -57,6 +57,8 @@ data class FormConfig(
     val section: String,
     val description: String?,
     val mandatory: Boolean,
+    val isDynamic: Boolean = false,
+    val dynamicButtonName: String? = null,
     val fields: List<FormFieldConfig>
 )
 
@@ -237,7 +239,7 @@ object FormConfigLoader {
             }
             
             val config = try {
-                parseLogsheetConfig(logsheetJson, formEntry.formId, teamConfigJson, formEntry.sectionIndex, formEntry.formIndex)
+                parseLogsheetConfig(logsheetJson, formEntry, teamConfigJson)
             } catch (e: Exception) {
                 android.util.Log.e("FormConfigLoader", "Error parsing logsheet ${formEntry.formId}: ${e.message}", e)
                 continue
@@ -263,7 +265,9 @@ object FormConfigLoader {
     private data class FormEntry(
         val formId: String,
         val sectionIndex: Int,
-        val formIndex: Int
+        val formIndex: Int,
+        val isDynamic: Boolean = false,
+        val dynamicButtonName: String? = null
     )
     
     /**
@@ -283,7 +287,11 @@ object FormConfigLoader {
             for (j in 0 until formsArray.length()) {
                 val formObj = formsArray.getJSONObject(j)
                 val formId = formObj.getString("form_id")
-                formEntries.add(FormEntry(formId, i, j))
+                // Check if dynamic is an object with button_name
+                val dynamicObj = formObj.optJSONObject("dynamic")
+                val isDynamic = dynamicObj != null
+                val dynamicButtonName = dynamicObj?.optString("button_name")?.takeIf { it.isNotEmpty() }
+                formEntries.add(FormEntry(formId, i, j, isDynamic, dynamicButtonName))
             }
         }
         
@@ -293,10 +301,14 @@ object FormConfigLoader {
     /**
      * Parses a single logsheet config JSON and converts it to FormConfig
      * Uses team config to get section and title information
-     * @param sectionIndex The index of the section in the team config (to match specific occurrence)
-     * @param formIndex The index of the form within the section (to match specific occurrence)
+     * @param logsheetJson The logsheet JSON
+     * @param formEntry The form entry from team config containing position and dynamic info
+     * @param teamConfigJson The team config JSON
      */
-    private fun parseLogsheetConfig(logsheetJson: String, formId: String, teamConfigJson: String, sectionIndex: Int, formIndex: Int): FormConfig? {
+    private fun parseLogsheetConfig(logsheetJson: String, formEntry: FormEntry, teamConfigJson: String): FormConfig? {
+        val formId = formEntry.formId
+        val sectionIndex = formEntry.sectionIndex
+        val formIndex = formEntry.formIndex
         val logsheetObj = org.json.JSONObject(logsheetJson)
         val teamObj = org.json.JSONObject(teamConfigJson)
         
@@ -331,12 +343,18 @@ object FormConfigLoader {
         val fieldsArray = logsheetObj.getJSONArray("fields")
         val fields = parseFields(fieldsArray)
         
+        // Get dynamic info from form entry
+        val isDynamic = formEntry.isDynamic
+        val dynamicButtonName = formEntry.dynamicButtonName
+        
         return FormConfig(
             id = formId,
             name = formName,
             section = formSection,
             description = formDescription,
             mandatory = formMandatory,
+            isDynamic = isDynamic,
+            dynamicButtonName = dynamicButtonName,
             fields = fields
         )
     }
@@ -417,18 +435,21 @@ object FormConfigLoader {
                     formEntries.firstOrNull { it.formId == formId }
                 }
                 if (formEntry != null) {
-                    parseLogsheetConfig(logsheetJson, formEntry.formId, teamConfigJson, formEntry.sectionIndex, formEntry.formIndex)
+                    parseLogsheetConfig(logsheetJson, formEntry, teamConfigJson)
                 } else {
                     // Form not found in team config, use defaults
-                    parseLogsheetConfig(logsheetJson, formId, teamConfigJson, -1, -1)
+                    val defaultEntry = FormEntry(formId, -1, -1, false, null)
+                    parseLogsheetConfig(logsheetJson, defaultEntry, teamConfigJson)
                 }
             } catch (e: Exception) {
                 android.util.Log.w("FormConfigLoader", "Error parsing team config for form $formId: ${e.message}")
-                parseLogsheetConfig(logsheetJson, formId, teamConfigJson, -1, -1)
+                val defaultEntry = FormEntry(formId, -1, -1, false, null)
+                parseLogsheetConfig(logsheetJson, defaultEntry, teamConfigJson)
             }
         } else {
             // No team config, use defaults from logsheet config
-            parseLogsheetConfig(logsheetJson, formId, "{\"sections\":[]}", -1, -1)
+            val defaultEntry = FormEntry(formId, -1, -1, false, null)
+            parseLogsheetConfig(logsheetJson, defaultEntry, "{\"sections\":[]}")
         }
     }
     

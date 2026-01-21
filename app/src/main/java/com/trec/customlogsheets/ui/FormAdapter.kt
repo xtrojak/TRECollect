@@ -10,13 +10,18 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.Form
+import com.trec.customlogsheets.util.AppLogger
 
 class FormAdapter(
-    private val onFormClick: (Form) -> Unit
+    private val onFormClick: (Form) -> Unit,
+    private val onDeleteDynamicForm: ((Form, Int) -> Unit)? = null,
+    private val onAddDynamicForm: ((Form) -> Unit)? = null
 ) : ListAdapter<Form, FormAdapter.FormViewHolder>(FormDiffCallback()) {
 
     private var completedFormIds: Set<String> = emptySet()
     private var draftFormIds: Set<String> = emptySet()
+    private var baseFormsList: List<Form> = emptyList() // Base forms (without dynamic instances) for calculating instanceIndex
+    private var canAddDynamicForm: ((Form) -> Boolean)? = null
 
     fun setCompletedFormIds(completedIds: Set<String>) {
         completedFormIds = completedIds
@@ -27,8 +32,19 @@ class FormAdapter(
         draftFormIds = draftIds
         notifyDataSetChanged()
     }
+    
+    fun setBaseFormsList(baseForms: List<Form>) {
+        baseFormsList = baseForms
+        // Don't call notifyDataSetChanged() here - it will be called by submitList() or setCompletedFormIds/setDraftFormIds
+    }
+    
+    fun setCanAddDynamicForm(callback: ((Form) -> Boolean)?) {
+        canAddDynamicForm = callback
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FormViewHolder {
+        AppLogger.d("FormAdapter", "onCreateViewHolder called")
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_form, parent, false)
         return FormViewHolder(view)
@@ -36,24 +52,102 @@ class FormAdapter(
 
     override fun onBindViewHolder(holder: FormViewHolder, position: Int) {
         val form = getItem(position)
+        AppLogger.d("FormAdapter", "onBindViewHolder: position=$position, form=${form.name}, isDynamic=${form.isDynamic}, baseFormsList size=${baseFormsList.size}")
         
-        // Calculate orderInSection for this form instance
-        // The position parameter is the index in the section's form list
-        // Count how many forms with the same ID appear before this position
-        val formsList = currentList
+        // Check if this is a dynamic form instance (name contains " #")
+        val isDynamicInstance = form.isDynamic && form.name.contains(" #")
+        AppLogger.d("FormAdapter", "isDynamicInstance=$isDynamicInstance for form ${form.name}")
+        val subIndex = if (isDynamicInstance) {
+            Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+        } else {
+            null
+        }
+        
+        // Find base form position in the base forms list (not expanded list)
+        // This must match the logic in setupFormsList() exactly
+        val baseFormName = if (isDynamicInstance) {
+            form.name.substringBefore(" #")
+        } else {
+            form.name
+        }
+        
+        // Find the base form in the base forms list
+        // This must match the logic in setupFormsList() exactly:
+        // baseFormsInSection.indexOfFirst { it.id == form.id && it.name == baseFormName }
+        // For regular forms, form.name == baseFormName, so we match by both id and name
+        // For dynamic forms, we need to match by id and baseFormName (without the # suffix)
+        val baseFormPosition = baseFormsList.indexOfFirst { 
+            it.id == form.id && it.name == baseFormName
+        }.takeIf { it >= 0 } ?: 0
+        
+        // Count how many forms with the same ID appear before this position in base forms list
+        // This matches setupFormsList() exactly:
+        // for (i in 0 until baseFormPosition) {
+        //     if (baseFormsInSection[i].id == form.id) {
+        //         instanceIndex++
+        //     }
+        // }
         var instanceIndex = 0
-        for (i in 0 until position) {
-            if (formsList[i].id == form.id) {
+        for (i in 0 until baseFormPosition) {
+            if (baseFormsList[i].id == form.id) {
                 instanceIndex++
             }
         }
         
-        // Use composite key: "formId_orderInSection"
-        val formKey = "${form.id}_$instanceIndex"
+        // Use composite key: "formId_orderInSection" or "formId_orderInSection_subIndex"
+        // This MUST match the key format used in getAllFormStatuses() and setupFormsList()
+        val formKey = if (subIndex != null) {
+            "${form.id}_${instanceIndex}_${subIndex}"
+        } else {
+            "${form.id}_${instanceIndex}"
+        }
+        
+        // Check if this is the last instance of this dynamic form
+        // We need to find the last instance of this specific dynamic form group (same formId and instanceIndex)
+        val isLastInstance = if (isDynamicInstance) {
+            // Find all instances of this dynamic form with the same instanceIndex
+            // (i.e., all instances that belong to the same "base form occurrence")
+            val sameGroupInstances = mutableListOf<Int>()
+            for (i in 0 until itemCount) {
+                val f = getItem(i)
+                if (f.isDynamic && f.id == form.id && f.name.contains(" #")) {
+                    // Extract the base form name to check if it's the same instance group
+                    val fBaseName = f.name.substringBefore(" #")
+                    val formBaseName = form.name.substringBefore(" #")
+                    if (fBaseName == formBaseName) {
+                        sameGroupInstances.add(i)
+                    }
+                }
+            }
+            // This is the last instance if it's the last one in the same group
+            val result = sameGroupInstances.isNotEmpty() && sameGroupInstances.last() == position
+            AppLogger.d("FormAdapter", "Checking isLastInstance for ${form.name} at pos $position: sameGroupInstances=$sameGroupInstances, result=$result")
+            result
+        } else {
+            false
+        }
+        
+        // Get base form for the add button - use baseFormName we already calculated
+        val baseForm = if (isDynamicInstance) {
+            // Try to find by id and name first
+            val found = baseFormsList.firstOrNull { it.id == form.id && it.name == baseFormName }
+                // Fallback: find by id and section if name doesn't match
+                ?: baseFormsList.firstOrNull { it.id == form.id && it.section == form.section && it.isDynamic }
+            AppLogger.d("FormAdapter", "Looking for baseForm: formId=${form.id}, baseFormName=$baseFormName, found=${found?.id}, baseFormsList size=${baseFormsList.size}")
+            found
+        } else {
+            null
+        }
+        
         holder.bind(
             form, 
             completedFormIds.contains(formKey),
-            draftFormIds.contains(formKey)
+            draftFormIds.contains(formKey),
+            isDynamicInstance,
+            subIndex,
+            isLastInstance,
+            baseForm,
+            onAddDynamicForm
         )
     }
 
@@ -61,8 +155,19 @@ class FormAdapter(
         private val formNameText: TextView = itemView.findViewById(R.id.textFormName)
         private val formDescriptionText: TextView = itemView.findViewById(R.id.textFormDescription)
         private val statusIcon: ImageView = itemView.findViewById(R.id.iconStatus)
+        private val buttonDeleteDynamic: android.widget.ImageButton = itemView.findViewById(R.id.buttonDeleteDynamic)
+        private val buttonAddDynamicForm: com.google.android.material.button.MaterialButton = itemView.findViewById(R.id.buttonAddDynamicForm)
 
-        fun bind(form: Form, isCompleted: Boolean, isDraft: Boolean) {
+        fun bind(
+            form: Form, 
+            isCompleted: Boolean, 
+            isDraft: Boolean, 
+            isDynamicInstance: Boolean = false, 
+            subIndex: Int? = null,
+            isLastInstance: Boolean = false,
+            baseForm: Form? = null,
+            onAddDynamicForm: ((Form) -> Unit)? = null
+        ) {
             // Show mandatory indicator
             var formNameDisplay = if (form.mandatory) {
                 "${form.name} *"
@@ -109,7 +214,58 @@ class FormAdapter(
                 }
             }
 
-            itemView.setOnClickListener {
+            // Show delete button for dynamic instances
+            if (isDynamicInstance && subIndex != null) {
+                buttonDeleteDynamic.visibility = View.VISIBLE
+                buttonDeleteDynamic.setOnClickListener {
+                    onDeleteDynamicForm?.invoke(form, subIndex)
+                }
+            } else {
+                buttonDeleteDynamic.visibility = View.GONE
+            }
+            
+            // Show add button for the last instance of each dynamic form
+            if (isLastInstance && baseForm != null && baseForm.isDynamic && baseForm.dynamicButtonName != null) {
+                AppLogger.d("FormAdapter", "Setting up add button for form: ${baseForm.id}, name=${baseForm.name}, isLastInstance=$isLastInstance")
+                buttonAddDynamicForm.visibility = View.VISIBLE
+                buttonAddDynamicForm.text = baseForm.dynamicButtonName
+                
+                // Enable/disable based on whether all instances are saved
+                val canAdd = canAddDynamicForm?.invoke(baseForm) ?: true
+                buttonAddDynamicForm.isEnabled = canAdd
+                
+                AppLogger.d("FormAdapter", "Button setup: visible=${buttonAddDynamicForm.visibility == View.VISIBLE}, enabled=$canAdd, callback=${onAddDynamicForm != null}")
+                
+                // Clear any existing listeners first
+                buttonAddDynamicForm.setOnClickListener(null)
+                buttonAddDynamicForm.setOnTouchListener(null)
+                
+                buttonAddDynamicForm.setOnClickListener { v ->
+                    AppLogger.d("FormAdapter", "Add button clicked for form: ${baseForm.id}, canAdd=$canAdd, callback=${onAddDynamicForm != null}")
+                    // Stop event propagation to prevent card click
+                    v?.parent?.requestDisallowInterceptTouchEvent(true)
+                    if (canAdd && onAddDynamicForm != null) {
+                        AppLogger.d("FormAdapter", "Invoking onAddDynamicForm callback")
+                        onAddDynamicForm.invoke(baseForm)
+                    } else {
+                        AppLogger.w("FormAdapter", "Button click ignored: canAdd=$canAdd, callback=${onAddDynamicForm != null}")
+                    }
+                }
+                
+                // Also set onTouchListener to ensure we capture the event
+                buttonAddDynamicForm.setOnTouchListener { v, event ->
+                    AppLogger.d("FormAdapter", "Button touch event: action=${event.action}, x=${event.x}, y=${event.y}")
+                    false // Let the click listener handle it
+                }
+            } else {
+                AppLogger.d("FormAdapter", "Hiding add button: isLastInstance=$isLastInstance, baseForm=${baseForm?.id}, isDynamic=${baseForm?.isDynamic}, buttonName=${baseForm?.dynamicButtonName}")
+                buttonAddDynamicForm.visibility = View.GONE
+                buttonAddDynamicForm.setOnClickListener(null)
+            }
+            
+            // Set click handler on the card content area (not the button)
+            val cardContent = itemView.findViewById<View>(R.id.cardContent)
+            cardContent?.setOnClickListener {
                 onFormClick(form)
             }
         }
