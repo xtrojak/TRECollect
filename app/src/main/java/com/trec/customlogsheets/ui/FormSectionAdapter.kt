@@ -137,6 +137,80 @@ class FormSectionAdapter(
                 AppLogger.w("FormSectionAdapter", "Could not find last instance of form ${baseForm.id} in section $sectionName. Current list: ${currentList.map { "${it.name} (${it.id})" }}")
             }
         }
+        
+        fun deleteDynamicFormInstance(form: Form, subIndex: Int) {
+            // Get current list
+            val currentList = formAdapter.currentList.toMutableList()
+            
+            // Find the instance to delete (match by ID and instance number in name)
+            val instanceNumber = subIndex + 1
+            val baseFormName = form.name.substringBefore(" #")
+            val instanceName = "$baseFormName #$instanceNumber"
+            val indexToDelete = currentList.indexOfFirst { 
+                it.isDynamic && it.id == form.id && it.name == instanceName
+            }
+            
+            if (indexToDelete >= 0) {
+                // Remove the instance
+                currentList.removeAt(indexToDelete)
+                
+                // Renumber all remaining instances of this dynamic form
+                // Find all instances of this form that come after the deleted one
+                var newInstanceNumber = instanceNumber // Start from the deleted instance's number
+                for (i in indexToDelete until currentList.size) {
+                    val item = currentList[i]
+                    if (item.isDynamic && item.id == form.id && item.name.contains(" #")) {
+                        // This is a remaining instance, renumber it
+                        currentList[i] = item.copy(
+                            name = "$baseFormName #$newInstanceNumber",
+                            isDynamic = true
+                        )
+                        newInstanceNumber++
+                    } else if (item.id != form.id) {
+                        // We've moved past this dynamic form group, stop renumbering
+                        break
+                    }
+                }
+                
+                // Submit the new list - DiffUtil will handle rebinding
+                formAdapter.submitList(currentList) {
+                    // After deletion, we need to rebind the new last instance (if any)
+                    // Find the new last instance of this dynamic form group
+                    val newLastInstanceIndex = currentList.indexOfLast { 
+                        it.isDynamic && it.id == form.id && it.name.contains(" #")
+                    }
+                    
+                    if (newLastInstanceIndex >= 0) {
+                        // Notify the new last instance to rebind so it shows the add button
+                        formAdapter.notifyItemChanged(newLastInstanceIndex)
+                    }
+                    
+                    // Also notify all renumbered instances to update their display
+                    val renumberedStart = indexToDelete
+                    val renumberedEnd = if (newLastInstanceIndex >= 0) {
+                        newLastInstanceIndex
+                    } else {
+                        // Find where this dynamic form group ends
+                        var endIndex = indexToDelete
+                        for (idx in indexToDelete until currentList.size) {
+                            val item = currentList[idx]
+                            if (item.isDynamic && item.id == form.id && item.name.contains(" #")) {
+                                endIndex = idx
+                            } else {
+                                break
+                            }
+                        }
+                        endIndex
+                    }
+                    
+                    if (renumberedEnd >= renumberedStart) {
+                        formAdapter.notifyItemRangeChanged(renumberedStart, renumberedEnd - renumberedStart + 1)
+                    }
+                }
+            } else {
+                AppLogger.w("FormSectionAdapter", "Could not find instance to delete: $instanceName in section $sectionName")
+            }
+        }
     }
 }
 

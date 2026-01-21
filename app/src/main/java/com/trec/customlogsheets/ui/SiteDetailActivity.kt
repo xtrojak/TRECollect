@@ -868,12 +868,42 @@ class SiteDetailActivity : AppCompatActivity() {
                     }
                     if (success) {
                         Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
-                        // Save scroll position before refreshing
-                        saveScrollPosition()
-                        // Reload forms list and completions
-                        setupFormsList()
-                        loadFormCompletions()
-                        // Note: Scroll position will be restored in setupFormsList() after data is loaded
+                        
+                        // Find the section adapter and form adapter to delete the instance directly
+                        val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
+                        val sectionPosition = formSectionAdapter?.sectionsList?.indexOf(baseForm.section) ?: -1
+                        
+                        if (sectionPosition >= 0) {
+                            // Try to find the viewholder for this section
+                            var viewHolder = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
+                            
+                            // Fallback: iterate through visible children
+                            if (viewHolder == null) {
+                                for (i in 0 until recyclerView.childCount) {
+                                    val child = recyclerView.getChildAt(i)
+                                    val vh = recyclerView.getChildViewHolder(child)
+                                    if (vh is FormSectionAdapter.SectionViewHolder && vh.bindingAdapterPosition == sectionPosition) {
+                                        viewHolder = vh
+                                        break
+                                    }
+                                }
+                            }
+                            
+                            if (viewHolder != null) {
+                                // Delete the instance directly from the adapter (live update)
+                                viewHolder.deleteDynamicFormInstance(form, subIndex)
+                            } else {
+                                // Fallback: refresh the entire list
+                                saveScrollPosition()
+                                setupFormsList()
+                                loadFormCompletions()
+                            }
+                        } else {
+                            // Fallback: refresh the entire list
+                            saveScrollPosition()
+                            setupFormsList()
+                            loadFormCompletions()
+                        }
                     } else {
                         Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
                     }
