@@ -173,11 +173,11 @@ class SettingsActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
                 if (position < currentSubteams.size) {
                     val selectedSubteam = currentSubteams[position]
-                    settingsPreferences.setSamplingSubteam(selectedSubteam)
-                    
-                    // Clear form config cache when subteam changes
-                    FormConfigLoader.clearCache()
-                    PredefinedForms.clearCache()
+                settingsPreferences.setSamplingSubteam(selectedSubteam)
+                
+                // Clear form config cache when subteam changes
+                FormConfigLoader.clearCache()
+                PredefinedForms.clearCache()
                     
                     // If folder is already selected, verify folder structure exists (don't recreate)
                     val folderUri = settingsPreferences.getFolderUri()
@@ -381,8 +381,8 @@ class SettingsActivity : AppCompatActivity() {
             // Show helpful message to guide users
             Toast.makeText(this, "Navigate to a writable folder (e.g., Downloads or Documents)", Toast.LENGTH_LONG).show()
             
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQUEST_CODE_OPEN_FOLDER)
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, REQUEST_CODE_OPEN_FOLDER)
         } catch (e: Exception) {
             android.util.Log.e("SettingsActivity", "Error opening folder picker: ${e.message}", e)
             Toast.makeText(this, "Error opening folder picker. Please try again.", Toast.LENGTH_LONG).show()
@@ -408,10 +408,10 @@ class SettingsActivity : AppCompatActivity() {
                 
                 // Take persistable URI permission
                 try {
-                    contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    )
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
                 } catch (e: SecurityException) {
                     Toast.makeText(this, "Error: Could not get write permission for selected folder. Please try again.", Toast.LENGTH_LONG).show()
                     android.util.Log.e("SettingsActivity", "Security exception taking persistable permission: ${e.message}", e)
@@ -477,12 +477,6 @@ class SettingsActivity : AppCompatActivity() {
                     return
                 }
                 createdTrecFolder
-            }
-            
-            if (trecFolder == null) {
-                android.util.Log.e("SettingsActivity", "trecFolder is null after creation/verification")
-                Toast.makeText(this, "Error: Could not create folder structure", Toast.LENGTH_LONG).show()
-                return
             }
             
             // Verify we have the TREC_logsheets folder

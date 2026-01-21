@@ -807,8 +807,8 @@ class FormFileHelper(private val context: Context) {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
-        // Get form config to determine section
-        val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return emptyList()
+        // Get form config to determine section (check if form exists)
+        PredefinedForms.getFormConfig(context, formId) ?: return emptyList()
         
         // Get site folder
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
