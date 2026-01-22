@@ -172,10 +172,11 @@ class FormConfigLoaderTest {
         assertEquals(FormFieldConfig.FieldType.GPS, fields[8].type)
         assertEquals(FormFieldConfig.FieldType.PHOTO, fields[9].type)
         assertEquals(FormFieldConfig.FieldType.BARCODE, fields[10].type)
-        assertEquals(FormFieldConfig.FieldType.SECTION, fields[11].type)
-        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, fields[12].type)
-        assertEquals(FormFieldConfig.FieldType.TABLE, fields[13].type)
-        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[14].type)
+        assertEquals(FormFieldConfig.FieldType.CHECKBOX, fields[11].type)
+        assertEquals(FormFieldConfig.FieldType.SECTION, fields[12].type)
+        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, fields[13].type)
+        assertEquals(FormFieldConfig.FieldType.TABLE, fields[14].type)
+        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[15].type)
     }
 
     @Test
