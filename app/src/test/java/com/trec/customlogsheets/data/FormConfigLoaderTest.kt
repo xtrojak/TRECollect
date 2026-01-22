@@ -145,6 +145,7 @@ class FormConfigLoaderTest {
                         {"id": "gps", "label": "GPS", "type": "gps"},
                         {"id": "photo", "label": "Photo", "type": "photo"},
                         {"id": "barcode", "label": "Barcode", "type": "barcode"},
+                        {"id": "checkbox", "label": "Checkbox", "type": "checkbox"},
                         {"id": "section", "label": "Section", "type": "section"},
                         {"id": "image_display", "label": "Image Display", "type": "image_display", "image": "images/site.png"},
                         {"id": "table", "label": "Table", "type": "table", "rows": ["row1"], "columns": ["col1"]},
@@ -159,7 +160,7 @@ class FormConfigLoaderTest {
 
         assertEquals(1, configs.size)
         val fields = configs[0].fields
-        assertEquals(15, fields.size)
+        assertEquals(16, fields.size)
         assertEquals(FormFieldConfig.FieldType.TEXT, fields[0].type)
         assertEquals(FormFieldConfig.FieldType.TEXTAREA, fields[1].type)
         assertEquals(FormFieldConfig.FieldType.DATE, fields[2].type)
@@ -1976,5 +1977,94 @@ class FormConfigLoaderTest {
         )
 
         assertEquals("option1,option2,option3", formConfig.prefills["multiselect_field"])
+    }
+
+    @Test
+    fun `parseJson parses checkbox field type`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "checkbox_field",
+                            "label": "Checkbox Field",
+                            "type": "checkbox"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].fields.size)
+        assertEquals(FormFieldConfig.FieldType.CHECKBOX, configs[0].fields[0].type)
+        assertEquals("checkbox_field", configs[0].fields[0].id)
+        assertEquals("Checkbox Field", configs[0].fields[0].label)
+    }
+
+    @Test
+    fun `parseJson parses default_value "true" for checkbox field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "checkbox_field",
+                            "label": "Checkbox Field",
+                            "type": "checkbox",
+                            "default_value": "true"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("true", configs[0].fields[0].defaultValue)
+    }
+
+    @Test
+    fun `parseJson parses default_value "false" for checkbox field`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "checkbox_field",
+                            "label": "Checkbox Field",
+                            "type": "checkbox",
+                            "default_value": "false"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals("false", configs[0].fields[0].defaultValue)
     }
 }
