@@ -513,6 +513,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.SELECT -> createSelectField(fieldConfig)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectField(fieldConfig)
                 FormFieldConfig.FieldType.SELECT_IMAGE -> createSelectImageField(fieldConfig)
+                FormFieldConfig.FieldType.CHECKBOX -> createCheckboxField(fieldConfig)
                 FormFieldConfig.FieldType.MULTISELECT_IMAGE -> createMultiSelectImageField(fieldConfig)
                 FormFieldConfig.FieldType.GPS -> createGPSField(fieldConfig)
                 FormFieldConfig.FieldType.PHOTO -> createPhotoField(fieldConfig)
@@ -1004,6 +1005,47 @@ class FormEditActivity : AppCompatActivity() {
         if (isReadOnly) {
             recyclerView.isEnabled = false
             recyclerView.alpha = 0.6f
+        }
+        
+        fieldViews[fieldConfig.id] = container
+        return container
+    }
+    
+    private fun createCheckboxField(fieldConfig: FormFieldConfig): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_checkbox,
+            containerFields,
+            false
+        ) as LinearLayout
+        
+        val checkbox = container.findViewById<CheckBox>(R.id.checkbox)
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        
+        // Set label
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = fieldConfig.id
+        
+        // Disable editing if read-only
+        if (isReadOnly) {
+            checkbox.isEnabled = false
+            checkbox.isFocusable = false
+            checkbox.isClickable = false
+        } else {
+            // Update fieldValues when checkbox state changes
+            checkbox.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) {
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = "true")
+                } else {
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = "false")
+                }
+                markFormChanged()
+            }
         }
         
         fieldViews[fieldConfig.id] = container
@@ -1727,6 +1769,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.BARCODE -> createBarcodeFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.CHECKBOX -> createCheckboxFieldForSubField(subFieldConfig, uniqueFieldId)
                 FormFieldConfig.FieldType.PHOTO -> createPhotoFieldForSubField(subFieldConfig, uniqueFieldId)
                 else -> {
                     android.util.Log.w("FormEditActivity", "Unsupported sub-field type: ${subFieldConfig.type} in dynamic widget")
@@ -1799,6 +1842,36 @@ class FormEditActivity : AppCompatActivity() {
         // Note: TextWatcher will be added in addSubFieldChangeListener
         
         return textInputLayout
+    }
+    
+    private fun createCheckboxFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(
+            R.layout.field_checkbox,
+            null,
+            false
+        ) as LinearLayout
+        
+        val checkbox = container.findViewById<CheckBox>(R.id.checkbox)
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        
+        // Set label
+        if (fieldConfig.required) {
+            textLabel.text = "${fieldConfig.label} *"
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        
+        container.tag = uniqueFieldId
+        
+        if (isReadOnly) {
+            checkbox.isEnabled = false
+            checkbox.isFocusable = false
+            checkbox.isClickable = false
+        }
+        // Note: ChangeListener will be added in addSubFieldChangeListener
+        
+        return container
     }
     
     private fun createTextAreaFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
@@ -2139,6 +2212,14 @@ class FormEditActivity : AppCompatActivity() {
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 })
             }
+            FormFieldConfig.FieldType.CHECKBOX -> {
+                val checkbox = subFieldView.findViewById<CheckBox>(R.id.checkbox)
+                checkbox?.setOnCheckedChangeListener { _, isChecked ->
+                    fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = if (isChecked) "true" else "false")
+                    markFormChanged()
+                    updateAddButtonForDynamicField(dynamicFieldId)
+                }
+            }
             FormFieldConfig.FieldType.GPS -> {
                 val editTextLatitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
                 val editTextLongitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
@@ -2233,6 +2314,10 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.text?.toString()?.trim()?.isNotEmpty() ?: false
+            }
+            FormFieldConfig.FieldType.CHECKBOX -> {
+                val checkbox = subFieldView.findViewById<CheckBox>(R.id.checkbox)
+                checkbox?.isChecked ?: false
             }
             FormFieldConfig.FieldType.GPS -> {
                 val editTextLatitude = subFieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
@@ -2623,6 +2708,10 @@ class FormEditActivity : AppCompatActivity() {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
             }
+            FormFieldConfig.FieldType.CHECKBOX -> {
+                val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
+                checkbox?.isChecked = fieldValue.value?.lowercase() == "true"
+            }
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
@@ -2661,6 +2750,13 @@ class FormEditActivity : AppCompatActivity() {
                     val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                     editText?.setText(defaultValue)
                     fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = defaultValue)
+                }
+                
+                FormFieldConfig.FieldType.CHECKBOX -> {
+                    val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
+                    val isChecked = defaultValue.lowercase() == "true"
+                    checkbox?.isChecked = isChecked
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = if (isChecked) "true" else "false")
                 }
                 
                 FormFieldConfig.FieldType.SELECT -> {
@@ -2769,6 +2865,13 @@ class FormEditActivity : AppCompatActivity() {
                     val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                     editText?.setText(prefillValue)
                     fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = prefillValue)
+                }
+                
+                FormFieldConfig.FieldType.CHECKBOX -> {
+                    val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
+                    val isChecked = prefillValue.lowercase() == "true"
+                    checkbox?.isChecked = isChecked
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = if (isChecked) "true" else "false")
                 }
                 
                 FormFieldConfig.FieldType.SELECT -> {
@@ -2897,7 +3000,12 @@ class FormEditActivity : AppCompatActivity() {
                         values.add(FormFieldValue(fieldId, value = value))
                     }
                 }
-            FormFieldConfig.FieldType.SELECT -> {
+                FormFieldConfig.FieldType.CHECKBOX -> {
+                    val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
+                    val isChecked = checkbox?.isChecked ?: false
+                    values.add(FormFieldValue(fieldId, value = if (isChecked) "true" else "false"))
+                }
+                FormFieldConfig.FieldType.SELECT -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 val value = editText?.text?.toString()?.trim() ?: ""
                 if (value.isNotEmpty()) {
@@ -3060,6 +3168,18 @@ class FormEditActivity : AppCompatActivity() {
                     FormFieldConfig.FieldType.BARCODE -> {
                         val value = fieldValue?.value?.trim()
                         if (value.isNullOrEmpty()) {
+                            Toast.makeText(
+                                this,
+                                "${fieldConfig.label} is required",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return false
+                        }
+                    }
+                    FormFieldConfig.FieldType.CHECKBOX -> {
+                        // For required checkbox, it must be checked (value == "true")
+                        val isChecked = fieldValue?.value?.lowercase() == "true"
+                        if (!isChecked) {
                             Toast.makeText(
                                 this,
                                 "${fieldConfig.label} is required",

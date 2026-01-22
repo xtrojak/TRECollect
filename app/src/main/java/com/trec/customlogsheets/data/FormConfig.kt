@@ -42,6 +42,7 @@ data class FormFieldConfig(
         GPS,
         PHOTO,
         BARCODE,
+        CHECKBOX, // Checkbox widget storing true/false
         SECTION, // Section header (display only, not collected)
         IMAGE_DISPLAY, // Image display (display only, not collected)
         TABLE, // Table with rows and columns
@@ -548,6 +549,7 @@ object FormConfigLoader {
                     "gps" -> FormFieldConfig.FieldType.GPS
                     "photo" -> FormFieldConfig.FieldType.PHOTO
                     "barcode" -> FormFieldConfig.FieldType.BARCODE
+                    "checkbox" -> FormFieldConfig.FieldType.CHECKBOX
                     "section" -> FormFieldConfig.FieldType.SECTION
                     "image_display" -> FormFieldConfig.FieldType.IMAGE_DISPLAY
                     "table" -> FormFieldConfig.FieldType.TABLE
@@ -633,7 +635,8 @@ object FormConfigLoader {
                         FormFieldConfig.FieldType.SELECT_IMAGE,
                         FormFieldConfig.FieldType.MULTISELECT_IMAGE,
                         FormFieldConfig.FieldType.DATE,
-                        FormFieldConfig.FieldType.TIME -> defaultValueString.takeIf { it.isNotEmpty() }
+                        FormFieldConfig.FieldType.TIME,
+                        FormFieldConfig.FieldType.CHECKBOX -> defaultValueString.takeIf { it.isNotEmpty() }
                         else -> null
                     }
                 } else {
