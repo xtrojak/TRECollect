@@ -111,7 +111,7 @@ class FolderStructureHelper(private val context: Context) {
         }
         
         // Folder doesn't exist, create it
-        teamFolder = trecFolder.createDirectory(team)
+            teamFolder = trecFolder.createDirectory(team)
         
         // Verify the created folder has the correct name (not a duplicate like "AML (1)")
         if (teamFolder != null && teamFolder.name != team) {
@@ -145,13 +145,13 @@ class FolderStructureHelper(private val context: Context) {
      */
     private fun getSubteamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
         val teamFolder = getTeamFolder(settingsPreferences) ?: return null
-        val subteam = settingsPreferences.getSamplingSubteam()
-        if (subteam.isEmpty()) {
-            return null
-        }
+            val subteam = settingsPreferences.getSamplingSubteam()
+            if (subteam.isEmpty()) {
+                return null
+            }
         
         // First, try to find existing folder by name
-        var subteamFolder = teamFolder.findFile(subteam)
+            var subteamFolder = teamFolder.findFile(subteam)
         if (subteamFolder != null && subteamFolder.exists()) {
             return subteamFolder
         }
@@ -168,7 +168,7 @@ class FolderStructureHelper(private val context: Context) {
         }
         
         // Folder doesn't exist, create it
-        subteamFolder = teamFolder.createDirectory(subteam)
+                subteamFolder = teamFolder.createDirectory(subteam)
         
         // Verify the created folder has the correct name (not a duplicate)
         if (subteamFolder != null && subteamFolder.name != subteam) {
@@ -278,11 +278,11 @@ class FolderStructureHelper(private val context: Context) {
             // Create TREC_logsheets folder - this should ALWAYS be created regardless of team/subteam
             android.util.Log.i("FolderStructureHelper", "TREC_logsheets folder does not exist, creating it...")
             try {
-                trecFolder = baseFolder.createDirectory(PARENT_FOLDER_NAME)
+            trecFolder = baseFolder.createDirectory(PARENT_FOLDER_NAME)
                 if (trecFolder == null) {
                     android.util.Log.e("FolderStructureHelper", "createDirectory returned null for TREC_logsheets - this usually means permission denied or storage full")
                     return null
-                }
+        }
                 android.util.Log.i("FolderStructureHelper", "createDirectory returned: name='${trecFolder.name}', exists=${trecFolder.exists()}, canWrite=${trecFolder.canWrite()}")
             } catch (e: Exception) {
                 android.util.Log.e("FolderStructureHelper", "Exception during createDirectory: ${e.message}", e)
@@ -435,7 +435,7 @@ class FolderStructureHelper(private val context: Context) {
         }
         
         // Create subteam folder (all teams use subteams now) (with duplicate detection)
-        var subteamFolder = teamFolder.findFile(subteam)
+            var subteamFolder = teamFolder.findFile(subteam)
         if (subteamFolder == null || !subteamFolder.exists()) {
             // Also check by listing files (fallback in case findFile() doesn't work reliably)
             try {
@@ -446,12 +446,12 @@ class FolderStructureHelper(private val context: Context) {
             }
         }
         
-        if (subteamFolder == null || !subteamFolder.exists()) {
-            subteamFolder = teamFolder.createDirectory(subteam)
-            if (subteamFolder == null) {
-                android.util.Log.e("FolderStructureHelper", "Failed to create subteam folder: $subteam")
-                return trecFolder
-            }
+            if (subteamFolder == null || !subteamFolder.exists()) {
+                subteamFolder = teamFolder.createDirectory(subteam)
+                if (subteamFolder == null) {
+                    android.util.Log.e("FolderStructureHelper", "Failed to create subteam folder: $subteam")
+                    return trecFolder
+                }
             
             // Verify the created folder has the correct name (not a duplicate)
             if (subteamFolder.name != subteam) {

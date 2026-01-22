@@ -361,12 +361,12 @@ class OwnCloudManager(private val context: Context) {
         }
         
         // Ensure subteam folder exists (all teams use subteams now)
-        val subteamPath = "$teamPath/$subteam"
-        val subteamExists = checkPathExists("$targetFolderUrl/$subteamPath")
-        if (!subteamExists) {
-            if (!createPath("$targetFolderUrl/$subteamPath")) {
-                AppLogger.w(TAG, "Failed to create subteam folder: $subteamPath")
-                return false
+            val subteamPath = "$teamPath/$subteam"
+            val subteamExists = checkPathExists("$targetFolderUrl/$subteamPath")
+            if (!subteamExists) {
+                if (!createPath("$targetFolderUrl/$subteamPath")) {
+                    AppLogger.w(TAG, "Failed to create subteam folder: $subteamPath")
+                    return false
             }
         }
         

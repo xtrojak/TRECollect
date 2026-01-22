@@ -669,9 +669,9 @@ class FormFileHelper(private val context: Context) {
         
         // Try to delete from any folder that has the file
         for (siteFolder in siteFolders) {
-            val file = siteFolder.findFile(fileName)
+        val file = siteFolder.findFile(fileName)
             if (file != null && file.exists()) {
-                try {
+            try {
                     // Verify it's the correct form before deleting
                     val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
                     val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
@@ -681,21 +681,21 @@ class FormFileHelper(private val context: Context) {
                     if (formData != null && formData.formId == formId) {
                         val isDraftFile = formData.submittedAt == null
                         if ((isDraft && isDraftFile) || (!isDraft && !isDraftFile)) {
-                            val deleted = file.delete()
-                            if (deleted) {
-                                AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
+                val deleted = file.delete()
+                if (deleted) {
+                    AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
                                 return true
-                            } else {
-                                AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
-                            }
+                } else {
+                    AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
+                }
                         } else {
                             AppLogger.w("FormFileHelper", "Form file type mismatch: expected isDraft=$isDraft but file isDraft=$isDraftFile")
                         }
                     } else {
                         AppLogger.w("FormFileHelper", "Form ID mismatch in file: expected=$formId, found=${formData?.formId}")
                     }
-                } catch (e: Exception) {
-                    AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
+            } catch (e: Exception) {
+                AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
                 }
             }
         }
@@ -727,7 +727,7 @@ class FormFileHelper(private val context: Context) {
         if (siteFolder == null || !siteFolder.exists() || !siteFolder.canWrite()) {
             AppLogger.e("FormFileHelper", "Site folder not found or not writable: $siteName")
             return false
-        }
+            }
         
         val fileName = "site_metadata.xml"
         val existingFile = siteFolder.findFile(fileName)

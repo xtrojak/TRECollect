@@ -89,7 +89,7 @@ class FormSectionAdapter(
                 sectionTitleText.visibility = android.view.View.GONE
             } else {
                 sectionTitleText.visibility = android.view.View.VISIBLE
-                sectionTitleText.text = section
+            sectionTitleText.text = section
             }
             
             // Set all data before notifying the adapter

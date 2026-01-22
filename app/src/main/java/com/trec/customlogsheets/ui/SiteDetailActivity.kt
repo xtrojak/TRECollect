@@ -583,8 +583,8 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             val baseFormsBySection = sections.associateWith { section ->
                 PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
-            }
-            
+    }
+    
             // Expand dynamic forms to include their instances
             // OPTIMIZATION: Batch all file I/O operations into a single withContext block
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)

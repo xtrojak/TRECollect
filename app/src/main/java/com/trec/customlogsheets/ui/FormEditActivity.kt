@@ -456,22 +456,22 @@ class FormEditActivity : AppCompatActivity() {
                     if (fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
                         fieldViews[fieldConfig.id] = fieldView
                         
-                    // Load existing value if available
-                    val existingValue = fieldValues[fieldConfig.id]
-                    if (existingValue != null) {
-                        setFieldValue(fieldView, fieldConfig, existingValue)
+                        // Load existing value if available
+                        val existingValue = fieldValues[fieldConfig.id]
+                        if (existingValue != null) {
+                            setFieldValue(fieldView, fieldConfig, existingValue)
+                        }
                     }
+                } catch (e: Exception) {
+                    android.util.Log.e("FormEditActivity", "Error creating field ${fieldConfig.id}: ${e.message}", e)
+                    // Create a simple error view instead of crashing
+                    val errorView = TextView(this).apply {
+                        text = "Error loading field: ${fieldConfig.label}"
+                        setTextColor(android.graphics.Color.RED)
+                    }
+                    containerFields.addView(errorView)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("FormEditActivity", "Error creating field ${fieldConfig.id}: ${e.message}", e)
-                // Create a simple error view instead of crashing
-                val errorView = TextView(this).apply {
-                    text = "Error loading field: ${fieldConfig.label}"
-                    setTextColor(android.graphics.Color.RED)
-                }
-                containerFields.addView(errorView)
             }
-        }
         
         // Apply prefills and default values if this is a new form (not draft or submitted)
         if (existingFormData == null) {
@@ -495,13 +495,13 @@ class FormEditActivity : AppCompatActivity() {
                         applyDefaultValue(fieldView, fieldConfig)
                     }
                 }
+                }
             }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error rendering fields: ${e.message}", e)
+            Toast.makeText(this, "Error rendering form fields: ${e.message}", Toast.LENGTH_LONG).show()
         }
-    } catch (e: Exception) {
-        android.util.Log.e("FormEditActivity", "Error rendering fields: ${e.message}", e)
-        Toast.makeText(this, "Error rendering form fields: ${e.message}", Toast.LENGTH_LONG).show()
     }
-}
     
     private fun createFieldView(fieldConfig: FormFieldConfig): View {
         return try {
@@ -570,7 +570,7 @@ class FormEditActivity : AppCompatActivity() {
                 if (imageFile != null && imageFile.exists()) {
                     // Load from downloaded file
                     val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
-                    imageView.setImageBitmap(bitmap)
+                imageView.setImageBitmap(bitmap)
                 } else {
                     android.util.Log.w("FormEditActivity", "Image not found: $imagePath")
                     // Set a placeholder or error icon
@@ -1248,9 +1248,9 @@ class FormEditActivity : AppCompatActivity() {
         // Try to find the view in regular fields first
         val fieldView = fieldViews[fieldId]
         if (fieldView != null) {
-            val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = "Photo: $fileName"
-            textFileName?.visibility = View.VISIBLE
+        val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
+        textFileName?.text = "Photo: $fileName"
+        textFileName?.visibility = View.VISIBLE
             return
         }
         
@@ -3372,14 +3372,132 @@ private class ImageOptionAdapter(
                 if (imageFile != null && imageFile.exists()) {
                     // Load from downloaded file
                     val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
-                    imageView.setImageBitmap(bitmap)
+                    if (bitmap != null) {
+                        // Calculate optimal size maintaining aspect ratio
+                        val density = itemView.context.resources.displayMetrics.density
+                        
+                        // Calculate available width from grid (3 columns)
+                        // Account for: card margin (4dp each side = 8dp), padding (8dp each side = 16dp)
+                        val cardMarginDp = 8f
+                        val paddingDp = 16f
+                        val totalHorizontalSpaceDp = cardMarginDp + paddingDp
+                        val totalHorizontalSpacePx = (totalHorizontalSpaceDp * density).toInt()
+                        
+                        // Get parent RecyclerView width, fallback to screen width / 3
+                        val parentRecyclerView = itemView.parent?.parent as? androidx.recyclerview.widget.RecyclerView
+                        val availableWidthPx = if (parentRecyclerView != null && parentRecyclerView.width > 0) {
+                            (parentRecyclerView.width / 3) - totalHorizontalSpacePx
+                        } else {
+                            // Fallback: use screen width / 3
+                            val screenWidthPx = itemView.context.resources.displayMetrics.widthPixels
+                            (screenWidthPx / 3) - totalHorizontalSpacePx
+                        }.coerceAtLeast((100 * density).toInt()) // Minimum 100dp width
+                        
+                        // Account for label space below image
+                        val willHaveLabel = option.label != null && option.label.isNotEmpty()
+                        val labelSpaceDp = if (willHaveLabel) {
+                            val textSizeSp = 12f
+                            val lineHeightDp = textSizeSp * 1.2f
+                            val twoLinesHeightDp = lineHeightDp * 2f
+                            twoLinesHeightDp + 4f // + marginTop
+                        } else {
+                            0f
+                        }
+                        val labelSpacePx = (labelSpaceDp * density).toInt()
+                        
+                        // Max height constraint (120dp minus label space)
+                        val maxHeightDp = 120f
+                        val maxHeightPx = (maxHeightDp * density).toInt()
+                        val maxImageHeightPx = maxHeightPx - labelSpacePx
+                        
+                        val imageWidth = bitmap.width
+                        val imageHeight = bitmap.height
+                        val aspectRatio = imageWidth.toFloat() / imageHeight.toFloat()
+                        
+                        // Calculate dimensions that fit within available space while maintaining aspect ratio
+                        val targetWidth: Int
+                        val targetHeight: Int
+                        
+                        if (imageWidth >= imageHeight) {
+                            // Landscape or square: use available width, but ensure height doesn't exceed max
+                            val widthBasedHeight = (availableWidthPx / aspectRatio).toInt()
+                            
+                            if (widthBasedHeight <= maxImageHeightPx) {
+                                // Width-based scaling fits within height constraint
+                                // Use full available width (or original if smaller)
+                                targetWidth = availableWidthPx.coerceAtMost(imageWidth)
+                                targetHeight = if (imageWidth > availableWidthPx) {
+                                    widthBasedHeight
+                                } else {
+                                    imageHeight
+                                }
+                            } else {
+                                // Height constraint is limiting, scale based on height
+                                targetHeight = maxImageHeightPx
+                                targetWidth = (maxImageHeightPx * aspectRatio).toInt().coerceAtMost(availableWidthPx)
+                            }
+                        } else {
+                            // Portrait: scale based on height, but ensure width fits
+                            val minImageHeightPx = (60 * density).toInt()
+                            val effectiveMaxHeight = maxImageHeightPx.coerceAtLeast(minImageHeightPx)
+                            
+                            if (imageHeight > effectiveMaxHeight) {
+                                targetHeight = effectiveMaxHeight
+                                targetWidth = (effectiveMaxHeight * aspectRatio).toInt()
+                            } else {
+                                // Image is smaller than max, use original size (but ensure it fits width)
+                                targetWidth = imageWidth.coerceAtMost(availableWidthPx)
+                                targetHeight = if (imageWidth > availableWidthPx) {
+                                    (availableWidthPx / aspectRatio).toInt()
+                                } else {
+                                    imageHeight
+                                }
+                            }
+                        }
+                        
+                        // Set the calculated dimensions
+                        val layoutParams = imageView.layoutParams
+                        if (layoutParams != null) {
+                            layoutParams.width = targetWidth
+                            layoutParams.height = targetHeight
+                            imageView.layoutParams = layoutParams
+                        }
+                        
+                imageView.setImageBitmap(bitmap)
+                    } else {
+                        // Reset to default size for placeholder
+                        val layoutParams = imageView.layoutParams
+                        if (layoutParams != null) {
+                            val defaultSize = (80 * itemView.context.resources.displayMetrics.density).toInt()
+                            layoutParams.width = defaultSize
+                            layoutParams.height = defaultSize
+                            imageView.layoutParams = layoutParams
+                        }
+                        imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+                    }
                 } else {
                     android.util.Log.w("ImageOptionAdapter", "Image not found: ${option.imagePath}")
+                    // Reset to default size for placeholder
+                    val layoutParams = imageView.layoutParams
+                    if (layoutParams != null) {
+                        val defaultSize = (80 * itemView.context.resources.displayMetrics.density).toInt()
+                        layoutParams.width = defaultSize
+                        layoutParams.height = defaultSize
+                        imageView.layoutParams = layoutParams
+                    }
                     // Set a placeholder or error icon
                     imageView.setImageResource(android.R.drawable.ic_menu_report_image)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ImageOptionAdapter", "Error loading image ${option.imagePath}: ${e.message}", e)
+                // Reset to default size for placeholder
+                val layoutParams = imageView.layoutParams
+                if (layoutParams != null) {
+                    val defaultSize = (80 * itemView.context.resources.displayMetrics.density).toInt()
+                    layoutParams.width = defaultSize
+                    layoutParams.height = defaultSize
+                    imageView.layoutParams = layoutParams
+                }
                 // Set a placeholder or error icon
                 imageView.setImageResource(android.R.drawable.ic_menu_report_image)
             }
