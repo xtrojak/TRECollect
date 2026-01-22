@@ -376,8 +376,15 @@ class FormEditActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // Delete both draft and submitted versions
-                formFileHelper.deleteForm(siteName, formId, isDraft = true)
-                formFileHelper.deleteForm(siteName, formId, isDraft = false)
+                // Pass orderInSection and subIndex to ensure correct file is deleted
+                val draftDeleted = withContext(Dispatchers.IO) {
+                    formFileHelper.deleteForm(siteName, formId, orderInSection, subIndex, isDraft = true)
+                }
+                val submittedDeleted = withContext(Dispatchers.IO) {
+                    formFileHelper.deleteForm(siteName, formId, orderInSection, subIndex, isDraft = false)
+                }
+                
+                AppLogger.d("FormEditActivity", "Clear form result: draftDeleted=$draftDeleted, submittedDeleted=$submittedDeleted, site=$siteName, form=$formId, orderInSection=$orderInSection, subIndex=$subIndex")
                 
                 // Clear all field values
                 fieldValues.clear()
@@ -386,11 +393,19 @@ class FormEditActivity : AppCompatActivity() {
                 // Re-render fields to show empty state
                 renderFields()
                 
-                Toast.makeText(this@FormEditActivity, "Form cleared", Toast.LENGTH_SHORT).show()
+                withContext(Dispatchers.Main) {
+                    if (draftDeleted || submittedDeleted) {
+                        Toast.makeText(this@FormEditActivity, "Form cleared", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@FormEditActivity, "Form cleared (no files found to delete)", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 isFormSaved = true // Mark as saved since there are no changes now
             } catch (e: Exception) {
-                android.util.Log.e("FormEditActivity", "Error clearing form: ${e.message}", e)
-                Toast.makeText(this@FormEditActivity, "Error clearing form: ${e.message}", Toast.LENGTH_LONG).show()
+                AppLogger.e("FormEditActivity", "Error clearing form: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FormEditActivity, "Error clearing form: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
