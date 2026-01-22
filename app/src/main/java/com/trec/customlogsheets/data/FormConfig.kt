@@ -122,12 +122,12 @@ object FormConfigLoader {
         } else {
             // No metadata or version info, use latest
             loadFromDownloaded(context, actualTeam, actualSubteam)
-        }
+            }
         
         // Cache the results
-        cachedConfigs = configs
-        cachedTeam = actualTeam
-        cachedSubteam = actualSubteam
+            cachedConfigs = configs
+            cachedTeam = actualTeam
+            cachedSubteam = actualSubteam
         cachedSiteName = siteName
         return configs
     }
@@ -433,7 +433,7 @@ object FormConfigLoader {
             } catch (e: Exception) {
                 android.util.Log.w("FormConfigLoader", "Could not load team config for site $siteName: ${e.message}")
                 null
-            }
+                    }
         } else {
             null
         }

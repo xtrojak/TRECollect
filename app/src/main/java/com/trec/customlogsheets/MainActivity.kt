@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
                 viewModel.loadSitesFromFolders(force = true)
             } else {
                 // Normal reload (with debounce)
-                viewModel.loadSitesFromFolders()
+            viewModel.loadSitesFromFolders()
             }
             // Update last known values AFTER calling loadSitesFromFolders
             lastKnownTeam = currentTeam

@@ -42,7 +42,7 @@ class FormAdapter(
         _draftFormIds = draftIds
         notifyDataSetChanged()
     }
-    
+
     fun setBaseFormsList(baseForms: List<Form>) {
         _baseFormsList = baseForms
         // Don't call notifyDataSetChanged() here - it will be called by submitList() or setCompletedFormIds/setDraftFormIds
