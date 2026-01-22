@@ -52,8 +52,8 @@ class FormFileHelperTest {
     fun tearDown() {
         // Clean up: delete test form if it exists
         try {
-            formFileHelper.deleteForm(testSiteName, testFormId, isDraft = false)
-            formFileHelper.deleteForm(testSiteName, testFormId, isDraft = true)
+            formFileHelper.deleteForm(testSiteName, testFormId, orderInSection = 0, subIndex = null, isDraft = false)
+            formFileHelper.deleteForm(testSiteName, testFormId, orderInSection = 0, subIndex = null, isDraft = true)
         } catch (e: Exception) {
             // Ignore cleanup errors
         }
