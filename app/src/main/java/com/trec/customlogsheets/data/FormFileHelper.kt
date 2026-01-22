@@ -667,11 +667,14 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
+        AppLogger.d("FormFileHelper", "Attempting to delete form: site=$siteName, form=$formId, orderInSection=$actualOrderInSection, subIndex=$subIndex, isDraft=$isDraft, fileName=$fileName")
+        
         // Try to delete from any folder that has the file
         for (siteFolder in siteFolders) {
         val file = siteFolder.findFile(fileName)
             if (file != null && file.exists()) {
-            try {
+                AppLogger.d("FormFileHelper", "Found file to delete: ${file.uri}, exists=${file.exists()}, canWrite=${file.canWrite()}")
+                try {
                     // Verify it's the correct form before deleting
                     val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
                     val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
@@ -685,23 +688,47 @@ class FormFileHelper(private val context: Context) {
                 if (deleted) {
                     AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
                                 return true
-                } else {
-                    AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
-                }
+                            } else {
+                                AppLogger.w("FormFileHelper", "Failed to delete form file (delete() returned false): site=$siteName, form=$formId, file=$fileName, uri=${file.uri}")
+                            }
                         } else {
-                            AppLogger.w("FormFileHelper", "Form file type mismatch: expected isDraft=$isDraft but file isDraft=$isDraftFile")
+                            AppLogger.w("FormFileHelper", "Form file type mismatch: expected isDraft=$isDraft but file isDraft=$isDraftFile, site=$siteName, form=$formId, file=$fileName")
+                            // Still try to delete if the file type doesn't match (might be wrong version)
+                            val deleted = file.delete()
+                            if (deleted) {
+                                AppLogger.i("FormFileHelper", "Deleted form file despite type mismatch: site=$siteName, form=$formId, file=$fileName")
+                                return true
+                            }
                         }
                     } else {
-                        AppLogger.w("FormFileHelper", "Form ID mismatch in file: expected=$formId, found=${formData?.formId}")
+                        AppLogger.w("FormFileHelper", "Form ID mismatch or null in file: expected=$formId, found=${formData?.formId}, site=$siteName, file=$fileName")
+                        // If we can't verify the form ID, still try to delete (file might be corrupted or wrong)
+                        // But only if the filename matches what we expect
+                        val deleted = file.delete()
+                        if (deleted) {
+                            AppLogger.i("FormFileHelper", "Deleted form file despite ID mismatch/null: site=$siteName, form=$formId, file=$fileName")
+                            return true
+                } else {
+                            AppLogger.w("FormFileHelper", "Failed to delete file with ID mismatch: site=$siteName, form=$formId, file=$fileName")
+                        }
                     }
-            } catch (e: Exception) {
-                AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
+                } catch (e: Exception) {
+                    AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName, error=${e.message}", e)
+                    // Try to delete anyway if we can't verify (might be corrupted file)
+                    try {
+                        if (file.delete()) {
+                            AppLogger.w("FormFileHelper", "Deleted form file despite verification error: site=$siteName, form=$formId, file=$fileName")
+                            return true
+                        }
+                    } catch (deleteException: Exception) {
+                        AppLogger.e("FormFileHelper", "Failed to delete file even after verification error: ${deleteException.message}", deleteException)
+                    }
                 }
             }
         }
         
         // File doesn't exist, consider it already deleted
-        AppLogger.d("FormFileHelper", "Form file not found (already deleted?): site=$siteName, form=$formId, file=$fileName")
+        AppLogger.d("FormFileHelper", "Form file not found (already deleted?): site=$siteName, form=$formId, file=$fileName, orderInSection=$actualOrderInSection, subIndex=$subIndex")
         return true
     }
     
