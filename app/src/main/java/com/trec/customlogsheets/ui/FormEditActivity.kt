@@ -1469,56 +1469,99 @@ class FormEditActivity : AppCompatActivity() {
             // Data cells
             for (column in columns) {
                 val cellValue = existingTableData[row]?.get(column) ?: ""
-                val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
-                    hint = ""
-                    setText(cellValue)
-                    setPadding(8, 8, 8, 8)
-                    setBackgroundColor(android.graphics.Color.WHITE)
-                    layoutParams = android.widget.TableRow.LayoutParams(
-                        0,
-                        android.widget.TableRow.LayoutParams.WRAP_CONTENT,
-                        1f
-                    )
-                    
-                    // Set input type
-                    when (inputType.lowercase()) {
-                        "number" -> {
-                            this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
-                                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or 
-                                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
-                        }
-                        "integer" -> {
-                            this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
-                                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
-                        }
-                        else -> {
-                            this.inputType = android.text.InputType.TYPE_CLASS_TEXT
-                        }
+                
+                if (inputType.lowercase() == "boolean") {
+                    // Create checkbox for boolean input type
+                    val checkboxContainer = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER
+                        layoutParams = android.widget.TableRow.LayoutParams(
+                            0,
+                            android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                            1f
+                        )
+                        setPadding(8, 8, 8, 8)
                     }
                     
-                    // Store row and column in tag for value collection
-                    tag = "$row|$column"
-                    
-                    // Disable if read-only
-                    if (isReadOnly) {
-                        isEnabled = false
-                        isFocusable = false
-                        isFocusableInTouchMode = false
-                        isClickable = false
-                    } else {
-                        // Mark form as changed and update fieldValues when text changes
-                        addTextChangedListener(object : android.text.TextWatcher {
-                            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                            override fun afterTextChanged(s: android.text.Editable?) {
+                    val checkbox = CheckBox(this).apply {
+                        isChecked = cellValue.lowercase() == "true"
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        
+                        // Store row and column in tag for value collection
+                        tag = "$row|$column"
+                        
+                        // Disable if read-only
+                        if (isReadOnly) {
+                            isEnabled = false
+                            isFocusable = false
+                            isClickable = false
+                        } else {
+                            // Mark form as changed and update fieldValues when checkbox state changes
+                            setOnCheckedChangeListener { _, _ ->
                                 // Update fieldValues with current table data
                                 updateTableFieldValue(fieldConfig.id, tableLayout)
                                 markFormChanged()
                             }
-                        })
+                        }
                     }
+                    checkboxContainer.addView(checkbox)
+                    dataRow.addView(checkboxContainer)
+                } else {
+                    // Create text input for other input types
+                    val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
+                        hint = ""
+                        setText(cellValue)
+                        setPadding(8, 8, 8, 8)
+                        setBackgroundColor(android.graphics.Color.WHITE)
+                        layoutParams = android.widget.TableRow.LayoutParams(
+                            0,
+                            android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                            1f
+                        )
+                        
+                        // Set input type
+                        when (inputType.lowercase()) {
+                            "number" -> {
+                                this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
+                                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or 
+                                    android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                            }
+                            "integer" -> {
+                                this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
+                                    android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                            }
+                            else -> {
+                                this.inputType = android.text.InputType.TYPE_CLASS_TEXT
+                            }
+                        }
+                        
+                        // Store row and column in tag for value collection
+                        tag = "$row|$column"
+                        
+                        // Disable if read-only
+                        if (isReadOnly) {
+                            isEnabled = false
+                            isFocusable = false
+                            isFocusableInTouchMode = false
+                            isClickable = false
+                        } else {
+                            // Mark form as changed and update fieldValues when text changes
+                            addTextChangedListener(object : android.text.TextWatcher {
+                                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                                override fun afterTextChanged(s: android.text.Editable?) {
+                                    // Update fieldValues with current table data
+                                    updateTableFieldValue(fieldConfig.id, tableLayout)
+                                    markFormChanged()
+                                }
+                            })
+                        }
+                    }
+                    dataRow.addView(editText)
                 }
-                dataRow.addView(editText)
             }
             tableLayout.addView(dataRow)
         }
@@ -1552,11 +1595,28 @@ class FormEditActivity : AppCompatActivity() {
             
             // Collect cell values
             for (j in 1 until row.childCount) {
-                val cell = row.getChildAt(j) as? com.google.android.material.textfield.TextInputEditText
-                val cellValue = cell?.text?.toString()?.trim() ?: ""
+                val cell = row.getChildAt(j)
                 val columnIndex = j - 1
                 if (columnIndex < columnNames.size) {
                     val columnName = columnNames[columnIndex]
+                    val cellValue = when (cell) {
+                        is LinearLayout -> {
+                            // Check if this is a checkbox container
+                            val checkbox = cell.getChildAt(0) as? CheckBox
+                            if (checkbox != null) {
+                                if (checkbox.isChecked) "true" else "false"
+                            } else {
+                                ""
+                            }
+                        }
+                        is CheckBox -> {
+                            if (cell.isChecked) "true" else "false"
+                        }
+                        is com.google.android.material.textfield.TextInputEditText -> {
+                            cell.text?.toString()?.trim() ?: ""
+                        }
+                        else -> ""
+                    }
                     if (cellValue.isNotEmpty()) {
                         rowData[columnName] = cellValue
                     }
@@ -3064,11 +3124,28 @@ class FormEditActivity : AppCompatActivity() {
                     
                     // Collect cell values
                     for (j in 1 until row.childCount) {
-                        val cell = row.getChildAt(j) as? com.google.android.material.textfield.TextInputEditText
-                        val cellValue = cell?.text?.toString()?.trim() ?: ""
+                        val cell = row.getChildAt(j)
                         val columnIndex = j - 1
                         if (columnIndex < columnNames.size) {
                             val columnName = columnNames[columnIndex]
+                            val cellValue = when (cell) {
+                                is LinearLayout -> {
+                                    // Check if this is a checkbox container
+                                    val checkbox = cell.getChildAt(0) as? CheckBox
+                                    if (checkbox != null) {
+                                        if (checkbox.isChecked) "true" else "false"
+                                    } else {
+                                        ""
+                                    }
+                                }
+                                is CheckBox -> {
+                                    if (cell.isChecked) "true" else "false"
+                                }
+                                is com.google.android.material.textfield.TextInputEditText -> {
+                                    cell.text?.toString()?.trim() ?: ""
+                                }
+                                else -> ""
+                            }
                             if (cellValue.isNotEmpty()) {
                                 rowData[columnName] = cellValue
                             }
