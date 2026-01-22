@@ -3268,6 +3268,10 @@ class FormEditActivity : AppCompatActivity() {
                                         FormFieldConfig.FieldType.BARCODE -> {
                                             subFieldValue?.value?.trim()?.isEmpty() ?: true
                                         }
+                                        FormFieldConfig.FieldType.CHECKBOX -> {
+                                            // For required checkbox, it must be checked (value == "true")
+                                            subFieldValue?.value?.lowercase() != "true"
+                                        }
                                         FormFieldConfig.FieldType.GPS -> {
                                             subFieldValue?.gpsLatitude == null || subFieldValue.gpsLongitude == null
                                         }
