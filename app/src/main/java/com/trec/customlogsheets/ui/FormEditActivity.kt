@@ -90,7 +90,7 @@ class FormEditActivity : AppCompatActivity() {
         
         AlertDialog.Builder(this)
             .setTitle("Calculated Field")
-            .setMessage("This field is automatically calculated from other fields. If you edit it manually, your changes will be overwritten when the source fields change.\n\nDo you want to continue editing?")
+            .setMessage("The field '$fieldLabel' is automatically calculated from other fields. If you edit it manually, your changes will be overwritten when the source fields change.\n\nDo you want to continue editing?")
             .setPositiveButton("Edit Anyway") { _, _ ->
                 manuallyEditedCalculatedFields.add(fieldId)
                 onConfirm()
@@ -882,7 +882,7 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         // Set up focus listener (combines mask handling and calculated field protection)
-        editText.setOnFocusChangeListener { view, hasFocus ->
+        editText.setOnFocusChangeListener { _, hasFocus ->
             // Handle mask initialization if present
             if (mask != null && hasFocus) {
                 val currentText = editText.text?.toString() ?: ""
