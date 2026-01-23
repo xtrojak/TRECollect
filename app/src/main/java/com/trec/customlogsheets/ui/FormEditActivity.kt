@@ -62,10 +62,48 @@ class FormEditActivity : AppCompatActivity() {
     private var currentBarcodeFieldId: String? = null
     private val barcodeScanner = BarcodeScanning.getClient()
     private var isFormSaved = false // Track if form was just saved
+    private val manuallyEditedCalculatedFields = mutableSetOf<String>() // Track manually edited calculated fields
+    private var isLoadingForm = false // Track if we're currently loading form data (to prevent recalculation)
     
     // Helper to mark form as changed
     private fun markFormChanged() {
         isFormSaved = false
+    }
+    
+    /**
+     * Checks if a field is a calculated target field (used as target in logic rules)
+     */
+    private fun isCalculatedField(fieldId: String): Boolean {
+        val isCalculated = formConfig.logic.any { it.targetId == fieldId }
+        if (isCalculated) {
+            android.util.Log.d("FormEditActivity", "Field '$fieldId' is identified as calculated")
+        }
+        return isCalculated
+    }
+    
+    /**
+     * Shows a confirmation dialog when user tries to edit a calculated field
+     */
+    private fun showCalculatedFieldEditWarning(fieldId: String, fieldLabel: String, onConfirm: () -> Unit) {
+        val fieldView = fieldViews[fieldId]
+        val editText = fieldView?.findViewById<TextInputEditText>(R.id.editText)
+        
+        AlertDialog.Builder(this)
+            .setTitle("Calculated Field")
+            .setMessage("This field is automatically calculated from other fields. If you edit it manually, your changes will be overwritten when the source fields change.\n\nDo you want to continue editing?")
+            .setPositiveButton("Edit Anyway") { _, _ ->
+                manuallyEditedCalculatedFields.add(fieldId)
+                onConfirm()
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+                // Remove focus if user cancels
+                editText?.clearFocus()
+            }
+            .setOnCancelListener {
+                // Also handle if dialog is dismissed (e.g., back button)
+                editText?.clearFocus()
+            }
+            .show()
     }
     
     /**
@@ -79,7 +117,12 @@ class FormEditActivity : AppCompatActivity() {
             rule.sourceIds.contains(changedFieldId)
         }
         
+        if (affectedRules.isNotEmpty()) {
+            android.util.Log.d("FormEditActivity", "Field '$changedFieldId' changed, affecting ${affectedRules.size} logic rule(s)")
+        }
+        
         for (rule in affectedRules) {
+            android.util.Log.d("FormEditActivity", "Applying logic rule: ${rule.type} -> target '${rule.targetId}'")
             when (rule.type) {
                 LogicRule.LogicType.SUM -> {
                     // Calculate sum of all source fields
@@ -117,13 +160,36 @@ class FormEditActivity : AppCompatActivity() {
                                 sum.toString()
                             }
                             
-                            // Set the value in the field
+                            // Check if this field was manually edited
                             val editText = targetFieldView.findViewById<TextInputEditText>(R.id.editText)
-                            editText?.setText(sumString)
+                            val currentValue = editText?.text?.toString()?.trim() ?: ""
+                            val wasManuallyEdited = manuallyEditedCalculatedFields.contains(rule.targetId)
                             
-                            // Update fieldValues
-                            fieldValues[targetFieldId] = FormFieldValue(targetFieldId, value = sumString)
-                            markFormChanged()
+                            // Only overwrite if:
+                            // 1. The field was NOT manually edited, OR
+                            // 2. The calculated value differs from the current value (meaning source fields changed)
+                            if (!wasManuallyEdited || currentValue != sumString) {
+                                // Update the field with calculated value
+                                editText?.setText(sumString)
+                                
+                                // Remove from manually edited set since we're overwriting with calculated value
+                                manuallyEditedCalculatedFields.remove(rule.targetId)
+                                
+                                // Update fieldValues
+                                fieldValues[targetFieldId] = FormFieldValue(targetFieldId, value = sumString)
+                                markFormChanged()
+                                
+                                android.util.Log.d("FormEditActivity", "Updated calculated field '${rule.targetId}' to value '$sumString'")
+                                
+                                // If this calculated field is itself a source for other calculated fields,
+                                // recursively apply logic rules to update dependent fields
+                                applyLogicRules(rule.targetId, instancePrefix)
+                            } else {
+                                // Field was manually edited and calculated value hasn't changed, preserve manual value
+                                android.util.Log.d("FormEditActivity", "Preserving manual value for calculated field '${rule.targetId}': '$currentValue'")
+                                // Still update fieldValues to ensure consistency
+                                fieldValues[targetFieldId] = FormFieldValue(targetFieldId, value = currentValue)
+                            }
                         }
                     }
                 }
@@ -516,6 +582,13 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues[fieldValue.fieldId] = fieldValue
                 // Store initial state for comparison
                 initialFieldValues[fieldValue.fieldId] = fieldValue
+                
+                // If this is a calculated field with a saved value, mark it as manually edited
+                // This preserves manually edited calculated fields when the form is reloaded
+                if (isCalculatedField(fieldValue.fieldId) && fieldValue.value != null && fieldValue.value.isNotEmpty()) {
+                    manuallyEditedCalculatedFields.add(fieldValue.fieldId)
+                    android.util.Log.d("FormEditActivity", "Marking calculated field '${fieldValue.fieldId}' as manually edited (has saved value: '${fieldValue.value}')")
+                }
             }
         }
     }
@@ -587,10 +660,36 @@ class FormEditActivity : AppCompatActivity() {
     /**
      * Applies all logic rules to calculate target field values
      * Called after fields are rendered and values are loaded
+     * Uses a recursive approach to handle fields that depend on other calculated fields
+     * Only calculates fields that don't already have saved values (to preserve manually edited calculated fields)
      */
     private fun applyAllLogicRules() {
-        // Apply all logic rules directly
-        for (rule in formConfig.logic) {
+        // Track which fields have been calculated to avoid infinite loops
+        val calculatedFields = mutableSetOf<String>()
+        
+        // Helper function to recursively calculate a field and its dependencies
+        fun calculateField(rule: LogicRule) {
+            // Skip if already calculated (prevents infinite loops)
+            if (calculatedFields.contains(rule.targetId)) {
+                return
+            }
+            
+            // Skip if this field already has a saved value (preserves manually edited calculated fields)
+            // Only calculate if the field doesn't have a value yet (new form)
+            val existingValue = fieldValues[rule.targetId]?.value
+            if (existingValue != null && existingValue.isNotEmpty()) {
+                android.util.Log.d("FormEditActivity", "Skipping calculation for '${rule.targetId}' - already has saved value: '$existingValue'")
+                return
+            }
+            
+            // First, ensure all source fields are calculated (if they are also targets)
+            for (sourceId in rule.sourceIds) {
+                val sourceRule = formConfig.logic.firstOrNull { it.targetId == sourceId }
+                if (sourceRule != null && !calculatedFields.contains(sourceId)) {
+                    calculateField(sourceRule)
+                }
+            }
+            
             when (rule.type) {
                 LogicRule.LogicType.SUM -> {
                     // Calculate sum of all source fields
@@ -605,6 +704,7 @@ class FormEditActivity : AppCompatActivity() {
                     val targetFieldView = fieldViews[rule.targetId]
                     if (targetFieldView != null) {
                         val targetFieldConfig = formConfig.fields.firstOrNull { it.id == rule.targetId }
+                            ?: formConfig.fields.firstOrNull { it.type == FormFieldConfig.FieldType.DYNAMIC }?.subFields?.firstOrNull { it.id == rule.targetId }
                         if (targetFieldConfig != null) {
                             // Format the sum (remove decimal if it's a whole number)
                             val sumString = if (sum % 1.0 == 0.0) {
@@ -619,10 +719,18 @@ class FormEditActivity : AppCompatActivity() {
                             
                             // Update fieldValues
                             fieldValues[rule.targetId] = FormFieldValue(rule.targetId, value = sumString)
+                            
+                            // Mark as calculated
+                            calculatedFields.add(rule.targetId)
                         }
                     }
                 }
             }
+        }
+        
+        // Apply all logic rules
+        for (rule in formConfig.logic) {
+            calculateField(rule)
         }
     }
     
@@ -738,10 +846,30 @@ class FormEditActivity : AppCompatActivity() {
             editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
         
+        // Check if this is a calculated field (target of logic rule)
+        val isCalculated = isCalculatedField(fieldConfig.id)
+        
+        // Debug: Log all logic rules to help identify issues
+        if (formConfig.logic.isNotEmpty()) {
+            android.util.Log.d("FormEditActivity", "Checking if field '${fieldConfig.id}' is calculated. Available logic rules:")
+            for (rule in formConfig.logic) {
+                android.util.Log.d("FormEditActivity", "  Rule: ${rule.type} -> target '${rule.targetId}', sources: ${rule.sourceIds.joinToString()}")
+            }
+        }
+        
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
         } else {
             textInputLayout.hint = fieldConfig.label
+        }
+        
+        // Add visual indication for calculated fields
+        if (isCalculated) {
+            // Update hint to indicate it's calculated
+            val currentHint = textInputLayout.hint?.toString() ?: fieldConfig.label
+            textInputLayout.hint = "$currentHint (Calculated)"
+            // Set a subtle background color to indicate it's calculated
+            textInputLayout.setBackgroundColor(0xFFF5F5F5.toInt()) // Light gray background
         }
         
         // Handle mask if present
@@ -751,21 +879,36 @@ class FormEditActivity : AppCompatActivity() {
             editText.hint = mask
             // Initialize mask input helper to prevent colon deletion and limit section lengths
             MaskInputHelper(editText, mask)
-            // On focus, only initialize with colons if field is empty
-            editText.setOnFocusChangeListener { _, hasFocus ->
-                if (hasFocus) {
-                    val currentText = editText.text?.toString() ?: ""
-                    // Only initialize if field is empty or only contains spaces/colons (no digits)
-                    val hasDigits = currentText.any { it.isDigit() }
-                    if (!hasDigits && (currentText.isEmpty() || currentText.all { it == ' ' || it == ':' })) {
-                        // Show only colons in their positions
-                        val colonsOnly = mask.map { char -> if (char == ':') ':' else ' ' }.joinToString("")
-                        editText.setText(colonsOnly)
-                        // Move cursor to first editable position
-                        val firstEditablePos = mask.indexOfFirst { it != ':' }.takeIf { it >= 0 } ?: 0
-                        editText.setSelection(firstEditablePos)
+        }
+        
+        // Set up focus listener (combines mask handling and calculated field protection)
+        editText.setOnFocusChangeListener { view, hasFocus ->
+            // Handle mask initialization if present
+            if (mask != null && hasFocus) {
+                val currentText = editText.text?.toString() ?: ""
+                // Only initialize if field is empty or only contains spaces/colons (no digits)
+                val hasDigits = currentText.any { it.isDigit() }
+                if (!hasDigits && (currentText.isEmpty() || currentText.all { it == ' ' || it == ':' })) {
+                    // Show only colons in their positions
+                    val colonsOnly = mask.map { char -> if (char == ':') ':' else ' ' }.joinToString("")
+                    editText.setText(colonsOnly)
+                    // Move cursor to first editable position
+                    val firstEditablePos = mask.indexOfFirst { it != ':' }.takeIf { it >= 0 } ?: 0
+                    editText.setSelection(firstEditablePos)
+                }
+                // If field has digits, keep the current value - don't clear it
+            }
+            
+            // Add protection for calculated fields - show warning on focus if not already manually edited
+            if (isCalculated && !isReadOnly && hasFocus && !manuallyEditedCalculatedFields.contains(fieldConfig.id)) {
+                // Show warning dialog when user tries to edit calculated field
+                // Use post to allow focus to complete first
+                editText.post {
+                    showCalculatedFieldEditWarning(fieldConfig.id, fieldConfig.label) {
+                        // User confirmed - allow editing
+                        // The field is now editable, focus will remain
                     }
-                    // If field has digits, keep the current value - don't clear it
+                    // If user cancels, remove focus (handled in dialog's negative button)
                 }
             }
         }
@@ -783,7 +926,14 @@ class FormEditActivity : AppCompatActivity() {
             textInputLayout.isClickable = false
         } else {
             // Update fieldValues as user types
+            var previousValue = editText.text?.toString() ?: ""
             editText.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+                    previousValue = s?.toString() ?: ""
+                }
+                
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                
                 override fun afterTextChanged(s: android.text.Editable?) {
                     val rawValue = s?.toString() ?: ""
                     // For masked fields, check if value has digits (not just spaces/colons)
@@ -806,6 +956,11 @@ class FormEditActivity : AppCompatActivity() {
                         rawValue.trim() // For non-masked fields, trim as usual
                     }
                     
+                    // Track manual edits to calculated fields
+                    if (isCalculated && value != previousValue.trim()) {
+                        manuallyEditedCalculatedFields.add(fieldConfig.id)
+                    }
+                    
                     if (value.isNotEmpty()) {
                         fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
                         markFormChanged()
@@ -814,13 +969,11 @@ class FormEditActivity : AppCompatActivity() {
                         markFormChanged()
                     }
                     
-                    // Apply logic rules if this is a numeric field
-                    if (fieldConfig.inputType == "number") {
+                    // Apply logic rules if this is a numeric field (but skip if this is the target field being manually edited)
+                    if (fieldConfig.inputType == "number" && !isCalculated) {
                         applyLogicRules(fieldConfig.id)
-                    }
                 }
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                }
             })
         }
         
