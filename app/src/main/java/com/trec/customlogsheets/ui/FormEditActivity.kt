@@ -68,6 +68,69 @@ class FormEditActivity : AppCompatActivity() {
         isFormSaved = false
     }
     
+    /**
+     * Applies logic rules when a field changes
+     * @param changedFieldId The ID of the field that changed (base field ID for logic rules)
+     * @param instancePrefix Optional prefix for dynamic field instances (e.g., "dynamicFieldId_instance0_")
+     */
+    private fun applyLogicRules(changedFieldId: String, instancePrefix: String? = null) {
+        // Find all logic rules where the changed field is a source
+        val affectedRules = formConfig.logic.filter { rule ->
+            rule.sourceIds.contains(changedFieldId)
+        }
+        
+        for (rule in affectedRules) {
+            when (rule.type) {
+                LogicRule.LogicType.SUM -> {
+                    // Calculate sum of all source fields
+                    var sum = 0.0
+                    for (sourceId in rule.sourceIds) {
+                        // Construct the field ID (with instance prefix if this is a dynamic field)
+                        val sourceFieldId = if (instancePrefix != null) {
+                            "${instancePrefix}${sourceId}"
+                        } else {
+                            sourceId
+                        }
+                        
+                        val sourceValue = fieldValues[sourceFieldId]?.value ?: ""
+                        val numericValue = sourceValue.trim().toDoubleOrNull() ?: 0.0
+                        sum += numericValue
+                    }
+                    
+                    // Update target field
+                    val targetFieldId = if (instancePrefix != null) {
+                        "${instancePrefix}${rule.targetId}"
+                    } else {
+                        rule.targetId
+                    }
+                    
+                    val targetFieldView = fieldViews[targetFieldId]
+                    if (targetFieldView != null) {
+                        val targetFieldConfig = formConfig.fields.firstOrNull { it.id == rule.targetId }
+                            ?: formConfig.fields.firstOrNull { it.type == FormFieldConfig.FieldType.DYNAMIC }?.subFields?.firstOrNull { it.id == rule.targetId }
+                        
+                        if (targetFieldConfig != null) {
+                            // Format the sum (remove decimal if it's a whole number)
+                            val sumString = if (sum % 1.0 == 0.0) {
+                                sum.toInt().toString()
+                            } else {
+                                sum.toString()
+                            }
+                            
+                            // Set the value in the field
+                            val editText = targetFieldView.findViewById<TextInputEditText>(R.id.editText)
+                            editText?.setText(sumString)
+                            
+                            // Update fieldValues
+                            fieldValues[targetFieldId] = FormFieldValue(targetFieldId, value = sumString)
+                            markFormChanged()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     // Activity result launchers
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -395,7 +458,7 @@ class FormEditActivity : AppCompatActivity() {
                 
                 withContext(Dispatchers.Main) {
                     if (draftDeleted || submittedDeleted) {
-                        Toast.makeText(this@FormEditActivity, "Form cleared", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@FormEditActivity, "Form cleared", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this@FormEditActivity, "Form cleared (no files found to delete)", Toast.LENGTH_SHORT).show()
                     }
@@ -404,7 +467,7 @@ class FormEditActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 AppLogger.e("FormEditActivity", "Error clearing form: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FormEditActivity, "Error clearing form: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@FormEditActivity, "Error clearing form: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -512,9 +575,54 @@ class FormEditActivity : AppCompatActivity() {
                 }
                 }
             }
+            
+            // Apply logic rules after all fields are loaded to calculate initial target values
+            applyAllLogicRules()
         } catch (e: Exception) {
             android.util.Log.e("FormEditActivity", "Error rendering fields: ${e.message}", e)
             Toast.makeText(this, "Error rendering form fields: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    /**
+     * Applies all logic rules to calculate target field values
+     * Called after fields are rendered and values are loaded
+     */
+    private fun applyAllLogicRules() {
+        // Apply all logic rules directly
+        for (rule in formConfig.logic) {
+            when (rule.type) {
+                LogicRule.LogicType.SUM -> {
+                    // Calculate sum of all source fields
+                    var sum = 0.0
+                    for (sourceId in rule.sourceIds) {
+                        val sourceValue = fieldValues[sourceId]?.value ?: ""
+                        val numericValue = sourceValue.trim().toDoubleOrNull() ?: 0.0
+                        sum += numericValue
+                    }
+                    
+                    // Update target field
+                    val targetFieldView = fieldViews[rule.targetId]
+                    if (targetFieldView != null) {
+                        val targetFieldConfig = formConfig.fields.firstOrNull { it.id == rule.targetId }
+                        if (targetFieldConfig != null) {
+                            // Format the sum (remove decimal if it's a whole number)
+                            val sumString = if (sum % 1.0 == 0.0) {
+                                sum.toInt().toString()
+                            } else {
+                                sum.toString()
+                            }
+                            
+                            // Set the value in the field
+                            val editText = targetFieldView.findViewById<TextInputEditText>(R.id.editText)
+                            editText?.setText(sumString)
+                            
+                            // Update fieldValues
+                            fieldValues[rule.targetId] = FormFieldValue(rule.targetId, value = sumString)
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -704,6 +812,11 @@ class FormEditActivity : AppCompatActivity() {
                     } else {
                         fieldValues.remove(fieldConfig.id)
                         markFormChanged()
+                    }
+                    
+                    // Apply logic rules if this is a numeric field
+                    if (fieldConfig.inputType == "number") {
+                        applyLogicRules(fieldConfig.id)
                     }
                 }
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -1572,56 +1685,56 @@ class FormEditActivity : AppCompatActivity() {
                     dataRow.addView(checkboxContainer)
                 } else {
                     // Create text input for other input types
-                    val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
-                        hint = ""
-                        setText(cellValue)
-                        setPadding(8, 8, 8, 8)
-                        setBackgroundColor(android.graphics.Color.WHITE)
-                        layoutParams = android.widget.TableRow.LayoutParams(
-                            0,
-                            android.widget.TableRow.LayoutParams.WRAP_CONTENT,
-                            1f
-                        )
-                        
-                        // Set input type
-                        when (inputType.lowercase()) {
-                            "number" -> {
-                                this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
-                                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or 
-                                    android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
-                            }
-                            "integer" -> {
-                                this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
-                                    android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
-                            }
-                            else -> {
-                                this.inputType = android.text.InputType.TYPE_CLASS_TEXT
-                            }
+                val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
+                    hint = ""
+                    setText(cellValue)
+                    setPadding(8, 8, 8, 8)
+                    setBackgroundColor(android.graphics.Color.WHITE)
+                    layoutParams = android.widget.TableRow.LayoutParams(
+                        0,
+                        android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                        1f
+                    )
+                    
+                    // Set input type
+                    when (inputType.lowercase()) {
+                        "number" -> {
+                            this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
+                                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or 
+                                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
                         }
-                        
-                        // Store row and column in tag for value collection
-                        tag = "$row|$column"
-                        
-                        // Disable if read-only
-                        if (isReadOnly) {
-                            isEnabled = false
-                            isFocusable = false
-                            isFocusableInTouchMode = false
-                            isClickable = false
-                        } else {
-                            // Mark form as changed and update fieldValues when text changes
-                            addTextChangedListener(object : android.text.TextWatcher {
-                                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                                override fun afterTextChanged(s: android.text.Editable?) {
-                                    // Update fieldValues with current table data
-                                    updateTableFieldValue(fieldConfig.id, tableLayout)
-                                    markFormChanged()
-                                }
-                            })
+                        "integer" -> {
+                            this.inputType = android.text.InputType.TYPE_CLASS_NUMBER or 
+                                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                        }
+                        else -> {
+                            this.inputType = android.text.InputType.TYPE_CLASS_TEXT
                         }
                     }
-                    dataRow.addView(editText)
+                    
+                    // Store row and column in tag for value collection
+                    tag = "$row|$column"
+                    
+                    // Disable if read-only
+                    if (isReadOnly) {
+                        isEnabled = false
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        isClickable = false
+                    } else {
+                        // Mark form as changed and update fieldValues when text changes
+                        addTextChangedListener(object : android.text.TextWatcher {
+                            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                            override fun afterTextChanged(s: android.text.Editable?) {
+                                // Update fieldValues with current table data
+                                updateTableFieldValue(fieldConfig.id, tableLayout)
+                                markFormChanged()
+                            }
+                        })
+                    }
+                }
+                dataRow.addView(editText)
                 }
             }
             tableLayout.addView(dataRow)
@@ -2375,6 +2488,31 @@ class FormEditActivity : AppCompatActivity() {
                         }
                         markFormChanged()
                         updateAddButtonForDynamicField(dynamicFieldId)
+                        
+                        // Apply logic rules if this is a numeric field
+                        // Note: Logic rules use base field IDs (subFieldConfig.id), not unique IDs
+                        if (subFieldConfig.inputType == "number") {
+                            // Check if this base field ID is used in any logic rule
+                            val isInLogicRule = formConfig.logic.any { rule ->
+                                rule.sourceIds.contains(subFieldConfig.id) || rule.targetId == subFieldConfig.id
+                            }
+                            if (isInLogicRule) {
+                                // Extract instance prefix from uniqueFieldId
+                                // Format: "dynamicFieldId_instanceX_subFieldId"
+                                val instancePrefix = if (uniqueFieldId.contains("_instance")) {
+                                    val lastUnderscore = uniqueFieldId.lastIndexOf("_")
+                                    if (lastUnderscore > 0) {
+                                        uniqueFieldId.substring(0, lastUnderscore + 1)
+                                    } else {
+                                        null
+                                    }
+                                } else {
+                                    null
+                                }
+                                // Apply logic using the base field ID and instance prefix
+                                applyLogicRules(subFieldConfig.id, instancePrefix)
+                            }
+                        }
                     }
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -3316,7 +3454,7 @@ class FormEditActivity : AppCompatActivity() {
                     val isChecked = checkbox?.isChecked ?: false
                     values.add(FormFieldValue(fieldId, value = if (isChecked) "true" else "false"))
                 }
-                FormFieldConfig.FieldType.SELECT -> {
+            FormFieldConfig.FieldType.SELECT -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 val value = editText?.text?.toString()?.trim() ?: ""
                 if (value.isNotEmpty()) {
