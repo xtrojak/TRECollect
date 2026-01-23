@@ -636,6 +636,32 @@ class FormEditActivity : AppCompatActivity() {
             textInputLayout.hint = fieldConfig.label
         }
         
+        // Handle mask if present
+        val mask = fieldConfig.mask
+        if (mask != null) {
+            // Set mask as placeholder
+            editText.hint = mask
+            // Initialize mask input helper to prevent colon deletion and limit section lengths
+            MaskInputHelper(editText, mask)
+            // On focus, only initialize with colons if field is empty
+            editText.setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    val currentText = editText.text?.toString() ?: ""
+                    // Only initialize if field is empty or only contains spaces/colons (no digits)
+                    val hasDigits = currentText.any { it.isDigit() }
+                    if (!hasDigits && (currentText.isEmpty() || currentText.all { it == ' ' || it == ':' })) {
+                        // Show only colons in their positions
+                        val colonsOnly = mask.map { char -> if (char == ':') ':' else ' ' }.joinToString("")
+                        editText.setText(colonsOnly)
+                        // Move cursor to first editable position
+                        val firstEditablePos = mask.indexOfFirst { it != ':' }.takeIf { it >= 0 } ?: 0
+                        editText.setSelection(firstEditablePos)
+                    }
+                    // If field has digits, keep the current value - don't clear it
+                }
+            }
+        }
+        
         // Store field ID in tag for retrieval
         textInputLayout.tag = fieldConfig.id
         
@@ -651,7 +677,27 @@ class FormEditActivity : AppCompatActivity() {
             // Update fieldValues as user types
             editText.addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(s: android.text.Editable?) {
-                    val value = s?.toString()?.trim() ?: ""
+                    val rawValue = s?.toString() ?: ""
+                    // For masked fields, check if value has digits (not just spaces/colons)
+                    val value = if (mask != null) {
+                        // For masked fields, normalize the value (add leading zeros) before saving
+                        if (rawValue.any { it.isDigit() }) {
+                            // Extract the actual value (remove spaces, keep colons and digits)
+                            val cleanValue = rawValue.filter { it.isDigit() || it == ':' }
+                            if (cleanValue.contains(':')) {
+                                // Normalize by adding leading zeros
+                                normalizeMaskedValue(cleanValue, mask)
+                            } else {
+                                // No colons yet, just save digits (will be formatted on load)
+                                cleanValue
+                            }
+                        } else {
+                            "" // Empty if no digits
+                        }
+                    } else {
+                        rawValue.trim() // For non-masked fields, trim as usual
+                    }
+                    
                     if (value.isNotEmpty()) {
                         fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
                         markFormChanged()
@@ -1904,6 +1950,32 @@ class FormEditActivity : AppCompatActivity() {
             textInputLayout.hint = fieldConfig.label
         }
         
+        // Handle mask if present
+        val mask = fieldConfig.mask
+        if (mask != null) {
+            // Set mask as placeholder
+            editText.hint = mask
+            // Initialize mask input helper to prevent colon deletion and limit section lengths
+            MaskInputHelper(editText, mask)
+            // On focus, only initialize with colons if field is empty
+            editText.setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    val currentText = editText.text?.toString() ?: ""
+                    // Only initialize if field is empty or only contains spaces/colons (no digits)
+                    val hasDigits = currentText.any { it.isDigit() }
+                    if (!hasDigits && (currentText.isEmpty() || currentText.all { it == ' ' || it == ':' })) {
+                        // Show only colons in their positions
+                        val colonsOnly = mask.map { char -> if (char == ':') ':' else ' ' }.joinToString("")
+                        editText.setText(colonsOnly)
+                        // Move cursor to first editable position
+                        val firstEditablePos = mask.indexOfFirst { it != ':' }.takeIf { it >= 0 } ?: 0
+                        editText.setSelection(firstEditablePos)
+                    }
+                    // If field has digits, keep the current value - don't clear it
+                }
+            }
+        }
+        
         textInputLayout.tag = uniqueFieldId
         
         if (isReadOnly) {
@@ -2272,9 +2344,30 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.SELECT,
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
+                val mask = subFieldConfig.mask
                 editText?.addTextChangedListener(object : android.text.TextWatcher {
                     override fun afterTextChanged(s: android.text.Editable?) {
-                        val value = s?.toString()?.trim() ?: ""
+                        val rawValue = s?.toString() ?: ""
+                        // For masked fields, check if value has digits (not just spaces/colons)
+                        val value = if (mask != null) {
+                        // For masked fields, normalize the value (add leading zeros) before saving
+                        if (rawValue.any { it.isDigit() }) {
+                            // Extract the actual value (remove spaces, keep colons and digits)
+                            val cleanValue = rawValue.filter { it.isDigit() || it == ':' }
+                            if (cleanValue.contains(':')) {
+                                // Normalize by adding leading zeros
+                                normalizeMaskedValue(cleanValue, mask)
+                            } else {
+                                // No colons yet, just save digits (will be formatted on load)
+                                cleanValue
+                            }
+                        } else {
+                            "" // Empty if no digits
+                        }
+                        } else {
+                            rawValue.trim() // For non-masked fields, trim as usual
+                        }
+                        
                         if (value.isNotEmpty()) {
                             fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = value)
                         } else {
@@ -2770,6 +2863,93 @@ class FormEditActivity : AppCompatActivity() {
             .show()
     }
     
+    /**
+     * Normalize a masked value by adding leading zeros to each section
+     * e.g., "1:32" -> "01:32", "11:1" -> "11:01", "1:2:3" -> "01:02:03"
+     */
+    private fun normalizeMaskedValue(value: String, mask: String): String {
+        if (!value.contains(':')) return value
+        
+        // Parse mask to get section lengths (e.g., "mm:ss" -> [2, 2], "HH:mm:ss" -> [2, 2, 2])
+        val sectionLengths = mutableListOf<Int>()
+        var currentSectionLength = 0
+        for (char in mask) {
+            if (char == ':') {
+                if (currentSectionLength > 0) {
+                    sectionLengths.add(currentSectionLength)
+                    currentSectionLength = 0
+                }
+            } else {
+                currentSectionLength++
+            }
+        }
+        if (currentSectionLength > 0) {
+            sectionLengths.add(currentSectionLength)
+        }
+        
+        val valueParts = value.split(':')
+        val normalizedParts = mutableListOf<String>()
+        
+        for (i in sectionLengths.indices) {
+            val sectionLength = sectionLengths[i]
+            val valuePart = valueParts.getOrNull(i) ?: ""
+            val digits = valuePart.filter { it.isDigit() }
+            
+            // Pad with leading zeros
+            val normalized = digits.padStart(sectionLength, '0')
+            normalizedParts.add(normalized)
+        }
+        
+        return normalizedParts.joinToString(":")
+    }
+    
+    /**
+     * Helper function to format digits according to mask
+     */
+    private fun formatMaskedValue(digits: String, mask: String): String {
+        // Parse mask to get section lengths
+        val sections = mutableListOf<Int>()
+        var currentSectionLength = 0
+        for (char in mask) {
+            if (char == ':') {
+                if (currentSectionLength > 0) {
+                    sections.add(currentSectionLength)
+                    currentSectionLength = 0
+                }
+            } else {
+                currentSectionLength++
+            }
+        }
+        if (currentSectionLength > 0) {
+            sections.add(currentSectionLength)
+        }
+        
+        // Build formatted string
+        val result = StringBuilder()
+        var digitIndex = 0
+        var currentSectionIndex = 0
+        var currentSectionDigitCount = 0
+        
+        for (char in mask) {
+            if (char == ':') {
+                result.append(':')
+                currentSectionIndex++
+                currentSectionDigitCount = 0
+            } else {
+                val sectionLength = sections.getOrNull(currentSectionIndex) ?: 0
+                if (digitIndex < digits.length && currentSectionDigitCount < sectionLength) {
+                    result.append(digits[digitIndex])
+                    digitIndex++
+                    currentSectionDigitCount++
+                } else {
+                    result.append(' ')
+                }
+            }
+        }
+        
+        return result.toString()
+    }
+    
     private fun setFieldValue(fieldView: View, fieldConfig: FormFieldConfig, fieldValue: FormFieldValue) {
         when (fieldConfig.type) {
             FormFieldConfig.FieldType.TEXT,
@@ -2777,7 +2957,45 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.DATE,
             FormFieldConfig.FieldType.TIME -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
-                editText?.setText(fieldValue.value)
+                val value = fieldValue.value ?: ""
+                // For masked fields, format the value according to mask if needed
+                if (fieldConfig.mask != null && value.isNotEmpty()) {
+                    val mask = fieldConfig.mask!!
+                    // Value might be normalized (e.g., "01:32") or not (e.g., "1:32")
+                    // Extract digits preserving colon positions
+                    val cleanValue = value.filter { it.isDigit() || it == ':' }
+                    
+                    if (cleanValue.contains(':')) {
+                        // Value has colons, format it to match mask structure
+                        val digits = cleanValue.filter { it.isDigit() }
+                        val formatted = formatMaskedValue(digits, mask)
+                        editText?.setText(formatted)
+                        // Ensure cursor is at end or first empty position
+                        val cursorPos = if (formatted.any { it == ' ' }) {
+                            formatted.indexOfFirst { it == ' ' }.takeIf { it >= 0 } ?: formatted.length
+                        } else {
+                            formatted.length
+                        }
+                        editText?.setSelection(cursorPos)
+                    } else {
+                        // No colons, just digits - format from scratch
+                        val digits = cleanValue
+                        if (digits.isNotEmpty()) {
+                            val formatted = formatMaskedValue(digits, mask)
+                            editText?.setText(formatted)
+                            val cursorPos = if (formatted.any { it == ' ' }) {
+                                formatted.indexOfFirst { it == ' ' }.takeIf { it >= 0 } ?: formatted.length
+                            } else {
+                                formatted.length
+                            }
+                            editText?.setSelection(cursorPos)
+                        } else {
+                            editText?.setText("")
+                        }
+                    }
+                } else {
+                    editText?.setText(value)
+                }
             }
             FormFieldConfig.FieldType.SELECT -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
@@ -3070,7 +3288,25 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.DATE,
                 FormFieldConfig.FieldType.TIME -> {
                     val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
-                    val value = editText?.text?.toString()?.trim() ?: ""
+                    val rawValue = editText?.text?.toString() ?: ""
+                    // For masked fields, normalize the value (add leading zeros) before saving
+                    val value = if (fieldConfig.mask != null) {
+                        if (rawValue.any { it.isDigit() }) {
+                            // Extract the actual value (remove spaces, keep colons and digits)
+                            val cleanValue = rawValue.filter { it.isDigit() || it == ':' }
+                            if (cleanValue.contains(':')) {
+                                // Normalize by adding leading zeros
+                                normalizeMaskedValue(cleanValue, fieldConfig.mask)
+                            } else {
+                                // No colons yet, just save digits (will be formatted on load)
+                                cleanValue
+                            }
+                        } else {
+                            "" // Empty if no digits (just placeholder)
+                        }
+                    } else {
+                        rawValue.trim() // For non-masked fields, trim as usual
+                    }
                     if (value.isNotEmpty()) {
                         values.add(FormFieldValue(fieldId, value = value))
                     }

@@ -710,9 +710,9 @@ class FormFileHelper(private val context: Context) {
                             return true
                 } else {
                             AppLogger.w("FormFileHelper", "Failed to delete file with ID mismatch: site=$siteName, form=$formId, file=$fileName")
-                        }
+                }
                     }
-                } catch (e: Exception) {
+            } catch (e: Exception) {
                     AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName, error=${e.message}", e)
                     // Try to delete anyway if we can't verify (might be corrupted file)
                     try {

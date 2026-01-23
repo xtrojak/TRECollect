@@ -28,7 +28,8 @@ data class FormFieldConfig(
     val columns: List<String>? = null, // For table: column names
     val subFields: List<FormFieldConfig>? = null, // For dynamic: sub-widgets to repeat
     val instanceName: String? = null, // For dynamic: custom name for instances (e.g., "Sample" instead of "Instance")
-    val defaultValue: String? = null // Default value for supported field types
+    val defaultValue: String? = null, // Default value for supported field types
+    val mask: String? = null // For text fields: mask pattern (e.g., "mm:ss", "HH:mm:ss")
 ) {
     enum class FieldType {
         TEXT,
@@ -643,6 +644,14 @@ object FormConfigLoader {
                     null
                 }
                 
+                // Parse mask (only for TEXT fields)
+                val mask = if (fieldType == FormFieldConfig.FieldType.TEXT 
+                    && fieldObj.has("mask") && !fieldObj.isNull("mask")) {
+                    fieldObj.optString("mask").takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+                
                 // Section headers and image displays don't need options, inputType, or required flag
                 val isDisplayOnly = fieldType == FormFieldConfig.FieldType.SECTION || fieldType == FormFieldConfig.FieldType.IMAGE_DISPLAY
                 fields.add(
@@ -659,7 +668,8 @@ object FormConfigLoader {
                         columns = if (fieldType == FormFieldConfig.FieldType.TABLE) columns else null,
                         subFields = subFields,
                         instanceName = instanceName,
-                        defaultValue = defaultValue
+                        defaultValue = defaultValue,
+                        mask = mask
                     )
                 )
             }
