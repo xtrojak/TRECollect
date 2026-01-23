@@ -212,7 +212,6 @@ class MaskInputHelper(
         ): CharSequence? {
             // If deleting (source is empty or null), check if we're trying to delete a colon
             if (source.isNullOrEmpty()) {
-                val destStr = dest?.toString() ?: ""
                 // Check if deletion range includes a colon position
                 for (i in dstart until dend) {
                     if (i < mask.length && mask[i] == ':') {
@@ -225,7 +224,8 @@ class MaskInputHelper(
             }
             
             // If inserting, prevent inserting colon at non-colon positions
-            source?.forEachIndexed { index, char ->
+            // source is non-null here because we already checked isNullOrEmpty() above
+            source.forEachIndexed { index, char ->
                 if (char == ':') {
                     val insertPos = dstart + index
                     if (insertPos >= mask.length || mask[insertPos] != ':') {
@@ -268,7 +268,7 @@ class MaskInputHelper(
                 return null
             }
             
-            val (sectionIndex, sectionStart, sectionLength) = sectionInfo
+            val (_, sectionStart, sectionLength) = sectionInfo
             
             // Count digits currently in this section
             var currentDigitCount = 0
