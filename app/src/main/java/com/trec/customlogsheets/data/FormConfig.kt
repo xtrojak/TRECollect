@@ -52,6 +52,19 @@ data class FormFieldConfig(
 }
 
 /**
+ * Represents a logic rule for form calculations
+ */
+data class LogicRule(
+    val targetId: String, // The field ID that should be updated
+    val type: LogicType, // The operation type (sum, etc.)
+    val sourceIds: List<String> // List of field IDs to use as sources
+) {
+    enum class LogicType {
+        SUM // For now, only sum is supported
+    }
+}
+
+/**
  * Configuration for a complete form
  */
 data class FormConfig(
@@ -63,7 +76,8 @@ data class FormConfig(
     val isDynamic: Boolean = false,
     val dynamicButtonName: String? = null,
     val fields: List<FormFieldConfig>,
-    val prefills: Map<String, String> = emptyMap() // Map of widget_id -> value for prefilling form fields
+    val prefills: Map<String, String> = emptyMap(), // Map of widget_id -> value for prefilling form fields
+    val logic: List<LogicRule> = emptyList() // Logic rules for calculated fields
 )
 
 /**
@@ -395,6 +409,19 @@ object FormConfigLoader {
         val fieldsArray = logsheetObj.getJSONArray("fields")
         val fields = parseFields(fieldsArray)
         
+        // Parse logic rules from logsheet config
+        val logic = if (logsheetObj.has("logic") && !logsheetObj.isNull("logic")) {
+            try {
+                val logicArray = logsheetObj.getJSONArray("logic")
+                parseLogic(logicArray)
+            } catch (e: Exception) {
+                android.util.Log.w("FormConfigLoader", "Error parsing logic for form $formId: ${e.message}")
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+        
         // Get dynamic info from form entry
         val isDynamic = formEntry.isDynamic
         val dynamicButtonName = formEntry.dynamicButtonName
@@ -408,7 +435,8 @@ object FormConfigLoader {
             isDynamic = isDynamic,
             dynamicButtonName = dynamicButtonName,
             fields = fields,
-            prefills = prefills
+            prefills = prefills,
+            logic = logic
         )
     }
     
@@ -703,6 +731,36 @@ object FormConfigLoader {
         }
         
         return fields
+    }
+    
+    /**
+     * Parses logic rules from JSON array
+     */
+    private fun parseLogic(logicArray: JSONArray): List<LogicRule> {
+        val logicRules = mutableListOf<LogicRule>()
+        
+        try {
+            for (i in 0 until logicArray.length()) {
+                val logicObj = logicArray.getJSONObject(i)
+                val targetId = logicObj.getString("target_id")
+                val typeString = logicObj.getString("type")
+                val logicType = when (typeString.lowercase()) {
+                    "sum" -> LogicRule.LogicType.SUM
+                    else -> {
+                        android.util.Log.w("FormConfigLoader", "Unknown logic type: $typeString, defaulting to SUM")
+                        LogicRule.LogicType.SUM
+                    }
+                }
+                val sourceIdsArray = logicObj.getJSONArray("source_ids")
+                val sourceIds = (0 until sourceIdsArray.length()).map { sourceIdsArray.getString(it) }
+                
+                logicRules.add(LogicRule(targetId, logicType, sourceIds))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FormConfigLoader", "Error parsing logic rules: ${e.message}", e)
+        }
+        
+        return logicRules
     }
 }
 
