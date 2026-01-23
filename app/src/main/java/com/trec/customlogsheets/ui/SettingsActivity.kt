@@ -309,7 +309,7 @@ class SettingsActivity : AppCompatActivity() {
         val isDownloaded = settingsPreferences.areLogsheetsDownloaded()
         
         if (hasDownloaded && isDownloaded) {
-            textLogsheetsStatus.text = "Status: Up to date"
+            textLogsheetsStatus.text = "Status: Last download completed"
             textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
         } else if (hasDownloaded && !isDownloaded) {
             textLogsheetsStatus.text = "Status: Partially downloaded"
@@ -590,7 +590,7 @@ class SettingsActivity : AppCompatActivity() {
                     // Clear form config cache to reload from downloaded files
                     FormConfigLoader.clearCache()
                     PredefinedForms.clearCache()
-                    textLogsheetsStatus.text = "Status: Up to date"
+                    textLogsheetsStatus.text = "Status: Last download completed"
                     textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
                     Toast.makeText(this@SettingsActivity, "Logsheets updated successfully", Toast.LENGTH_SHORT).show()
                 } else {

@@ -69,6 +69,8 @@ class LogsheetDownloader(private val context: Context) {
      * Returns true if successful, false otherwise
      */
     suspend fun downloadAll(): Boolean = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        
         if (!isNetworkAvailable()) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "No network connection available", Toast.LENGTH_LONG).show()
@@ -83,30 +85,60 @@ class LogsheetDownloader(private val context: Context) {
             imagesDir.mkdirs()
             
             var success = true
+            val downloadedFiles = mutableListOf<String>()
+            val failedFiles = mutableListOf<String>()
             
             // Download logsheets
             AppLogger.i(TAG, "Downloading logsheets...")
-            val logsheetsSuccess = downloadLogsheets()
-            if (!logsheetsSuccess) {
+            val logsheetsResult = downloadLogsheets()
+            downloadedFiles.addAll(logsheetsResult.downloaded)
+            failedFiles.addAll(logsheetsResult.failed)
+            if (logsheetsResult.failed.isNotEmpty()) {
                 AppLogger.w(TAG, "Failed to download some logsheets")
                 success = false
             }
             
             // Download team configs
             AppLogger.i(TAG, "Downloading team configs...")
-            val teamsSuccess = downloadTeamConfigs()
-            if (!teamsSuccess) {
+            val teamsResult = downloadTeamConfigs()
+            downloadedFiles.addAll(teamsResult.downloaded)
+            failedFiles.addAll(teamsResult.failed)
+            if (teamsResult.failed.isNotEmpty()) {
                 AppLogger.w(TAG, "Failed to download some team configs")
                 success = false
             }
             
             // Download images
             AppLogger.i(TAG, "Downloading images...")
-            val imagesSuccess = downloadImages()
-            if (!imagesSuccess) {
+            val imagesResult = downloadImages()
+            downloadedFiles.addAll(imagesResult.downloaded)
+            failedFiles.addAll(imagesResult.failed)
+            if (imagesResult.failed.isNotEmpty()) {
                 AppLogger.w(TAG, "Failed to download some images")
                 success = false
             }
+            
+            // Calculate total time
+            val endTime = System.currentTimeMillis()
+            val totalTimeMs = endTime - startTime
+            val totalTimeSeconds = totalTimeMs / 1000.0
+            
+            // Print summary
+            AppLogger.i(TAG, "=== Download Summary ===")
+            AppLogger.i(TAG, "Total time: ${String.format("%.2f", totalTimeSeconds)} seconds")
+            if (downloadedFiles.isNotEmpty()) {
+                AppLogger.i(TAG, "Downloaded ${downloadedFiles.size} file(s):")
+                downloadedFiles.forEach { file ->
+                    AppLogger.i(TAG, "  ✓ $file")
+                }
+            }
+            if (failedFiles.isNotEmpty()) {
+                AppLogger.w(TAG, "Failed ${failedFiles.size} file(s):")
+                failedFiles.forEach { file ->
+                    AppLogger.w(TAG, "  ✗ $file")
+                }
+            }
+            AppLogger.i(TAG, "======================")
             
             if (success) {
                 withContext(Dispatchers.Main) {
@@ -130,19 +162,30 @@ class LogsheetDownloader(private val context: Context) {
     }
     
     /**
+     * Result of a download operation
+     */
+    private data class DownloadResult(
+        val success: Boolean,
+        val downloaded: List<String>,
+        val failed: List<String>
+    )
+    
+    /**
      * Downloads all logsheets from logsheets/ directory
      */
-    private suspend fun downloadLogsheets(): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun downloadLogsheets(): DownloadResult = withContext(Dispatchers.IO) {
         try {
             // List logsheet folders
             val logsheetFolders = listRemoteFolders("logsheets")
             if (logsheetFolders.isEmpty()) {
                 AppLogger.w(TAG, "No logsheet folders found")
-                return@withContext false
+                return@withContext DownloadResult(false, emptyList(), emptyList())
             }
             
             var successCount = 0
             var failCount = 0
+            val downloaded = mutableListOf<String>()
+            val failed = mutableListOf<String>()
             
             for (folderName in logsheetFolders) {
                 try {
@@ -197,45 +240,48 @@ class LogsheetDownloader(private val context: Context) {
                     // Skip if file already exists
                     if (localFile.exists()) {
                         AppLogger.d(TAG, "Logsheet $folderName version $latestVersion already exists, skipping")
-                        successCount++
                         continue
                     }
                     
                     if (downloadFile(remotePath, localFile)) {
-                        AppLogger.d(TAG, "Downloaded logsheet $folderName version $latestVersion")
+                        downloaded.add("logsheet: $folderName/$latestVersion.json")
                         successCount++
                     } else {
-                        AppLogger.w(TAG, "Failed to download logsheet $folderName")
+                        failed.add("logsheet: $folderName/$latestVersion.json")
                         failCount++
                     }
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Error downloading logsheet $folderName: ${e.message}", e)
+                    failed.add("logsheet: $folderName")
                     failCount++
                 }
             }
             
             AppLogger.i(TAG, "Downloaded $successCount logsheets, $failCount failed")
-            return@withContext successCount > 0
+            // Success if we downloaded at least one, or if nothing failed (all were skipped)
+            return@withContext DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error listing logsheets: ${e.message}", e)
-            return@withContext false
+            return@withContext DownloadResult(false, emptyList(), emptyList())
         }
     }
     
     /**
      * Downloads all team configs from teams/ directory
      */
-    private suspend fun downloadTeamConfigs(): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun downloadTeamConfigs(): DownloadResult = withContext(Dispatchers.IO) {
         try {
             // List team folders
             val teamFolders = listRemoteFolders("teams")
             if (teamFolders.isEmpty()) {
                 AppLogger.w(TAG, "No team folders found")
-                return@withContext false
+                return@withContext DownloadResult(false, emptyList(), emptyList())
             }
             
             var successCount = 0
             var failCount = 0
+            val downloaded = mutableListOf<String>()
+            val failed = mutableListOf<String>()
             
             for (folderName in teamFolders) {
                 try {
@@ -290,45 +336,48 @@ class LogsheetDownloader(private val context: Context) {
                     // Skip if file already exists
                     if (localFile.exists()) {
                         AppLogger.d(TAG, "Team config $folderName version $latestVersion already exists, skipping")
-                        successCount++
                         continue
                     }
                     
                     if (downloadFile(remotePath, localFile)) {
-                        AppLogger.d(TAG, "Downloaded team config $folderName version $latestVersion")
+                        downloaded.add("team config: $folderName/$latestVersion.json")
                         successCount++
                     } else {
-                        AppLogger.w(TAG, "Failed to download team config $folderName")
+                        failed.add("team config: $folderName/$latestVersion.json")
                         failCount++
                     }
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Error downloading team config $folderName: ${e.message}", e)
+                    failed.add("team config: $folderName")
                     failCount++
                 }
             }
             
             AppLogger.i(TAG, "Downloaded $successCount team configs, $failCount failed")
-            return@withContext successCount > 0
+            // Success if we downloaded at least one, or if nothing failed (all were skipped)
+            return@withContext DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error listing team configs: ${e.message}", e)
-            return@withContext false
+            return@withContext DownloadResult(false, emptyList(), emptyList())
         }
     }
     
     /**
      * Downloads all images from images/ directory
      */
-    private suspend fun downloadImages(): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun downloadImages(): DownloadResult = withContext(Dispatchers.IO) {
         try {
             // List image files
             val imageFiles = listRemoteFiles("images")
             if (imageFiles.isEmpty()) {
                 AppLogger.w(TAG, "No images found")
-                return@withContext false
+                return@withContext DownloadResult(false, emptyList(), emptyList())
             }
             
             var successCount = 0
             var failCount = 0
+            val downloaded = mutableListOf<String>()
+            val failed = mutableListOf<String>()
             
             for (imageName in imageFiles) {
                 try {
@@ -338,28 +387,29 @@ class LogsheetDownloader(private val context: Context) {
                     // Skip if file already exists
                     if (localFile.exists()) {
                         AppLogger.d(TAG, "Image $imageName already exists, skipping")
-                        successCount++
                         continue
                     }
                     
                     if (downloadFile(remotePath, localFile)) {
-                        AppLogger.d(TAG, "Downloaded image $imageName")
+                        downloaded.add("image: $imageName")
                         successCount++
                     } else {
-                        AppLogger.w(TAG, "Failed to download image $imageName")
+                        failed.add("image: $imageName")
                         failCount++
                     }
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Error downloading image $imageName: ${e.message}", e)
+                    failed.add("image: $imageName")
                     failCount++
                 }
             }
             
             AppLogger.i(TAG, "Downloaded $successCount images, $failCount failed")
-            return@withContext successCount > 0
+            // Success if we downloaded at least one, or if nothing failed (all were skipped)
+            return@withContext DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error listing images: ${e.message}", e)
-            return@withContext false
+            return@withContext DownloadResult(false, emptyList(), emptyList())
         }
     }
     
@@ -463,7 +513,6 @@ class LogsheetDownloader(private val context: Context) {
         
         try {
             AppLogger.d(TAG, "Parsing PROPFIND response for $basePath (isFolder=$isFolder)")
-            AppLogger.d(TAG, "Full XML: $xml")
             
             // Use regex to extract hrefs and collection status
             // Pattern: <d:response>...</d:response> blocks
