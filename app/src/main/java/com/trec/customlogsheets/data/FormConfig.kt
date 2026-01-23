@@ -233,6 +233,30 @@ object FormConfigLoader {
         // Load each logsheet config
         val configs = mutableListOf<FormConfig>()
         for (formEntry in formEntries) {
+            // Handle horizontal_line divider - no logsheet file needed
+            if (formEntry.formId == "horizontal_line") {
+                val teamObj = org.json.JSONObject(teamConfigJson)
+                val sectionsArray = teamObj.getJSONArray("sections")
+                val sectionObj = sectionsArray.getJSONObject(formEntry.sectionIndex)
+                val sectionName = sectionObj.optString("name", "")
+                
+                // Create a minimal FormConfig for the divider
+                configs.add(
+                    FormConfig(
+                        id = "horizontal_line",
+                        name = "",
+                        section = sectionName,
+                        description = null,
+                        mandatory = false,
+                        isDynamic = false,
+                        dynamicButtonName = null,
+                        fields = emptyList(),
+                        prefills = emptyMap()
+                    )
+                )
+                continue
+            }
+            
             val logsheetFile = downloader.getLogsheetFile(formEntry.formId) ?: continue
             val logsheetJson = try {
                 logsheetFile.readText()
