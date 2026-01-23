@@ -559,6 +559,19 @@ object FormConfigLoader {
                     val formObj = formsArray.getJSONObject(i)
                     val fields = parseFields(formObj.getJSONArray("fields"))
                     
+                    // Parse logic rules from logsheet config
+                    val logic = if (formObj.has("logic") && !formObj.isNull("logic")) {
+                        try {
+                            val logicArray = formObj.getJSONArray("logic")
+                            parseLogic(logicArray)
+                        } catch (e: Exception) {
+                            // Silently continue with empty logic (logging disabled for unit tests)
+                            emptyList()
+                        }
+                    } else {
+                        emptyList()
+                    }
+                    
                     forms.add(
                         FormConfig(
                             id = formObj.getString("id"),
@@ -567,7 +580,8 @@ object FormConfigLoader {
                             description = formObj.optString("description").takeIf { it.isNotEmpty() },
                             mandatory = formObj.optBoolean("mandatory", false),
                             fields = fields,
-                            prefills = emptyMap() // parseJson doesn't have team config, so no prefills
+                            prefills = emptyMap(), // parseJson doesn't have team config, so no prefills
+                            logic = logic
                         )
                     )
                 } catch (e: Exception) {
@@ -736,7 +750,7 @@ object FormConfigLoader {
     /**
      * Parses logic rules from JSON array
      */
-    private fun parseLogic(logicArray: JSONArray): List<LogicRule> {
+    internal fun parseLogic(logicArray: JSONArray): List<LogicRule> {
         val logicRules = mutableListOf<LogicRule>()
         
         try {

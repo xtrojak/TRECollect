@@ -2068,4 +2068,459 @@ class FormConfigLoaderTest {
         assertEquals(1, configs.size)
         assertEquals("false", configs[0].fields[0].defaultValue)
     }
+
+    // Logic rules tests
+    
+    @Test
+    fun `parseJson parses form with logic rules`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Field 1",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "field2",
+                            "label": "Field 2",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "total",
+                            "label": "Total",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "total",
+                            "type": "sum",
+                            "source_ids": ["field1", "field2"]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].logic.size)
+        val rule = configs[0].logic[0]
+        assertEquals("total", rule.targetId)
+        assertEquals(LogicRule.LogicType.SUM, rule.type)
+        assertEquals(2, rule.sourceIds.size)
+        assertTrue(rule.sourceIds.contains("field1"))
+        assertTrue(rule.sourceIds.contains("field2"))
+    }
+
+    @Test
+    fun `parseJson parses form with multiple logic rules`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Field 1",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "field2",
+                            "label": "Field 2",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "subtotal",
+                            "label": "Subtotal",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "field3",
+                            "label": "Field 3",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "total",
+                            "label": "Total",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "subtotal",
+                            "type": "sum",
+                            "source_ids": ["field1", "field2"]
+                        },
+                        {
+                            "target_id": "total",
+                            "type": "sum",
+                            "source_ids": ["subtotal", "field3"]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(2, configs[0].logic.size)
+        
+        val rule1 = configs[0].logic.find { it.targetId == "subtotal" }
+        assertNotNull(rule1)
+        assertEquals(LogicRule.LogicType.SUM, rule1!!.type)
+        assertEquals(2, rule1.sourceIds.size)
+        assertTrue(rule1.sourceIds.contains("field1"))
+        assertTrue(rule1.sourceIds.contains("field2"))
+        
+        val rule2 = configs[0].logic.find { it.targetId == "total" }
+        assertNotNull(rule2)
+        assertEquals(LogicRule.LogicType.SUM, rule2!!.type)
+        assertEquals(2, rule2.sourceIds.size)
+        assertTrue(rule2.sourceIds.contains("subtotal"))
+        assertTrue(rule2.sourceIds.contains("field3"))
+    }
+
+    @Test
+    fun `parseJson parses form with single source field in logic rule`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Field 1",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "copy",
+                            "label": "Copy",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "copy",
+                            "type": "sum",
+                            "source_ids": ["field1"]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].logic.size)
+        val rule = configs[0].logic[0]
+        assertEquals("copy", rule.targetId)
+        assertEquals(LogicRule.LogicType.SUM, rule.type)
+        assertEquals(1, rule.sourceIds.size)
+        assertEquals("field1", rule.sourceIds[0])
+    }
+
+    @Test
+    fun `parseJson parses form with empty logic array`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [],
+                    "logic": []
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertTrue(configs[0].logic.isEmpty())
+    }
+
+    @Test
+    fun `parseJson parses form without logic key`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": []
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertTrue(configs[0].logic.isEmpty())
+    }
+
+    @Test
+    fun `parseJson handles logic rule with unknown type by defaulting to SUM`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Field 1",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "total",
+                            "label": "Total",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "total",
+                            "type": "unknown_type",
+                            "source_ids": ["field1"]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].logic.size)
+        val rule = configs[0].logic[0]
+        assertEquals(LogicRule.LogicType.SUM, rule.type)
+    }
+
+    @Test
+    fun `parseJson handles logic rule with case insensitive type`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "field1",
+                            "label": "Field 1",
+                            "type": "text",
+                            "inputType": "number"
+                        },
+                        {
+                            "id": "total",
+                            "label": "Total",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "total",
+                            "type": "SUM",
+                            "source_ids": ["field1"]
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].logic.size)
+        val rule = configs[0].logic[0]
+        assertEquals(LogicRule.LogicType.SUM, rule.type)
+    }
+
+    @Test
+    fun `parseJson handles logic rule with missing source_ids`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "total",
+                            "label": "Total",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "total",
+                            "type": "sum"
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        // This should either throw an exception or handle gracefully
+        try {
+            val configs = FormConfigLoader.parseJson(jsonString)
+            // If it doesn't throw, the logic array might be empty or the rule might be skipped
+            assertTrue("Should handle missing source_ids", configs.isNotEmpty())
+        } catch (e: Exception) {
+            // Exception is also acceptable for invalid JSON structure
+            assertTrue("Exception is acceptable for invalid logic rule", e is org.json.JSONException)
+        }
+    }
+
+    @Test
+    fun `parseJson handles logic rule with empty source_ids array`() {
+        val jsonString = """
+        {
+            "forms": [
+                {
+                    "id": "form1",
+                    "name": "Test Form",
+                    "section": "Test Section",
+                    "mandatory": false,
+                    "fields": [
+                        {
+                            "id": "total",
+                            "label": "Total",
+                            "type": "text",
+                            "inputType": "number"
+                        }
+                    ],
+                    "logic": [
+                        {
+                            "target_id": "total",
+                            "type": "sum",
+                            "source_ids": []
+                        }
+                    ]
+                }
+            ]
+        }
+        """.trimIndent()
+
+        val configs = FormConfigLoader.parseJson(jsonString)
+
+        assertEquals(1, configs.size)
+        assertEquals(1, configs[0].logic.size)
+        val rule = configs[0].logic[0]
+        assertEquals("total", rule.targetId)
+        assertTrue(rule.sourceIds.isEmpty())
+    }
+
+    @Test
+    fun `FormConfig can store logic rules`() {
+        val logicRules = listOf(
+            LogicRule(
+                targetId = "total",
+                type = LogicRule.LogicType.SUM,
+                sourceIds = listOf("field1", "field2")
+            )
+        )
+        
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList(),
+            logic = logicRules
+        )
+
+        assertEquals(1, formConfig.logic.size)
+        assertEquals("total", formConfig.logic[0].targetId)
+        assertEquals(LogicRule.LogicType.SUM, formConfig.logic[0].type)
+        assertEquals(2, formConfig.logic[0].sourceIds.size)
+    }
+
+    @Test
+    fun `FormConfig has empty logic when not provided`() {
+        val formConfig = FormConfig(
+            id = "form1",
+            name = "Test Form",
+            section = "Test Section",
+            description = null,
+            mandatory = false,
+            fields = emptyList()
+        )
+
+        assertTrue(formConfig.logic.isEmpty())
+    }
+
+    @Test
+    fun `LogicRule can have multiple source fields`() {
+        val rule = LogicRule(
+            targetId = "total",
+            type = LogicRule.LogicType.SUM,
+            sourceIds = listOf("field1", "field2", "field3", "field4", "field5")
+        )
+
+        assertEquals(5, rule.sourceIds.size)
+        assertTrue(rule.sourceIds.contains("field1"))
+        assertTrue(rule.sourceIds.contains("field2"))
+        assertTrue(rule.sourceIds.contains("field3"))
+        assertTrue(rule.sourceIds.contains("field4"))
+        assertTrue(rule.sourceIds.contains("field5"))
+    }
+
+    @Test
+    fun `LogicRule SUM type is correctly defined`() {
+        assertEquals(LogicRule.LogicType.SUM, LogicRule.LogicType.valueOf("SUM"))
+    }
 }
