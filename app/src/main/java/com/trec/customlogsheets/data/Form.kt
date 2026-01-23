@@ -68,18 +68,20 @@ object PredefinedForms {
         
         // Load configs for this specific site (uses pinned team config version)
         val configs = FormConfigLoader.loadForSite(context, siteName)
-        // Convert FormConfig to Form
-        val forms = configs.map { config ->
-            Form(
-                id = config.id,
-                name = config.name,
-                section = config.section,
-                description = config.description,
-                mandatory = config.mandatory,
-                isDynamic = config.isDynamic,
-                dynamicButtonName = config.dynamicButtonName
-            )
-        }
+        // Convert FormConfig to Form, filtering out horizontal_line dividers
+        val forms = configs
+            .filter { it.id != "horizontal_line" } // Exclude dividers from Form list
+            .map { config ->
+                Form(
+                    id = config.id,
+                    name = config.name,
+                    section = config.section,
+                    description = config.description,
+                    mandatory = config.mandatory,
+                    isDynamic = config.isDynamic,
+                    dynamicButtonName = config.dynamicButtonName
+                )
+            }
         
         cachedForms = forms
         cachedContext = context

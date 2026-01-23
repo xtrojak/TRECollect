@@ -206,9 +206,9 @@ class FormSectionAdapter(
                     
                     // Also notify the add button for this dynamic form group if it exists
                     // Find the add button that comes after this dynamic group
-                    val currentList = formAdapter.currentList
-                    if (endIndex + 1 < currentList.size) {
-                        val nextItem = currentList[endIndex + 1]
+                    val adapterList = formAdapter.currentList
+                    if (endIndex + 1 < adapterList.size) {
+                        val nextItem = adapterList[endIndex + 1]
                         if (nextItem is FormListItem.AddButtonItem && nextItem.baseForm.id == form.id) {
                             AppLogger.d("FormSectionAdapter", "Notifying add button at index ${endIndex + 1} to update enabled state")
                             formAdapter.notifyItemChanged(endIndex + 1)
@@ -344,7 +344,7 @@ class FormSectionAdapter(
                     }
                 }
             } else {
-                AppLogger.w("FormSectionAdapter", "Could not find last instance of form ${baseForm.id} in section $sectionName. Current list: ${currentList.map { when(it) { is FormListItem.FormItem -> "${it.form.name} (${it.form.id})"; is FormListItem.AddButtonItem -> "AddButton(${it.baseForm.id})" } }}")
+                AppLogger.w("FormSectionAdapter", "Could not find last instance of form ${baseForm.id} in section $sectionName. Current list: ${currentList.map { when(it) { is FormListItem.FormItem -> "${it.form.name} (${it.form.id})"; is FormListItem.AddButtonItem -> "AddButton(${it.baseForm.id})"; is FormListItem.DividerItem -> "Divider" } }}")
             }
         }
         

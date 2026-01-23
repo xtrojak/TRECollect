@@ -19,6 +19,7 @@ import com.trec.customlogsheets.MainActivity
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.AppDatabase
 import com.trec.customlogsheets.data.Form
+import com.trec.customlogsheets.data.FormConfigLoader
 import com.trec.customlogsheets.data.PredefinedForms
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
@@ -632,32 +633,68 @@ class SiteDetailActivity : AppCompatActivity() {
             
             // Build expanded forms from files only (source of truth)
             // Unsaved instances will only exist in the adapter's current list until saved or page is refreshed
-            // Also insert add buttons after each dynamic form group
+            // Also insert add buttons after each dynamic form group and dividers where specified
+            // Get original configs to check for dividers
+            val originalConfigs = withContext(Dispatchers.IO) {
+                FormConfigLoader.loadForSite(this@SiteDetailActivity, site.name)
+            }
+            val configsBySection = originalConfigs.groupBy { it.section }
+            
             val expandedFormsBySection = baseFormsBySection.mapValues { (section, forms) ->
                 val result = mutableListOf<com.trec.customlogsheets.ui.FormListItem>()
+                val sectionConfigs = configsBySection[section] ?: emptyList()
                 
-                forms.forEach { form ->
-                    if (form.isDynamic) {
-                        val instances = allDynamicInstances[Pair(form.id, section)] ?: emptyList()
+                // Create a map to track which forms we've processed
+                // Since forms can appear multiple times (same ID), we need to track by occurrence
+                val formOccurrenceMap = mutableMapOf<String, Int>() // formId -> occurrence count
+                
+                // Iterate through original configs to preserve order and insert dividers
+                sectionConfigs.forEach { config ->
+                    if (config.id == "horizontal_line") {
+                        // Insert divider
+                        result.add(com.trec.customlogsheets.ui.FormListItem.DividerItem)
+                    } else {
+                        // Find the matching form by ID and occurrence
+                        val occurrence = formOccurrenceMap.getOrDefault(config.id, 0)
+                        formOccurrenceMap[config.id] = occurrence + 1
                         
-                        // For dynamic forms, show instances (at least one default instance #1)
-                        val formInstances = if (instances.isEmpty()) {
-                            // Show default instance #1 (subIndex 0)
-                            listOf(form.copy(name = "${form.name} #1", isDynamic = true))
-                        } else {
-                            // Show all existing instances from files
-                            instances.map { subIndex ->
-                                form.copy(name = "${form.name} #${subIndex + 1}", isDynamic = true)
+                        // Find the form with this ID at this occurrence position
+                        var foundForm: Form? = null
+                        var currentOccurrence = 0
+                        for (form in forms) {
+                            if (form.id == config.id) {
+                                if (currentOccurrence == occurrence) {
+                                    foundForm = form
+                                    break
+                                }
+                                currentOccurrence++
                             }
                         }
                         
-                        // Add all instances
-                        result.addAll(formInstances.map { com.trec.customlogsheets.ui.FormListItem.FormItem(it) })
-                        
-                        // Add button after this dynamic form group
-                        result.add(com.trec.customlogsheets.ui.FormListItem.AddButtonItem(form))
-                    } else {
-                        result.add(com.trec.customlogsheets.ui.FormListItem.FormItem(form))
+                        if (foundForm != null) {
+                            if (foundForm.isDynamic) {
+                                val instances = allDynamicInstances[Pair(foundForm.id, section)] ?: emptyList()
+                                
+                                // For dynamic forms, show instances (at least one default instance #1)
+                                val formInstances = if (instances.isEmpty()) {
+                                    // Show default instance #1 (subIndex 0)
+                                    listOf(foundForm.copy(name = "${foundForm.name} #1", isDynamic = true))
+                                } else {
+                                    // Show all existing instances from files
+                                    instances.map { subIndex ->
+                                        foundForm.copy(name = "${foundForm.name} #${subIndex + 1}", isDynamic = true)
+                                    }
+                                }
+                                
+                                // Add all instances
+                                result.addAll(formInstances.map { com.trec.customlogsheets.ui.FormListItem.FormItem(it) })
+                                
+                                // Add button after this dynamic form group
+                                result.add(com.trec.customlogsheets.ui.FormListItem.AddButtonItem(foundForm))
+                            } else {
+                                result.add(com.trec.customlogsheets.ui.FormListItem.FormItem(foundForm))
+                            }
+                        }
                     }
                 }
                 

@@ -16,9 +16,6 @@ class MaskInputHelper(
     private var isUpdating = false
     
     init {
-        // Parse mask to identify sections
-        val sections = parseMaskSections(mask)
-        
         // Set input filter to prevent colon deletion and limit total length
         // Section length limits are handled by TextWatcher formatting
         val existingFilters = editText.filters ?: emptyArray()

@@ -21,6 +21,7 @@ class FormAdapter(
     companion object {
         private const val VIEW_TYPE_FORM = 0
         private const val VIEW_TYPE_ADD_BUTTON = 1
+        private const val VIEW_TYPE_DIVIDER = 2
     }
 
     private var _completedFormIds: Set<String> = emptySet()
@@ -88,6 +89,7 @@ class FormAdapter(
         return when (getItem(position)) {
             is FormListItem.FormItem -> VIEW_TYPE_FORM
             is FormListItem.AddButtonItem -> VIEW_TYPE_ADD_BUTTON
+            is FormListItem.DividerItem -> VIEW_TYPE_DIVIDER
         }
     }
     
@@ -103,6 +105,11 @@ class FormAdapter(
                     .inflate(R.layout.item_add_button, parent, false)
                 AddButtonViewHolder(view)
             }
+            VIEW_TYPE_DIVIDER -> {
+                val view = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_form_divider, parent, false)
+                DividerViewHolder(view)
+            }
             else -> throw IllegalArgumentException("Unknown view type: $viewType")
         }
     }
@@ -115,6 +122,9 @@ class FormAdapter(
             }
             is FormListItem.AddButtonItem -> {
                 (holder as AddButtonViewHolder).bind(item.baseForm)
+            }
+            is FormListItem.DividerItem -> {
+                // Divider doesn't need binding
             }
         }
     }
@@ -324,6 +334,7 @@ class FormAdapter(
                         }
                     }
                     is FormListItem.AddButtonItem -> false
+                    is FormListItem.DividerItem -> false
                 }
             }
             
@@ -351,6 +362,8 @@ class FormAdapter(
         }
     }
 
+    inner class DividerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
+
     class FormListItemDiffCallback : DiffUtil.ItemCallback<FormListItem>() {
         override fun areItemsTheSame(oldItem: FormListItem, newItem: FormListItem): Boolean {
             return when {
@@ -359,6 +372,9 @@ class FormAdapter(
                 }
                 oldItem is FormListItem.AddButtonItem && newItem is FormListItem.AddButtonItem -> {
                     oldItem.baseForm.id == newItem.baseForm.id
+                }
+                oldItem is FormListItem.DividerItem && newItem is FormListItem.DividerItem -> {
+                    true // All dividers are the same
                 }
                 else -> false
             }

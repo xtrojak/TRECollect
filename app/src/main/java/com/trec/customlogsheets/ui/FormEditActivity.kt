@@ -2960,7 +2960,7 @@ class FormEditActivity : AppCompatActivity() {
                 val value = fieldValue.value ?: ""
                 // For masked fields, format the value according to mask if needed
                 if (fieldConfig.mask != null && value.isNotEmpty()) {
-                    val mask = fieldConfig.mask!!
+                    val mask = fieldConfig.mask
                     // Value might be normalized (e.g., "01:32") or not (e.g., "1:32")
                     // Extract digits preserving colon positions
                     val cleanValue = value.filter { it.isDigit() || it == ':' }
