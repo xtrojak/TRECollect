@@ -198,10 +198,10 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     // Activity result launchers
-    private val takePictureLauncher = registerForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && photoFile != null) {
+    private val cameraActivityLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && photoFile != null) {
             if (currentPhotoFieldId == "temp_barcode_scan" && currentBarcodeFieldId != null) {
                 // Process barcode from photo
                 processBarcodeFromPhoto(photoFile!!)
@@ -1567,7 +1567,12 @@ class FormEditActivity : AppCompatActivity() {
                 photoFile
             )
             
-            takePictureLauncher.launch(photoUri)
+            // Launch custom camera activity with back camera
+            val intent = Intent(this, CameraActivity::class.java).apply {
+                putExtra(CameraActivity.EXTRA_OUTPUT_URI, photoUri)
+                putExtra(CameraActivity.EXTRA_OUTPUT_FILE_PATH, photoFile.absolutePath)
+            }
+            cameraActivityLauncher.launch(intent)
         } catch (e: Exception) {
             Toast.makeText(this, "Error capturing photo: ${e.message}", Toast.LENGTH_LONG).show()
             android.util.Log.e("FormEditActivity", "Error capturing photo", e)
@@ -2897,8 +2902,12 @@ class FormEditActivity : AppCompatActivity() {
                 photoFile
             )
             
-            // Use a different launcher that processes the barcode
-            takePictureLauncher.launch(photoUri)
+            // Launch custom camera activity with back camera
+            val intent = Intent(this, CameraActivity::class.java).apply {
+                putExtra(CameraActivity.EXTRA_OUTPUT_URI, photoUri)
+                putExtra(CameraActivity.EXTRA_OUTPUT_FILE_PATH, photoFile.absolutePath)
+            }
+            cameraActivityLauncher.launch(intent)
             // After photo is taken, we'll process it in the launcher callback
         } catch (e: Exception) {
             Toast.makeText(this, "Error capturing photo for barcode: ${e.message}", Toast.LENGTH_LONG).show()

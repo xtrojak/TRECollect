@@ -41,6 +41,12 @@
             android:name=".ui.FormEditActivity"
             android:parentActivityName=".ui.SiteDetailActivity"
             android:label="Edit Form" />
+        <activity
+            android:name=".ui.CameraActivity"
+            android:parentActivityName=".ui.FormEditActivity"
+            android:label="Camera"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.TRECCustomLogsheets" />
            <activity
                android:name=".ui.GPSPickerActivity"
                android:parentActivityName=".ui.FormEditActivity"
