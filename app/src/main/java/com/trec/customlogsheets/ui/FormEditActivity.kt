@@ -1147,61 +1147,50 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createMultiSelectField(fieldConfig: FormFieldConfig): View {
-        try {
-            val inflater = LayoutInflater.from(this)
-            val container = inflater.inflate(
-                R.layout.field_multiselect,
-                containerFields,
-                false
-            ) as? LinearLayout ?: throw IllegalStateException("Failed to inflate field_multiselect layout")
-            
-            val textLabel = container.findViewById<TextView>(R.id.textLabel)
-            val textSelected = container.findViewById<TextView>(R.id.textSelected)
-            
-            if (textLabel == null) {
-                android.util.Log.e("FormEditActivity", "textLabel is null for ${fieldConfig.id}")
-                throw IllegalStateException("textLabel view not found in multiselect layout")
-            }
-            if (textSelected == null) {
-                android.util.Log.e("FormEditActivity", "textSelected is null for ${fieldConfig.id}")
-                throw IllegalStateException("textSelected view not found in multiselect layout")
-            }
-            
-            textLabel.text = if (fieldConfig.required) {
-                "${fieldConfig.label} *"
-            } else {
-                fieldConfig.label
-            }
-            
-            container.tag = fieldConfig.id
-            
-            // Load existing values
-            val existingValue = fieldValues[fieldConfig.id]
-            if (existingValue?.values != null && existingValue.values.isNotEmpty()) {
-                textSelected.text = existingValue.values.joinToString(", ")
-            }
-            
-        if (isReadOnly) {
-            textSelected.isEnabled = false
-            textSelected.isClickable = false
-            textSelected.isFocusable = false
-            textSelected.isFocusableInTouchMode = false
-            textSelected.alpha = 0.6f // Make it visually appear disabled
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            containerFields,
+            false
+        ) as TextInputLayout
+        
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
         } else {
-            textSelected.setOnClickListener {
-                showMultiSelectDialog(fieldConfig, textSelected)
+            textInputLayout.hint = fieldConfig.label
+        }
+        
+        textInputLayout.tag = fieldConfig.id
+        
+        // Load existing values
+        val existingValue = fieldValues[fieldConfig.id]
+        if (existingValue?.values != null && existingValue.values.isNotEmpty()) {
+            editText.setText(existingValue.values.joinToString(", "))
+        }
+        
+        // Disable editing if read-only
+        if (isReadOnly) {
+            editText.isEnabled = false
+            editText.isFocusable = false
+            editText.isFocusableInTouchMode = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
+            textInputLayout.isClickable = false
+        } else {
+            editText.isFocusable = false
+            editText.isClickable = true
+            editText.setOnClickListener {
+                showMultiSelectDialog(fieldConfig, editText)
             }
         }
-            
-            return container
-        } catch (e: Exception) {
-            android.util.Log.e("FormEditActivity", "Error in createMultiSelectField for ${fieldConfig.id}: ${e.message}", e)
-            e.printStackTrace()
-            throw e
-        }
+        
+        return textInputLayout
     }
     
-    private fun showMultiSelectDialog(fieldConfig: FormFieldConfig, textView: TextView) {
+    private fun showMultiSelectDialog(fieldConfig: FormFieldConfig, editText: TextInputEditText) {
         val options = fieldConfig.options ?: return
         val currentValues = fieldValues[fieldConfig.id]?.values?.toMutableSet() ?: mutableSetOf()
         val checkedItems = BooleanArray(options.size) { i ->
@@ -1222,14 +1211,14 @@ class FormEditActivity : AppCompatActivity() {
             }
             .setPositiveButton("OK") { _, _ ->
                 if (currentValues.isNotEmpty()) {
-                    textView.text = currentValues.joinToString(", ")
+                    editText.setText(currentValues.joinToString(", "))
                     fieldValues[fieldConfig.id] = FormFieldValue(
                         fieldConfig.id,
                         values = currentValues.toList()
                     )
                     markFormChanged()
                 } else {
-                    textView.text = "Tap to select options"
+                    editText.setText("")
                     fieldValues.remove(fieldConfig.id)
                     markFormChanged()
                 }
@@ -2425,32 +2414,42 @@ class FormEditActivity : AppCompatActivity() {
     
     private fun createMultiSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
         val inflater = LayoutInflater.from(this)
-        val container = inflater.inflate(
-            R.layout.field_multiselect,
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
             null,
             false
-        ) as? LinearLayout ?: throw IllegalStateException("Failed to inflate field_multiselect layout")
+        ) as TextInputLayout
         
-        val textLabel = container.findViewById<TextView>(R.id.textLabel)
-        val textSelected = container.findViewById<TextView>(R.id.textSelected)
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        editText.isFocusable = false
+        editText.isClickable = true
         
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textInputLayout.hint = "${fieldConfig.label} *"
         } else {
-            textLabel.text = fieldConfig.label
+            textInputLayout.hint = fieldConfig.label
         }
         
-        container.tag = uniqueFieldId
+        textInputLayout.tag = uniqueFieldId
+        
+        // Load existing values
+        val existingValue = fieldValues[uniqueFieldId]
+        if (existingValue?.values != null && existingValue.values.isNotEmpty()) {
+            editText.setText(existingValue.values.joinToString(", "))
+        }
         
         if (!isReadOnly) {
-            container.setOnClickListener {
-                showMultiSelectDialogForSubField(fieldConfig, textSelected, uniqueFieldId)
+            editText.setOnClickListener {
+                showMultiSelectDialogForSubField(fieldConfig, editText, uniqueFieldId)
             }
         } else {
-            container.isClickable = false
+            editText.isEnabled = false
+            editText.isClickable = false
+            textInputLayout.isEnabled = false
         }
         
-        return container
+        return textInputLayout
     }
     
     private fun createGPSFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
@@ -3118,7 +3117,7 @@ class FormEditActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun showMultiSelectDialogForSubField(fieldConfig: FormFieldConfig, textView: TextView, uniqueFieldId: String) {
+    private fun showMultiSelectDialogForSubField(fieldConfig: FormFieldConfig, editText: TextInputEditText, uniqueFieldId: String) {
         val options = fieldConfig.options ?: return
         val currentValues = fieldValues[uniqueFieldId]?.values?.toMutableSet() ?: mutableSetOf()
         val checkedItems = BooleanArray(options.size) { i ->
@@ -3139,12 +3138,12 @@ class FormEditActivity : AppCompatActivity() {
             }
             .setPositiveButton("OK") { _, _ ->
                 if (currentValues.isNotEmpty()) {
-                    textView.text = currentValues.joinToString(", ")
+                    editText.setText(currentValues.joinToString(", "))
                     fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, values = currentValues.toList())
                     markFormChanged()
                     updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
                 } else {
-                    textView.text = "Tap to select options"
+                    editText.setText("")
                     fieldValues.remove(uniqueFieldId)
                     markFormChanged()
                     updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
@@ -3292,6 +3291,14 @@ class FormEditActivity : AppCompatActivity() {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
             }
+            FormFieldConfig.FieldType.MULTISELECT -> {
+                val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                if (fieldValue.values != null && fieldValue.values.isNotEmpty()) {
+                    editText?.setText(fieldValue.values.joinToString(", "))
+                } else {
+                    editText?.setText("")
+                }
+            }
             FormFieldConfig.FieldType.CHECKBOX -> {
                 val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
                 checkbox?.isChecked = fieldValue.value?.lowercase() == "true"
@@ -3362,8 +3369,8 @@ class FormEditActivity : AppCompatActivity() {
                     // Validate all values are in options
                     val validValues = defaultValues.filter { options.contains(it) }
                     if (validValues.isNotEmpty()) {
-                        val textView = fieldView.findViewById<TextView>(R.id.textSelected)
-                        textView?.text = validValues.joinToString(", ")
+                        val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                        editText?.setText(validValues.joinToString(", "))
                         fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = validValues)
                     } else {
                         android.util.Log.w("FormEditActivity", "None of the default values found in options for field ${fieldConfig.id}")
@@ -3477,8 +3484,8 @@ class FormEditActivity : AppCompatActivity() {
                     // Validate all values are in options
                     val validValues = prefillValues.filter { options.contains(it) }
                     if (validValues.isNotEmpty()) {
-                        val textView = fieldView.findViewById<TextView>(R.id.textSelected)
-                        textView?.text = validValues.joinToString(", ")
+                        val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                        editText?.setText(validValues.joinToString(", "))
                         fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, values = validValues)
                     } else {
                         android.util.Log.w("FormEditActivity", "None of the prefill values found in options for field ${fieldConfig.id}")
