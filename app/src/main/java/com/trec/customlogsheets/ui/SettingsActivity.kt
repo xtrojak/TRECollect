@@ -42,6 +42,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var buttonCopyUuid: MaterialButton
     private lateinit var buttonUpdateLogsheets: MaterialButton
     private lateinit var textLogsheetsStatus: TextView
+    private lateinit var progressBarDownload: android.widget.ProgressBar
+    private lateinit var textDownloadProgress: TextView
     private val teams = arrayOf("LSI", "AML")
     private var currentSubteams: List<String> = emptyList()
     private lateinit var subteamAdapter: ArrayAdapter<String>
@@ -117,6 +119,8 @@ class SettingsActivity : AppCompatActivity() {
         
         buttonUpdateLogsheets = findViewById(R.id.buttonUpdateLogsheets)
         textLogsheetsStatus = findViewById(R.id.textLogsheetsStatus)
+        progressBarDownload = findViewById(R.id.progressBarDownload)
+        textDownloadProgress = findViewById(R.id.textDownloadProgress)
         buttonUpdateLogsheets.setOnClickListener {
             updateLogsheets()
         }
@@ -579,11 +583,46 @@ class SettingsActivity : AppCompatActivity() {
         buttonUpdateLogsheets.text = "Downloading..."
         textLogsheetsStatus.text = "Status: Downloading..."
         textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_blue_dark))
+        progressBarDownload.visibility = android.view.View.VISIBLE
+        progressBarDownload.progress = 0
+        textDownloadProgress.visibility = android.view.View.VISIBLE
+        textDownloadProgress.text = "Initializing..."
+        
+        val progressCallback = object : LogsheetDownloader.DownloadProgressCallback {
+            override fun onPhaseStarted(phase: String) {
+                runOnUiThread {
+                    textDownloadProgress.text = "Phase: $phase"
+                    progressBarDownload.progress = 0
+                }
+            }
+            
+            override fun onFileProgress(current: Int, total: Int, fileName: String) {
+                runOnUiThread {
+                    val progress = if (total > 0) {
+                        (current * 100) / total
+                    } else {
+                        100 // If no files to download, show complete
+                    }
+                    progressBarDownload.progress = progress
+                    if (total > 0) {
+                        textDownloadProgress.text = "Downloading: $fileName ($current/$total)"
+                    } else {
+                        textDownloadProgress.text = "No new files to download"
+                    }
+                }
+            }
+            
+            override fun onPhaseCompleted(phase: String, downloaded: Int, failed: Int) {
+                runOnUiThread {
+                    textDownloadProgress.text = "$phase: $downloaded downloaded, $failed failed"
+                }
+            }
+        }
         
         lifecycleScope.launch {
             try {
                 val downloader = LogsheetDownloader(this@SettingsActivity)
-                val success = downloader.downloadAll()
+                val success = downloader.downloadAll(progressCallback)
                 
                 if (success) {
                     settingsPreferences.setLogsheetsDownloaded(true)
@@ -606,6 +645,8 @@ class SettingsActivity : AppCompatActivity() {
             } finally {
                 buttonUpdateLogsheets.isEnabled = true
                 buttonUpdateLogsheets.text = "Update Logsheets"
+                progressBarDownload.visibility = android.view.View.GONE
+                textDownloadProgress.visibility = android.view.View.GONE
             }
         }
     }

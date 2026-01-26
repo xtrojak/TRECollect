@@ -132,12 +132,18 @@ class MainActivityTest {
     
     @Test
     fun uploadAllButton_isDisplayed() {
+        // Wait for activity to be fully laid out
+        Thread.sleep(1000)
+        
         val uploadButton = device.findObject(findById("buttonUploadAll"))
         assertTrue("Upload all button should be displayed", uploadButton.exists())
         
         // Verify button text
         val buttonText = uploadButton.text
         assertTrue("Button should have correct text", buttonText.contains("Upload All", ignoreCase = true))
+        
+        // Small delay to allow activity to stabilize before test completes
+        Thread.sleep(500)
     }
     
     @Test

@@ -20,6 +20,14 @@ import java.util.concurrent.TimeUnit
  * Downloads logsheets, team configs, and images from ownCloud
  */
 class LogsheetDownloader(private val context: Context) {
+    /**
+     * Callback interface for download progress updates
+     */
+    interface DownloadProgressCallback {
+        fun onPhaseStarted(phase: String) // e.g., "Logsheets", "Team Configs", "Images"
+        fun onFileProgress(current: Int, total: Int, fileName: String)
+        fun onPhaseCompleted(phase: String, downloaded: Int, failed: Int)
+    }
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -66,9 +74,10 @@ class LogsheetDownloader(private val context: Context) {
     
     /**
      * Downloads all logsheets, team configs, and images
+     * @param progressCallback Optional callback for progress updates
      * Returns true if successful, false otherwise
      */
-    suspend fun downloadAll(): Boolean = withContext(Dispatchers.IO) {
+    suspend fun downloadAll(progressCallback: DownloadProgressCallback? = null): Boolean = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         
         if (!isNetworkAvailable()) {
@@ -90,9 +99,15 @@ class LogsheetDownloader(private val context: Context) {
             
             // Download logsheets
             AppLogger.i(TAG, "Downloading logsheets...")
-            val logsheetsResult = downloadLogsheets()
+            withContext(Dispatchers.Main) {
+                progressCallback?.onPhaseStarted("Logsheets")
+            }
+            val logsheetsResult = downloadLogsheets(progressCallback)
             downloadedFiles.addAll(logsheetsResult.downloaded)
             failedFiles.addAll(logsheetsResult.failed)
+            withContext(Dispatchers.Main) {
+                progressCallback?.onPhaseCompleted("Logsheets", logsheetsResult.downloaded.size, logsheetsResult.failed.size)
+            }
             if (logsheetsResult.failed.isNotEmpty()) {
                 AppLogger.w(TAG, "Failed to download some logsheets")
                 success = false
@@ -100,9 +115,15 @@ class LogsheetDownloader(private val context: Context) {
             
             // Download team configs
             AppLogger.i(TAG, "Downloading team configs...")
-            val teamsResult = downloadTeamConfigs()
+            withContext(Dispatchers.Main) {
+                progressCallback?.onPhaseStarted("Team Configs")
+            }
+            val teamsResult = downloadTeamConfigs(progressCallback)
             downloadedFiles.addAll(teamsResult.downloaded)
             failedFiles.addAll(teamsResult.failed)
+            withContext(Dispatchers.Main) {
+                progressCallback?.onPhaseCompleted("Team Configs", teamsResult.downloaded.size, teamsResult.failed.size)
+            }
             if (teamsResult.failed.isNotEmpty()) {
                 AppLogger.w(TAG, "Failed to download some team configs")
                 success = false
@@ -110,9 +131,15 @@ class LogsheetDownloader(private val context: Context) {
             
             // Download images
             AppLogger.i(TAG, "Downloading images...")
-            val imagesResult = downloadImages()
+            withContext(Dispatchers.Main) {
+                progressCallback?.onPhaseStarted("Images")
+            }
+            val imagesResult = downloadImages(progressCallback)
             downloadedFiles.addAll(imagesResult.downloaded)
             failedFiles.addAll(imagesResult.failed)
+            withContext(Dispatchers.Main) {
+                progressCallback?.onPhaseCompleted("Images", imagesResult.downloaded.size, imagesResult.failed.size)
+            }
             if (imagesResult.failed.isNotEmpty()) {
                 AppLogger.w(TAG, "Failed to download some images")
                 success = false
@@ -173,7 +200,7 @@ class LogsheetDownloader(private val context: Context) {
     /**
      * Downloads all logsheets from logsheets/ directory
      */
-    private suspend fun downloadLogsheets(): DownloadResult = withContext(Dispatchers.IO) {
+    private suspend fun downloadLogsheets(progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
         try {
             // List logsheet folders
             val logsheetFolders = listRemoteFolders("logsheets")
@@ -187,72 +214,65 @@ class LogsheetDownloader(private val context: Context) {
             val downloaded = mutableListOf<String>()
             val failed = mutableListOf<String>()
             
+            // Count total files to download for progress tracking
+            var totalFiles = 0
+            val filesToDownload = mutableListOf<Pair<String, String>>() // folderName to fileName
             for (folderName in logsheetFolders) {
                 try {
-                    // List versions in this logsheet folder
                     val versionFiles = listRemoteFiles("logsheets/$folderName")
-                    if (versionFiles.isEmpty()) {
-                        AppLogger.w(TAG, "No versions found for logsheet $folderName")
-                        failCount++
-                        continue
-                    }
-                    
-                    // Extract version numbers from filenames (e.g., "1.0.0.json" -> "1.0.0")
                     val versions = versionFiles.mapNotNull { filename ->
-                        if (filename.endsWith(".json")) {
-                            filename.removeSuffix(".json")
-                        } else {
-                            null
+                        if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
+                    }
+                    if (versions.isNotEmpty()) {
+                        val latestVersion = versions.maxWithOrNull(Comparator { v1, v2 ->
+                            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
+                            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
+                            for (i in 0 until maxOf(parts1.size, parts2.size)) {
+                                val part1 = parts1.getOrNull(i) ?: 0
+                                val part2 = parts2.getOrNull(i) ?: 0
+                                val comparison = part1.compareTo(part2)
+                                if (comparison != 0) return@Comparator comparison
+                            }
+                            0
+                        })
+                        if (latestVersion != null) {
+                            val localFile = File(File(logsheetsDir, folderName), "$latestVersion.json")
+                            if (!localFile.exists()) {
+                                totalFiles++
+                                filesToDownload.add(Pair(folderName, "$latestVersion.json"))
+                            }
                         }
                     }
-                    
-                    if (versions.isEmpty()) {
-                        AppLogger.w(TAG, "No valid version files found for logsheet $folderName")
-                        failCount++
-                        continue
-                    }
-                    
-                    // Get latest version (compare semantic versions)
-                    val latestVersion = versions.maxWithOrNull(Comparator { v1, v2 ->
-                        val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-                        val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-                        // Compare version parts numerically
-                        for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                            val part1 = parts1.getOrNull(i) ?: 0
-                            val part2 = parts2.getOrNull(i) ?: 0
-                            val comparison = part1.compareTo(part2)
-                            if (comparison != 0) return@Comparator comparison
-                        }
-                        0
-                    })
-                    if (latestVersion == null) {
-                        AppLogger.w(TAG, "Could not determine latest version for logsheet $folderName")
-                        failCount++
-                        continue
-                    }
-                    
+                } catch (e: Exception) {
+                    // Skip errors during counting
+                }
+            }
+            
+            var currentFile = 0
+            for ((folderName, fileName) in filesToDownload) {
+                try {
                     // Download only the latest version - preserve folder structure and version name
-                    val remotePath = "logsheets/$folderName/$latestVersion.json"
+                    val remotePath = "logsheets/$folderName/$fileName"
                     val logsheetFolder = File(logsheetsDir, folderName)
                     logsheetFolder.mkdirs()
-                    val localFile = File(logsheetFolder, "$latestVersion.json")
+                    val localFile = File(logsheetFolder, fileName)
                     
-                    // Skip if file already exists
-                    if (localFile.exists()) {
-                        AppLogger.d(TAG, "Logsheet $folderName version $latestVersion already exists, skipping")
-                        continue
+                    // Report progress
+                    currentFile++
+                    withContext(Dispatchers.Main) {
+                        progressCallback?.onFileProgress(currentFile, totalFiles, "$folderName/$fileName")
                     }
                     
                     if (downloadFile(remotePath, localFile)) {
-                        downloaded.add("logsheet: $folderName/$latestVersion.json")
+                        downloaded.add("logsheet: $folderName/$fileName")
                         successCount++
                     } else {
-                        failed.add("logsheet: $folderName/$latestVersion.json")
+                        failed.add("logsheet: $folderName/$fileName")
                         failCount++
                     }
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Error downloading logsheet $folderName: ${e.message}", e)
-                    failed.add("logsheet: $folderName")
+                    failed.add("logsheet: $folderName/$fileName")
                     failCount++
                 }
             }
@@ -269,7 +289,7 @@ class LogsheetDownloader(private val context: Context) {
     /**
      * Downloads all team configs from teams/ directory
      */
-    private suspend fun downloadTeamConfigs(): DownloadResult = withContext(Dispatchers.IO) {
+    private suspend fun downloadTeamConfigs(progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
         try {
             // List team folders
             val teamFolders = listRemoteFolders("teams")
@@ -283,67 +303,60 @@ class LogsheetDownloader(private val context: Context) {
             val downloaded = mutableListOf<String>()
             val failed = mutableListOf<String>()
             
+            // Count total files to download for progress tracking
+            var totalFiles = 0
+            val filesToDownload = mutableListOf<Pair<String, String>>() // folderName to fileName
             for (folderName in teamFolders) {
                 try {
-                    // List versions in this team folder
                     val versionFiles = listRemoteFiles("teams/$folderName")
-                    if (versionFiles.isEmpty()) {
-                        AppLogger.w(TAG, "No versions found for team $folderName")
-                        failCount++
-                        continue
-                    }
-                    
-                    // Extract version numbers from filenames
                     val versions = versionFiles.mapNotNull { filename ->
-                        if (filename.endsWith(".json")) {
-                            filename.removeSuffix(".json")
-                        } else {
-                            null
+                        if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
+                    }
+                    if (versions.isNotEmpty()) {
+                        val latestVersion = versions.maxWithOrNull(Comparator { v1, v2 ->
+                            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
+                            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
+                            for (i in 0 until maxOf(parts1.size, parts2.size)) {
+                                val part1 = parts1.getOrNull(i) ?: 0
+                                val part2 = parts2.getOrNull(i) ?: 0
+                                val comparison = part1.compareTo(part2)
+                                if (comparison != 0) return@Comparator comparison
+                            }
+                            0
+                        })
+                        if (latestVersion != null) {
+                            val localFile = File(File(teamsDir, folderName), "$latestVersion.json")
+                            if (!localFile.exists()) {
+                                totalFiles++
+                                filesToDownload.add(Pair(folderName, "$latestVersion.json"))
+                            }
                         }
                     }
-                    
-                    if (versions.isEmpty()) {
-                        AppLogger.w(TAG, "No valid version files found for team $folderName")
-                        failCount++
-                        continue
-                    }
-                    
-                    // Get latest version (compare semantic versions)
-                    val latestVersion = versions.maxWithOrNull(Comparator { v1, v2 ->
-                        val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-                        val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-                        // Compare version parts numerically
-                        for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                            val part1 = parts1.getOrNull(i) ?: 0
-                            val part2 = parts2.getOrNull(i) ?: 0
-                            val comparison = part1.compareTo(part2)
-                            if (comparison != 0) return@Comparator comparison
-                        }
-                        0
-                    })
-                    if (latestVersion == null) {
-                        AppLogger.w(TAG, "Could not determine latest version for team $folderName")
-                        failCount++
-                        continue
-                    }
-                    
+                } catch (e: Exception) {
+                    // Skip errors during counting
+                }
+            }
+            
+            var currentFile = 0
+            for ((folderName, fileName) in filesToDownload) {
+                try {
                     // Download only the latest version - preserve folder structure and version name
-                    val remotePath = "teams/$folderName/$latestVersion.json"
+                    val remotePath = "teams/$folderName/$fileName"
                     val teamFolder = File(teamsDir, folderName)
                     teamFolder.mkdirs()
-                    val localFile = File(teamFolder, "$latestVersion.json")
+                    val localFile = File(teamFolder, fileName)
                     
-                    // Skip if file already exists
-                    if (localFile.exists()) {
-                        AppLogger.d(TAG, "Team config $folderName version $latestVersion already exists, skipping")
-                        continue
+                    // Report progress
+                    currentFile++
+                    withContext(Dispatchers.Main) {
+                        progressCallback?.onFileProgress(currentFile, totalFiles, "$folderName/$fileName")
                     }
                     
                     if (downloadFile(remotePath, localFile)) {
-                        downloaded.add("team config: $folderName/$latestVersion.json")
+                        downloaded.add("team config: $folderName/$fileName")
                         successCount++
                     } else {
-                        failed.add("team config: $folderName/$latestVersion.json")
+                        failed.add("team config: $folderName/$fileName")
                         failCount++
                     }
                 } catch (e: Exception) {
@@ -365,7 +378,7 @@ class LogsheetDownloader(private val context: Context) {
     /**
      * Downloads all images from images/ directory
      */
-    private suspend fun downloadImages(): DownloadResult = withContext(Dispatchers.IO) {
+    private suspend fun downloadImages(progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
         try {
             // List image files
             val imageFiles = listRemoteFiles("images")
@@ -379,15 +392,23 @@ class LogsheetDownloader(private val context: Context) {
             val downloaded = mutableListOf<String>()
             val failed = mutableListOf<String>()
             
-            for (imageName in imageFiles) {
+            // Count total files to download for progress tracking
+            val filesToDownload = imageFiles.filter { imageName ->
+                val localFile = File(imagesDir, imageName)
+                !localFile.exists()
+            }
+            val totalFiles = filesToDownload.size
+            
+            var currentFile = 0
+            for (imageName in filesToDownload) {
                 try {
                     val remotePath = "images/$imageName"
                     val localFile = File(imagesDir, imageName)
                     
-                    // Skip if file already exists
-                    if (localFile.exists()) {
-                        AppLogger.d(TAG, "Image $imageName already exists, skipping")
-                        continue
+                    // Report progress
+                    currentFile++
+                    withContext(Dispatchers.Main) {
+                        progressCallback?.onFileProgress(currentFile, totalFiles, imageName)
                     }
                     
                     if (downloadFile(remotePath, localFile)) {
