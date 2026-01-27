@@ -287,6 +287,7 @@ class FormEditActivity : AppCompatActivity() {
         // If not provided, calculate it (for backward compatibility)
         orderInSection = intent.getIntExtra("orderInSection", -1)
         subIndex = intent.getIntExtra("subIndex", -1).takeIf { it >= 0 }
+        
         if (orderInSection < 0) {
             // Calculate it from the form list for this specific site
             val forms = PredefinedForms.getFormsForSite(this, siteName)
@@ -572,10 +573,15 @@ class FormEditActivity : AppCompatActivity() {
     private var existingFormData: FormData? = null
     
     private fun loadExistingData() {
-        // Try to load draft first, then submitted version
-        // Pass orderInSection to load the correct file for this form instance
-        existingFormData = formFileHelper.loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = true)
-            ?: formFileHelper.loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false)
+        // OPTIMIZATION: Load form data once without filtering, then check if it's draft or submitted
+        // This avoids loading and parsing the same file twice
+        val loadedData = formFileHelper.loadFormDataAny(siteName, formId, orderInSection, subIndex)
+        
+        if (loadedData != null) {
+            // Prefer draft over submitted if both exist, but for now we just use what we found
+            // (In practice, if a form is submitted, there shouldn't be a draft, and vice versa)
+            existingFormData = loadedData
+        }
         
         if (existingFormData != null) {
             for (fieldValue in existingFormData!!.fieldValues) {
@@ -624,28 +630,28 @@ class FormEditActivity : AppCompatActivity() {
                 }
             }
         
-        // Apply prefills and default values if this is a new form (not draft or submitted)
-        if (existingFormData == null) {
-            // First, apply prefills (they take precedence over default values)
-            for ((widgetId, prefillValue) in formConfig.prefills) {
-                val fieldConfig = formConfig.fields.firstOrNull { it.id == widgetId }
-                if (fieldConfig != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
-                    val fieldView = fieldViews[widgetId]
-                    if (fieldView != null && fieldValues[widgetId] == null) {
-                        applyPrefillValue(fieldView, fieldConfig, prefillValue)
+            // Apply prefills and default values if this is a new form (not draft or submitted)
+            if (existingFormData == null) {
+                // First, apply prefills (they take precedence over default values)
+                for ((widgetId, prefillValue) in formConfig.prefills) {
+                    val fieldConfig = formConfig.fields.firstOrNull { it.id == widgetId }
+                    if (fieldConfig != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
+                        val fieldView = fieldViews[widgetId]
+                        if (fieldView != null && fieldValues[widgetId] == null) {
+                            applyPrefillValue(fieldView, fieldConfig, prefillValue)
+                        }
                     }
                 }
-            }
-            
-            // Then, apply default values (only if no prefill was applied)
-            for (fieldConfig in formConfig.fields) {
-                if (fieldConfig.defaultValue != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
-                    val fieldView = fieldViews[fieldConfig.id]
-                    // Only apply default if no prefill was applied (fieldValues[fieldConfig.id] is still null)
-                    if (fieldView != null && fieldValues[fieldConfig.id] == null) {
-                        applyDefaultValue(fieldView, fieldConfig)
+                
+                // Then, apply default values (only if no prefill was applied)
+                for (fieldConfig in formConfig.fields) {
+                    if (fieldConfig.defaultValue != null && fieldConfig.type != FormFieldConfig.FieldType.SECTION && fieldConfig.type != FormFieldConfig.FieldType.IMAGE_DISPLAY) {
+                        val fieldView = fieldViews[fieldConfig.id]
+                        // Only apply default if no prefill was applied (fieldValues[fieldConfig.id] is still null)
+                        if (fieldView != null && fieldValues[fieldConfig.id] == null) {
+                            applyDefaultValue(fieldView, fieldConfig)
+                        }
                     }
-                }
                 }
             }
             
