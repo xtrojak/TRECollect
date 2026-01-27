@@ -1,5 +1,7 @@
 package com.trec.customlogsheets.data
 
+import com.trec.customlogsheets.util.AppLogger
+import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -130,7 +132,7 @@ object FormConfigLoader {
         val configs = if (metadata != null && metadata.teamConfigId != null && metadata.teamConfigVersion != null) {
             try {
                 loadFromDownloadedWithTeamConfigVersion(context, actualTeam, actualSubteam, metadata.teamConfigId, metadata.teamConfigVersion)
-                    ?: loadFromDownloaded(context, actualTeam, actualSubteam) // Fallback to latest
+                    ?: loadFromDownloaded(context, actualTeam, actualSubteam)
             } catch (e: Exception) {
                 android.util.Log.w("FormConfigLoader", "Error loading config for site $siteName with version ${metadata.teamConfigVersion}, falling back to latest: ${e.message}")
                 loadFromDownloaded(context, actualTeam, actualSubteam) // Fallback to latest
@@ -138,13 +140,14 @@ object FormConfigLoader {
         } else {
             // No metadata or version info, use latest
             loadFromDownloaded(context, actualTeam, actualSubteam)
-            }
+        }
         
         // Cache the results
-            cachedConfigs = configs
-            cachedTeam = actualTeam
-            cachedSubteam = actualSubteam
+        cachedConfigs = configs
+        cachedTeam = actualTeam
+        cachedSubteam = actualSubteam
         cachedSiteName = siteName
+        
         return configs
     }
     
@@ -231,6 +234,7 @@ object FormConfigLoader {
     
     /**
      * Helper method to load forms from a team config JSON
+     * OPTIMIZATION: Loads logsheet JSON files in parallel for better performance
      */
     private fun loadFormsFromTeamConfig(
         downloader: LogsheetDownloader,
@@ -244,51 +248,58 @@ object FormConfigLoader {
             return emptyList()
         }
         
-        // Load each logsheet config
-        val configs = mutableListOf<FormConfig>()
-        for (formEntry in formEntries) {
-            // Handle horizontal_line divider - no logsheet file needed
-            if (formEntry.formId == "horizontal_line") {
-                val teamObj = org.json.JSONObject(teamConfigJson)
-                val sectionsArray = teamObj.getJSONArray("sections")
-                val sectionObj = sectionsArray.getJSONObject(formEntry.sectionIndex)
-                val sectionName = sectionObj.optString("name", "")
-                
-                // Create a minimal FormConfig for the divider
-                configs.add(
-                    FormConfig(
-                        id = "horizontal_line",
-                        name = "",
-                        section = sectionName,
-                        description = null,
-                        mandatory = false,
-                        isDynamic = false,
-                        dynamicButtonName = null,
-                        fields = emptyList(),
-                        prefills = emptyMap()
-                    )
-                )
-                continue
+        // OPTIMIZATION: Load logsheet files in parallel
+        val configs = runBlocking(Dispatchers.IO) {
+            val deferredConfigs = formEntries.mapIndexed { index, formEntry ->
+                async {
+                    // Handle horizontal_line divider - no logsheet file needed
+                    if (formEntry.formId == "horizontal_line") {
+                        val teamObj = org.json.JSONObject(teamConfigJson)
+                        val sectionsArray = teamObj.getJSONArray("sections")
+                        val sectionObj = sectionsArray.getJSONObject(formEntry.sectionIndex)
+                        val sectionName = sectionObj.optString("name", "")
+                        
+                        // Create a minimal FormConfig for the divider
+                        return@async Pair(index, FormConfig(
+                            id = "horizontal_line",
+                            name = "",
+                            section = sectionName,
+                            description = null,
+                            mandatory = false,
+                            isDynamic = false,
+                            dynamicButtonName = null,
+                            fields = emptyList(),
+                            prefills = emptyMap()
+                        ))
+                    }
+                    
+                    val logsheetFile = downloader.getLogsheetFile(formEntry.formId)
+                    if (logsheetFile == null) {
+                        return@async Pair(index, null)
+                    }
+                    
+                    val logsheetJson = try {
+                        logsheetFile.readText()
+                    } catch (e: Exception) {
+                        android.util.Log.e("FormConfigLoader", "Error reading logsheet ${formEntry.formId}: ${e.message}", e)
+                        return@async Pair(index, null)
+                    }
+                    
+                    val config = try {
+                        parseLogsheetConfig(logsheetJson, formEntry, teamConfigJson)
+                    } catch (e: Exception) {
+                        android.util.Log.e("FormConfigLoader", "Error parsing logsheet ${formEntry.formId}: ${e.message}", e)
+                        null
+                    }
+                    
+                    Pair(index, config)
+                }
             }
             
-            val logsheetFile = downloader.getLogsheetFile(formEntry.formId) ?: continue
-            val logsheetJson = try {
-                logsheetFile.readText()
-            } catch (e: Exception) {
-                android.util.Log.e("FormConfigLoader", "Error reading logsheet ${formEntry.formId}: ${e.message}", e)
-                continue
-            }
-            
-            val config = try {
-                parseLogsheetConfig(logsheetJson, formEntry, teamConfigJson)
-            } catch (e: Exception) {
-                android.util.Log.e("FormConfigLoader", "Error parsing logsheet ${formEntry.formId}: ${e.message}", e)
-                continue
-            }
-            
-            if (config != null) {
-                configs.add(config)
-            }
+            // Wait for all to complete and collect results, preserving order
+            deferredConfigs.awaitAll()
+                .sortedBy { it.first } // Sort by original index to preserve order
+                .mapNotNull { it.second } // Extract configs, filtering out nulls
         }
         
         try {

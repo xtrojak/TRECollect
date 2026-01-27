@@ -47,6 +47,14 @@ class SiteDetailActivity : AppCompatActivity() {
     private lateinit var buttonRetryUpload: MaterialButton
     private var canFinalize: Boolean = false
     private var savedScrollPosition: Int = 0 // Save scroll position when refreshing
+    
+    // Cache for forms data to avoid reloading in other methods
+    private var cachedBaseFormsBySection: Map<String, List<com.trec.customlogsheets.data.Form>>? = null
+    private var cachedSections: List<String>? = null
+    
+    // Flag to prevent duplicate setupFormsList calls
+    private var isSettingUpForms = false
+    private var formsListInitialized = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +96,7 @@ class SiteDetailActivity : AppCompatActivity() {
         } else {
             setupUploadStatus()
         }
+        
         setupFormsList()
         loadFormCompletions()
         
@@ -103,9 +112,16 @@ class SiteDetailActivity : AppCompatActivity() {
         // Save scroll position before refreshing
         saveScrollPosition()
         
-        // Reload forms list to pick up any new dynamic instances
-        // Only call setupFormsList once - it will handle everything
-        setupFormsList()
+        // Only reload if forms list was already initialized (skip on first onCreate->onResume cycle)
+        // This prevents duplicate work when onCreate() already called setupFormsList()
+        if (formsListInitialized && !isSettingUpForms) {
+            // Clear cached forms data to force reload (in case forms changed)
+            cachedBaseFormsBySection = null
+            cachedSections = null
+            
+            // Reload forms list to pick up any new dynamic instances
+            setupFormsList()
+        }
         
         // Reload site data to get updated upload status (only if site has valid ID and not finished)
         if (site.id > 0 && site.status != com.trec.customlogsheets.data.SiteStatus.FINISHED) {
@@ -121,6 +137,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
             }
         }
+        
         // Update menu to refresh finalize button state
         invalidateOptionsMenu()
         // Note: Scroll position will be restored in setupFormsList() after data is loaded
@@ -315,6 +332,41 @@ class SiteDetailActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * OPTIMIZATION: Check mandatory forms using already-loaded statuses (no file I/O)
+     */
+    private fun checkAllMandatoryFormsSubmittedFromStatuses(
+        allStatuses: Map<String, Pair<Boolean, Boolean>>,
+        formsBySection: Map<String, List<com.trec.customlogsheets.data.Form>>,
+        instanceIndexMap: Map<Triple<String, String, Int>, Int>
+    ): Boolean {
+        val mandatoryForms = PredefinedForms.getMandatoryFormsForSite(this, site.name)
+        if (mandatoryForms.isEmpty()) {
+            return true // No mandatory forms, can finalize
+        }
+        
+        // Check if all mandatory form instances are submitted using cached statuses
+        val mandatoryFormIds = mandatoryForms.map { it.id }.toSet()
+        
+        return formsBySection.values.flatten()
+            .filter { mandatoryFormIds.contains(it.id) }
+            .all { form ->
+                val formsInSection = formsBySection[form.section] ?: emptyList()
+                val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
+                    .takeIf { it >= 0 } ?: 0
+                // Use pre-computed instance index
+                val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
+                // Use composite key to look up status (no file I/O needed)
+                val formKey = "${form.id}_${instanceIndex}"
+                val status = allStatuses[formKey]
+                // Check if submitted (first element of Pair is isSubmitted)
+                status?.first == true
+            }
+    }
+    
+    /**
+     * Fallback method that loads files individually (slower, used when statuses not available)
+     */
     private suspend fun checkAllMandatoryFormsSubmitted(): Boolean {
         val mandatoryForms = withContext(Dispatchers.IO) {
             PredefinedForms.getMandatoryFormsForSite(this@SiteDetailActivity, site.name)
@@ -325,12 +377,28 @@ class SiteDetailActivity : AppCompatActivity() {
         
         val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
         
-        // Get all forms grouped by section to check all instances
-        val sections = withContext(Dispatchers.IO) {
-            PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+        // OPTIMIZATION: Use cached forms data if available, otherwise load
+        val formsBySection = cachedBaseFormsBySection ?: run {
+            val sections = withContext(Dispatchers.IO) {
+                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+            }
+            sections.associateWith { section ->
+                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
+            }
         }
-        val formsBySection = sections.associateWith { section ->
-            PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
+        
+        // OPTIMIZATION: Pre-compute instance indices for all forms to avoid recalculation
+        val instanceIndexMap = mutableMapOf<Triple<String, String, Int>, Int>() // (formId, section, orderInSection) -> instanceIndex
+        formsBySection.forEach { (section, forms) ->
+            forms.forEachIndexed { orderInSection, form ->
+                var instanceIndex = 0
+                for (i in 0 until orderInSection) {
+                    if (forms[i].id == form.id) {
+                        instanceIndex++
+                    }
+                }
+                instanceIndexMap[Triple(form.id, section, orderInSection)] = instanceIndex
+            }
         }
         
         // Check if all mandatory form instances are submitted
@@ -339,17 +407,11 @@ class SiteDetailActivity : AppCompatActivity() {
         return formsBySection.values.flatten()
             .filter { mandatoryFormIds.contains(it.id) }
             .all { form ->
-                // Calculate orderInSection for this instance
                 val formsInSection = formsBySection[form.section] ?: emptyList()
                 val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
-                var instanceIndex = 0
-                if (formPosition >= 0) {
-                    for (i in 0 until formPosition) {
-                        if (formsInSection[i].id == form.id) {
-                            instanceIndex++
-                        }
-                    }
-                }
+                    .takeIf { it >= 0 } ?: 0
+                // Use pre-computed instance index
+                val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
                 // Check if this specific instance is submitted
                 formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
         }
@@ -362,12 +424,28 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
             
-            // Get all forms grouped by section to check all instances
-            val sections = withContext(Dispatchers.IO) {
-                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+            // OPTIMIZATION: Use cached forms data if available, otherwise load
+            val formsBySection = cachedBaseFormsBySection ?: run {
+                val sections = withContext(Dispatchers.IO) {
+                    PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+                }
+                sections.associateWith { section ->
+                    PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
+                }
             }
-            val formsBySection = sections.associateWith { section ->
-                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
+            
+            // OPTIMIZATION: Pre-compute instance indices for all forms to avoid recalculation
+            val instanceIndexMap = mutableMapOf<Triple<String, String, Int>, Int>() // (formId, section, orderInSection) -> instanceIndex
+            formsBySection.forEach { (section, forms) ->
+                forms.forEachIndexed { orderInSection, form ->
+                    var instanceIndex = 0
+                    for (i in 0 until orderInSection) {
+                        if (forms[i].id == form.id) {
+                            instanceIndex++
+                        }
+                    }
+                    instanceIndexMap[Triple(form.id, section, orderInSection)] = instanceIndex
+                }
             }
             
             // Check which mandatory form instances are missing
@@ -375,17 +453,11 @@ class SiteDetailActivity : AppCompatActivity() {
             val missingForms = formsBySection.values.flatten()
                 .filter { mandatoryFormIds.contains(it.id) }
                 .filter { form ->
-                    // Calculate orderInSection for this instance
                     val formsInSection = formsBySection[form.section] ?: emptyList()
                     val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
-                    var instanceIndex = 0
-                    if (formPosition >= 0) {
-                        for (i in 0 until formPosition) {
-                            if (formsInSection[i].id == form.id) {
-                                instanceIndex++
-                            }
-                        }
-                    }
+                        .takeIf { it >= 0 } ?: 0
+                    // Use pre-computed instance index
+                    val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
                     // Check if this specific instance is NOT submitted
                     !formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
                 }
@@ -559,6 +631,12 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private fun setupFormsList() {
+        // Prevent duplicate concurrent calls
+        if (isSettingUpForms) {
+            AppLogger.d("SiteDetailActivity", "setupFormsList already in progress, skipping duplicate call")
+            return
+        }
+        
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
         
         // Only create adapter and layout manager once
@@ -575,74 +653,107 @@ class SiteDetailActivity : AppCompatActivity() {
         recyclerView.adapter = formSectionAdapter
         }
         
+        // Mark as in progress
+        isSettingUpForms = true
+        
         // Initialize with forms for this specific site (uses pinned team config version)
         lifecycleScope.launch {
-            val totalStartTime = System.currentTimeMillis()
+            try {
             
-            val sections = withContext(Dispatchers.IO) {
-                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+            // OPTIMIZATION: Load configs once and reuse for both forms and sections
+            val (originalConfigs, allForms) = withContext(Dispatchers.IO) {
+                val configs = FormConfigLoader.loadForSite(this@SiteDetailActivity, site.name)
+                
+                // Convert to Forms once and reuse
+                val forms = configs
+                    .filter { it.id != "horizontal_line" } // Exclude dividers from Form list
+                    .map { config ->
+                        com.trec.customlogsheets.data.Form(
+                            id = config.id,
+                            name = config.name,
+                            section = config.section,
+                            description = config.description,
+                            mandatory = config.mandatory,
+                            isDynamic = config.isDynamic,
+                            dynamicButtonName = config.dynamicButtonName
+                        )
+                    }
+                configs to forms
             }
+            
+            // Build sections and forms by section from the already-loaded data
+            val sections = allForms.map { it.section }.distinct()
             val baseFormsBySection = sections.associateWith { section ->
-                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
-    }
-    
+                allForms.filter { it.section == section }
+            }
+            
+            // Cache for reuse in other methods
+            cachedBaseFormsBySection = baseFormsBySection
+            cachedSections = sections
+            
             // Expand dynamic forms to include their instances
             // OPTIMIZATION: Batch all file I/O operations into a single withContext block
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
             
-            // Pre-calculate instance indices for all dynamic forms to avoid repeated calculations
+            // Pre-calculate instance indices for all forms (not just dynamic) to avoid repeated calculations
+            // Map: (formId, section, orderInSection) -> instanceIndex
+            val instanceIndexMap = mutableMapOf<Triple<String, String, Int>, Int>()
+            baseFormsBySection.forEach { (section, forms) ->
+                forms.forEachIndexed { orderInSection, form ->
+                    var instanceIndex = 0
+                    for (i in 0 until orderInSection) {
+                        if (forms[i].id == form.id) {
+                            instanceIndex++
+                        }
+                    }
+                    instanceIndexMap[Triple(form.id, section, orderInSection)] = instanceIndex
+                }
+            }
+            
+            // Pre-calculate instance indices for dynamic forms only (for dynamic instance lookup)
             val dynamicFormInstanceIndices = mutableMapOf<Pair<String, String>, Int>() // (formId, section) -> instanceIndex
             baseFormsBySection.forEach { (section, forms) ->
                 forms.forEachIndexed { orderInSection, form ->
                     if (form.isDynamic) {
-                        var instanceIndex = 0
-                        for (i in 0 until orderInSection) {
-                            if (forms[i].id == form.id) {
-                                instanceIndex++
-                            }
-                        }
-                        dynamicFormInstanceIndices[Pair(form.id, section)] = instanceIndex
+                        dynamicFormInstanceIndices[Pair(form.id, section)] = instanceIndexMap[Triple(form.id, section, orderInSection)] ?: 0
                     }
                 }
             }
             
             // OPTIMIZATION: Get statuses and file list ONCE, then use cached results
-            val getAllStatusesStartTime = System.currentTimeMillis()
             val (allStatuses, cachedFiles) = withContext(Dispatchers.IO) {
-                val statusesStartTime = System.currentTimeMillis()
                 val result = formFileHelper.getAllFormStatusesWithCache(site.name)
-                val statusesEndTime = System.currentTimeMillis()
-                AppLogger.d("SiteDetailActivity", "getAllFormStatusesWithCache took ${statusesEndTime - statusesStartTime}ms, found ${result.fileList.size} files")
                 result.statusMap to result.fileList
             }
-            val getAllStatusesEndTime = System.currentTimeMillis()
-            AppLogger.d("SiteDetailActivity", "getAllFormStatusesWithCache total took ${getAllStatusesEndTime - getAllStatusesStartTime}ms")
             
             // OPTIMIZATION: Use cached file list to get dynamic instances (no listFiles() calls)
-            val getInstancesStartTime = System.currentTimeMillis()
             val allDynamicInstances = dynamicFormInstanceIndices.mapNotNull { (key, instanceIndex) ->
                 val (formId, _) = key
-                val instanceStartTime = System.currentTimeMillis()
                 val instances = formFileHelper.getDynamicFormInstancesFromCache(cachedFiles, formId, instanceIndex)
-                val instanceEndTime = System.currentTimeMillis()
-                AppLogger.d("SiteDetailActivity", "getDynamicFormInstancesFromCache for $formId took ${instanceEndTime - instanceStartTime}ms")
                 key to instances
             }.toMap()
-            val getInstancesEndTime = System.currentTimeMillis()
-            AppLogger.d("SiteDetailActivity", "Total getDynamicFormInstancesFromCache calls took ${getInstancesEndTime - getInstancesStartTime}ms for ${dynamicFormInstanceIndices.size} forms")
             
             // Build expanded forms from files only (source of truth)
             // Unsaved instances will only exist in the adapter's current list until saved or page is refreshed
             // Also insert add buttons after each dynamic form group and dividers where specified
-            // Get original configs to check for dividers
-            val originalConfigs = withContext(Dispatchers.IO) {
-                FormConfigLoader.loadForSite(this@SiteDetailActivity, site.name)
-            }
             val configsBySection = originalConfigs.groupBy { it.section }
+            
+            // OPTIMIZATION: Build form lookup map for O(1) access instead of linear search
+            val formsBySectionAndOccurrence = baseFormsBySection.mapValues { (_, forms) ->
+                val map = mutableMapOf<Pair<String, Int>, com.trec.customlogsheets.data.Form>() // (formId, occurrence) -> Form
+                val occurrenceCount = mutableMapOf<String, Int>() // formId -> current occurrence
+                forms.forEach { form ->
+                    val occurrence = occurrenceCount.getOrDefault(form.id, 0)
+                    map[Pair(form.id, occurrence)] = form
+                    occurrenceCount[form.id] = occurrence + 1
+                }
+                map
+            }
             
             val expandedFormsBySection = baseFormsBySection.mapValues { (section, forms) ->
                 val result = mutableListOf<com.trec.customlogsheets.ui.FormListItem>()
                 val sectionConfigs = configsBySection[section] ?: emptyList()
+                val formsLookup = formsBySectionAndOccurrence[section] ?: emptyMap()
                 
                 // Create a map to track which forms we've processed
                 // Since forms can appear multiple times (same ID), we need to track by occurrence
@@ -654,22 +765,12 @@ class SiteDetailActivity : AppCompatActivity() {
                         // Insert divider
                         result.add(com.trec.customlogsheets.ui.FormListItem.DividerItem)
                     } else {
-                        // Find the matching form by ID and occurrence
+                        // Find the matching form by ID and occurrence using O(1) lookup
                         val occurrence = formOccurrenceMap.getOrDefault(config.id, 0)
                         formOccurrenceMap[config.id] = occurrence + 1
                         
-                        // Find the form with this ID at this occurrence position
-                        var foundForm: Form? = null
-                        var currentOccurrence = 0
-                        for (form in forms) {
-                            if (form.id == config.id) {
-                                if (currentOccurrence == occurrence) {
-                                    foundForm = form
-                                    break
-                                }
-                                currentOccurrence++
-                            }
-                        }
+                        // Use map lookup instead of linear search
+                        val foundForm = formsLookup[Pair(config.id, occurrence)]
                         
                         if (foundForm != null) {
                             if (foundForm.isDynamic) {
@@ -702,7 +803,6 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             
             // OPTIMIZATION: Use cached status map and instances to calculate canAdd (no XML loading)
-            val canAddStartTime = System.currentTimeMillis()
             val canAddCache = mutableMapOf<Pair<String, Int>, Boolean>() // (formId, instanceIndex) -> canAdd
             dynamicFormInstanceIndices.forEach { (key, instanceIndex) ->
                 val (formId, _) = key
@@ -711,37 +811,47 @@ class SiteDetailActivity : AppCompatActivity() {
                     allStatuses, formId, instanceIndex, instances
                 )
             }
-            val canAddEndTime = System.currentTimeMillis()
-            AppLogger.d("SiteDetailActivity", "Total canAddDynamicFormInstanceFromStatus calls took ${canAddEndTime - canAddStartTime}ms for ${dynamicFormInstanceIndices.size} forms")
             
             // Set up canAddDynamicForm callback with cached results
+            // OPTIMIZATION: Pre-compute form to instanceIndex mapping for callback
+            val formToInstanceIndexMap = mutableMapOf<Pair<String, String>, Int>() // (formId, section) -> instanceIndex for callback lookup
+            baseFormsBySection.forEach { (section, forms) ->
+                forms.forEachIndexed { orderInSection, form ->
+                    if (form.isDynamic) {
+                        val instanceIndex = instanceIndexMap[Triple(form.id, section, orderInSection)] ?: 0
+                        formToInstanceIndexMap[Pair(form.id, section)] = instanceIndex
+                    }
+                }
+            }
+            
             val canAddCallback: (Form) -> Boolean = { form ->
                 if (!form.isDynamic) {
                     false
                 } else {
-                    // Get base form (remove # suffix if present)
-                    val baseFormName = form.name.substringBefore(" #")
-                    val baseFormsInSection = baseFormsBySection[form.section] ?: emptyList()
-                    val orderInSection = baseFormsInSection.indexOfFirst { it.id == form.id && (it.name == baseFormName || it.name == form.name) }
-                        .takeIf { it >= 0 } ?: 0
-                    var instanceIndex = 0
-                    for (i in 0 until orderInSection) {
-                        if (baseFormsInSection[i].id == form.id) {
-                            instanceIndex++
-                        }
-                    }
+                    // Use pre-computed instance index instead of recalculating
+                    val instanceIndex = formToInstanceIndexMap[Pair(form.id, form.section)] ?: 0
                     // Use cached result instead of calling canAddDynamicFormInstance
                     canAddCache[Pair(form.id, instanceIndex)] ?: false
                 }
             }
             
             // Build sets of form keys for submitted and draft forms using expanded forms
+            // OPTIMIZATION: Pre-compute form position to instanceIndex mapping to avoid recalculation
+            val formPositionToInstanceIndex = baseFormsBySection.mapValues { (section, forms) ->
+                val map = mutableMapOf<Int, Int>() // orderInSection -> instanceIndex
+                forms.forEachIndexed { orderInSection, form ->
+                    val instanceIndex = instanceIndexMap[Triple(form.id, section, orderInSection)] ?: 0
+                    map[orderInSection] = instanceIndex
+                }
+                map
+            }
+            
             val submittedFormKeys = mutableSetOf<String>()
             val draftFormKeys = mutableSetOf<String>()
             
             expandedFormsBySection.forEach { (section, formListItems) ->
                 formListItems.forEach innerForEach@{ item ->
-                    // Only process FormItem, skip AddButtonItem
+                    // Only process FormItem, skip AddButtonItem and DividerItem
                     if (item !is com.trec.customlogsheets.ui.FormListItem.FormItem) return@innerForEach
                     
                     val form = item.form
@@ -753,7 +863,7 @@ class SiteDetailActivity : AppCompatActivity() {
                         null
                     }
                     
-                    // Get base form to calculate orderInSection
+                    // Get base form to find orderInSection
                     val baseFormName = if (isDynamicInstance) {
                         form.name.substringBefore(" #")
                     } else {
@@ -763,13 +873,8 @@ class SiteDetailActivity : AppCompatActivity() {
                     val baseFormPosition = baseFormsInSection.indexOfFirst { it.id == form.id && it.name == baseFormName }
                         .takeIf { it >= 0 } ?: 0
                     
-                    // Calculate orderInSection for the base form
-                    var instanceIndex = 0
-                    for (i in 0 until baseFormPosition) {
-                        if (baseFormsInSection[i].id == form.id) {
-                            instanceIndex++
-                        }
-                    }
+                    // Use pre-computed instance index instead of recalculating
+                    val instanceIndex = formPositionToInstanceIndex[section]?.get(baseFormPosition) ?: 0
                     
                     // Use composite key to look up status (include sub-index for dynamic forms)
                     val formKey = if (subIndex != null) {
@@ -792,12 +897,9 @@ class SiteDetailActivity : AppCompatActivity() {
             
             formSectionAdapter?.setData(sections, expandedFormsBySection, submittedFormKeys, draftFormKeys, canAddCallback, baseFormsBySection)
             
-            // Update canFinalize flag
-            canFinalize = checkAllMandatoryFormsSubmitted()
+            // Update canFinalize flag using already-loaded statuses (much faster than loading files individually)
+            canFinalize = checkAllMandatoryFormsSubmittedFromStatuses(allStatuses, baseFormsBySection, instanceIndexMap)
             invalidateOptionsMenu() // Refresh menu to update finalize button state
-            
-            val totalEndTime = System.currentTimeMillis()
-            AppLogger.d("SiteDetailActivity", "Total setupFormsList took ${totalEndTime - totalStartTime}ms")
             
             // Restore scroll position after data is loaded (if it was saved)
             // Use withContext(Main) to ensure we're on the main thread
@@ -813,6 +915,11 @@ class SiteDetailActivity : AppCompatActivity() {
                     })
                 }
             }
+            } finally {
+                // Mark as completed
+                isSettingUpForms = false
+                formsListInitialized = true
+            }
         }
     }
     
@@ -827,8 +934,10 @@ class SiteDetailActivity : AppCompatActivity() {
         val baseFormName = form.name.substringBefore(" #")
         val baseForm = form.copy(name = baseFormName)
         
-        // Use the same calculation as setupFormsList() - get base forms for the section
-        val baseFormsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, baseForm.section)
+        // OPTIMIZATION: Use cached forms data if available
+        val baseFormsInSection = cachedBaseFormsBySection?.get(baseForm.section) ?: run {
+            PredefinedForms.getFormsBySectionForSite(this, site.name, baseForm.section)
+        }
         val baseFormPosition = baseFormsInSection.indexOfFirst { it.id == baseForm.id && it.name == baseFormName }
             .takeIf { it >= 0 } ?: 0
         
@@ -899,7 +1008,10 @@ class SiteDetailActivity : AppCompatActivity() {
         val baseFormName = form.name.substringBefore(" #")
         val baseForm = form.copy(name = baseFormName)
         
-        val formsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, baseForm.section)
+        // OPTIMIZATION: Use cached forms data if available
+        val formsInSection = cachedBaseFormsBySection?.get(baseForm.section) ?: run {
+            PredefinedForms.getFormsBySectionForSite(this, site.name, baseForm.section)
+        }
         val orderInSection = formsInSection.indexOfFirst { it.id == baseForm.id && it.name == baseForm.name }
             .takeIf { it >= 0 } ?: 0
         
@@ -1152,8 +1264,10 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private fun onFormClick(form: Form) {
-        // Get base forms list (without # suffix)
-        val baseFormsInSection = PredefinedForms.getFormsBySectionForSite(this, site.name, form.section)
+        // OPTIMIZATION: Use cached forms data if available
+        val baseFormsInSection = cachedBaseFormsBySection?.get(form.section) ?: run {
+            PredefinedForms.getFormsBySectionForSite(this, site.name, form.section)
+        }
         
         // Check if this is a dynamic form instance (name contains " #")
         val isDynamicInstance = form.isDynamic && form.name.contains(" #")
