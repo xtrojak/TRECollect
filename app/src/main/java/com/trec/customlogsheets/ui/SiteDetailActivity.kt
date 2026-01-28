@@ -307,8 +307,8 @@ class SiteDetailActivity : AppCompatActivity() {
             finalizeItem?.isVisible = true
             renameItem?.isVisible = true
             deleteItem?.isVisible = true
-            // Update finalize button state based on mandatory forms completion
-            finalizeItem?.isEnabled = canFinalize
+            // Submit button is always enabled; if mandatory forms are missing, the dialog will explain
+            finalizeItem?.isEnabled = true
         }
         
         return super.onPrepareOptionsMenu(menu)
@@ -340,27 +340,30 @@ class SiteDetailActivity : AppCompatActivity() {
         formsBySection: Map<String, List<com.trec.customlogsheets.data.Form>>,
         instanceIndexMap: Map<Triple<String, String, Int>, Int>
     ): Boolean {
-        val mandatoryForms = PredefinedForms.getMandatoryFormsForSite(this, site.name)
-        if (mandatoryForms.isEmpty()) {
+        val allForms = formsBySection.values.flatten()
+        if (allForms.none { it.mandatory }) {
             return true // No mandatory forms, can finalize
         }
         
-        // Check if all mandatory form instances are submitted using cached statuses
-        val mandatoryFormIds = mandatoryForms.map { it.id }.toSet()
-        
-        return formsBySection.values.flatten()
-            .filter { mandatoryFormIds.contains(it.id) }
+        // Check each form occurrence by its own mandatory flag (same form id can be mandatory in one spot, optional in another)
+        return allForms
+            .filter { it.mandatory }
             .all { form ->
                 val formsInSection = formsBySection[form.section] ?: emptyList()
                 val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
                     .takeIf { it >= 0 } ?: 0
                 // Use pre-computed instance index
                 val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
-                // Use composite key to look up status (no file I/O needed)
-                val formKey = "${form.id}_${instanceIndex}"
-                val status = allStatuses[formKey]
-                // Check if submitted (first element of Pair is isSubmitted)
-                status?.first == true
+                if (form.isDynamic) {
+                    // Dynamic forms use keys formId_instanceIndex_subIndex; consider submitted if at least one instance is submitted
+                    allStatuses.entries.any { (key, value) ->
+                        value.first && key.startsWith("${form.id}_${instanceIndex}_")
+                    }
+                } else {
+                    val formKey = "${form.id}_${instanceIndex}"
+                    val status = allStatuses[formKey]
+                    status?.first == true
+                }
             }
     }
     
@@ -368,13 +371,6 @@ class SiteDetailActivity : AppCompatActivity() {
      * Fallback method that loads files individually (slower, used when statuses not available)
      */
     private suspend fun checkAllMandatoryFormsSubmitted(): Boolean {
-        val mandatoryForms = withContext(Dispatchers.IO) {
-            PredefinedForms.getMandatoryFormsForSite(this@SiteDetailActivity, site.name)
-        }
-        if (mandatoryForms.isEmpty()) {
-            return true // No mandatory forms, can finalize
-        }
-        
         val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
         
         // OPTIMIZATION: Use cached forms data if available, otherwise load
@@ -385,6 +381,11 @@ class SiteDetailActivity : AppCompatActivity() {
             sections.associateWith { section ->
                 PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
             }
+        }
+        
+        val allForms = formsBySection.values.flatten()
+        if (allForms.none { it.mandatory }) {
+            return true // No mandatory forms, can finalize
         }
         
         // OPTIMIZATION: Pre-compute instance indices for all forms to avoid recalculation
@@ -401,27 +402,27 @@ class SiteDetailActivity : AppCompatActivity() {
             }
         }
         
-        // Check if all mandatory form instances are submitted
-        val mandatoryFormIds = mandatoryForms.map { it.id }.toSet()
-        
-        return formsBySection.values.flatten()
-            .filter { mandatoryFormIds.contains(it.id) }
+        // Check each form occurrence by its own mandatory flag
+        return allForms
+            .filter { it.mandatory }
             .all { form ->
                 val formsInSection = formsBySection[form.section] ?: emptyList()
                 val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
                     .takeIf { it >= 0 } ?: 0
-                // Use pre-computed instance index
                 val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
-                // Check if this specific instance is submitted
-                formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
-        }
+                if (form.isDynamic) {
+                    val instances = formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
+                    instances.any { subIndex ->
+                        formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex, subIndex)
+                    }
+                } else {
+                    formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
+                }
+            }
     }
     
     private fun showFinalizeConfirmationDialog() {
         lifecycleScope.launch {
-            val mandatoryForms = withContext(Dispatchers.IO) {
-                PredefinedForms.getMandatoryFormsForSite(this@SiteDetailActivity, site.name)
-            }
             val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
             
             // OPTIMIZATION: Use cached forms data if available, otherwise load
@@ -448,27 +449,41 @@ class SiteDetailActivity : AppCompatActivity() {
                 }
             }
             
-            // Check which mandatory form instances are missing
-            val mandatoryFormIds = mandatoryForms.map { it.id }.toSet()
+            // Check which mandatory form instances are missing (use each form's mandatory flag, not form id)
             val missingForms = formsBySection.values.flatten()
-                .filter { mandatoryFormIds.contains(it.id) }
+                .filter { it.mandatory }
                 .filter { form ->
                     val formsInSection = formsBySection[form.section] ?: emptyList()
                     val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
                         .takeIf { it >= 0 } ?: 0
-                    // Use pre-computed instance index
                     val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
-                    // Check if this specific instance is NOT submitted
-                    !formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
+                    val isSubmitted = if (form.isDynamic) {
+                        val instances = formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
+                        instances.any { subIndex ->
+                            formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex, subIndex)
+                        }
+                    } else {
+                        formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
+                    }
+                    !isSubmitted
                 }
             
             if (missingForms.isNotEmpty()) {
-                val missingNames = missingForms.joinToString(", ") { it.name }
-                Toast.makeText(
-                    this@SiteDetailActivity,
-                    "Cannot finalize: Missing mandatory forms: $missingNames",
-                    Toast.LENGTH_LONG
-                ).show()
+                val missingNames = missingForms.map { it.name }
+                // Log complete list for debugging
+                AppLogger.d("SiteDetailActivity", "Cannot finalize site \"${site.name}\": missing mandatory forms (${missingNames.size}): ${missingNames.joinToString(", ")}")
+                android.util.Log.d("SiteDetailActivity", "Cannot finalize: missing mandatory forms: ${missingNames.joinToString(", ")}")
+                
+                val message = if (missingNames.size <= 3) {
+                    "The following mandatory forms are not filled:\n\n• ${missingNames.joinToString("\n• ")}"
+                } else {
+                    "Many mandatory forms are not filled yet (${missingNames.size} forms). Complete all required forms before submitting the site."
+                }
+                AlertDialog.Builder(this@SiteDetailActivity)
+                    .setTitle("Cannot submit site")
+                    .setMessage(message)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
                 return@launch
             }
             
