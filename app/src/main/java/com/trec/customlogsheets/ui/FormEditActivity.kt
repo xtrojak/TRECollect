@@ -3883,9 +3883,47 @@ class FormEditActivity : AppCompatActivity() {
                         }
                     }
                     FormFieldConfig.FieldType.DYNAMIC -> {
-                        // For dynamic widgets, check if at least one instance exists and all mandatory sub-fields are filled
-                        val dynamicData = fieldValue?.dynamicData
-                        if (dynamicData == null || dynamicData.isEmpty()) {
+                        // Dynamic widget data lives in sub-field keys (fieldId_instance0_subFieldId), not in fieldValues[fieldConfig.id].
+                        // Collect current instances from the UI (same as collectFieldValues) so we validate what's on screen.
+                        val fieldView = fieldViews[fieldConfig.id] ?: run {
+                            Toast.makeText(this, "${fieldConfig.label} requires at least one instance", Toast.LENGTH_SHORT).show()
+                            return false
+                        }
+                        val containerInstances = fieldView.findViewById<LinearLayout>(R.id.containerInstances)
+                        val dynamicData = mutableListOf<Map<String, FormFieldValue>>()
+                        for (i in 0 until containerInstances.childCount) {
+                            val instanceView = containerInstances.getChildAt(i)
+                            val containerSubFields = instanceView.findViewById<LinearLayout>(R.id.containerSubFields)
+                            if (containerSubFields != null) {
+                                val instanceData = mutableMapOf<String, FormFieldValue>()
+                                val subFields = fieldConfig.subFields ?: emptyList()
+                                for (subFieldConfig in subFields) {
+                                    val uniqueFieldId = "${fieldConfig.id}_instance${i}_${subFieldConfig.id}"
+                                    val subFieldView = fieldViews[uniqueFieldId]
+                                    val subFieldValue = when (subFieldConfig.type) {
+                                        FormFieldConfig.FieldType.GPS -> {
+                                            val editTextLatitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                                            val editTextLongitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                                            val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                                            val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                                            val latitude = latStr.toDoubleOrNull()
+                                            val longitude = lonStr.toDoubleOrNull()
+                                            if (latitude != null && longitude != null) {
+                                                FormFieldValue(uniqueFieldId, gpsLatitude = latitude, gpsLongitude = longitude)
+                                            } else null
+                                        }
+                                        else -> fieldValues[uniqueFieldId]
+                                    }
+                                    if (subFieldValue != null) {
+                                        instanceData[subFieldConfig.id] = subFieldValue.copy(fieldId = subFieldConfig.id)
+                                    }
+                                }
+                                if (instanceData.isNotEmpty()) {
+                                    dynamicData.add(instanceData)
+                                }
+                            }
+                        }
+                        if (dynamicData.isEmpty()) {
                             Toast.makeText(
                                 this,
                                 "${fieldConfig.label} requires at least one instance",
@@ -3893,7 +3931,6 @@ class FormEditActivity : AppCompatActivity() {
                             ).show()
                             return false
                         }
-                        
                         // Check mandatory sub-fields in each instance
                         val subFields = fieldConfig.subFields ?: emptyList()
                         for ((instanceIndex, instanceData) in dynamicData.withIndex()) {
@@ -3910,7 +3947,6 @@ class FormEditActivity : AppCompatActivity() {
                                             subFieldValue?.value?.trim()?.isEmpty() ?: true
                                         }
                                         FormFieldConfig.FieldType.CHECKBOX -> {
-                                            // For required checkbox, it must be checked (value == "true")
                                             subFieldValue?.value?.lowercase() != "true"
                                         }
                                         FormFieldConfig.FieldType.GPS -> {
