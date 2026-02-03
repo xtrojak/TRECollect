@@ -105,11 +105,15 @@ class LogsheetDownloader(private val context: Context) {
             val logsheetsResult = downloadLogsheets(progressCallback)
             downloadedFiles.addAll(logsheetsResult.downloaded)
             failedFiles.addAll(logsheetsResult.failed)
+            if (!logsheetsResult.success && logsheetsResult.failed.isEmpty()) {
+                failedFiles.add("logsheets: (listing/connection error)")
+            }
             withContext(Dispatchers.Main) {
                 progressCallback?.onPhaseCompleted("Logsheets", logsheetsResult.downloaded.size, logsheetsResult.failed.size)
             }
-            if (logsheetsResult.failed.isNotEmpty()) {
-                AppLogger.w(TAG, "Failed to download some logsheets")
+            if (!logsheetsResult.success || logsheetsResult.failed.isNotEmpty()) {
+                if (logsheetsResult.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some logsheets")
+                else AppLogger.w(TAG, "Logsheets phase failed (e.g. listing/connection error)")
                 success = false
             }
             
@@ -121,11 +125,15 @@ class LogsheetDownloader(private val context: Context) {
             val teamsResult = downloadTeamConfigs(progressCallback)
             downloadedFiles.addAll(teamsResult.downloaded)
             failedFiles.addAll(teamsResult.failed)
+            if (!teamsResult.success && teamsResult.failed.isEmpty()) {
+                failedFiles.add("team configs: (listing/connection error)")
+            }
             withContext(Dispatchers.Main) {
                 progressCallback?.onPhaseCompleted("Team Configs", teamsResult.downloaded.size, teamsResult.failed.size)
             }
-            if (teamsResult.failed.isNotEmpty()) {
-                AppLogger.w(TAG, "Failed to download some team configs")
+            if (!teamsResult.success || teamsResult.failed.isNotEmpty()) {
+                if (teamsResult.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some team configs")
+                else AppLogger.w(TAG, "Team configs phase failed (e.g. listing/connection error)")
                 success = false
             }
             
@@ -137,11 +145,15 @@ class LogsheetDownloader(private val context: Context) {
             val imagesResult = downloadImages(progressCallback)
             downloadedFiles.addAll(imagesResult.downloaded)
             failedFiles.addAll(imagesResult.failed)
+            if (!imagesResult.success && imagesResult.failed.isEmpty()) {
+                failedFiles.add("images: (listing/connection error)")
+            }
             withContext(Dispatchers.Main) {
                 progressCallback?.onPhaseCompleted("Images", imagesResult.downloaded.size, imagesResult.failed.size)
             }
-            if (imagesResult.failed.isNotEmpty()) {
-                AppLogger.w(TAG, "Failed to download some images")
+            if (!imagesResult.success || imagesResult.failed.isNotEmpty()) {
+                if (imagesResult.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some images")
+                else AppLogger.w(TAG, "Images phase failed (e.g. listing/connection error)")
                 success = false
             }
             

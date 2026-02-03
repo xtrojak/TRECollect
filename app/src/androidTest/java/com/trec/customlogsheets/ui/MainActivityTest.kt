@@ -44,11 +44,11 @@ class MainActivityTest {
         context = ApplicationProvider.getApplicationContext()
         device = UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
         
-        // Configure test settings to avoid "initial setup required" dialog
+        // Configure test settings to avoid "initial setup required" dialog and Create Site opening Settings
         val settingsPreferences = com.trec.customlogsheets.data.SettingsPreferences(context)
         settingsPreferences.setSamplingTeam("LSI")
         settingsPreferences.setSamplingSubteam("Soil")
-        // Note: Folder URI is not set, but that's okay for UI tests
+        settingsPreferences.setFolderUri("content://test/dummy") // so Create Site stays on main screen
         
         // Use in-memory database for tests
         database = Room.inMemoryDatabaseBuilder(
@@ -185,11 +185,10 @@ class MainActivityTest {
         assertTrue("Create button should exist", createButton.exists())
         createButton.click()
         
-        // The button click should not create a site if name is empty
-        // We can verify this by checking that no navigation occurred
-        // (In the actual implementation, empty names are ignored)
-        // For UI Automator, we just verify the button was clicked
-        assertTrue("Button should be clickable", createButton.isClickable)
+        // With empty name, the implementation does nothing (no navigation).
+        // Verify we are still on the main screen (no detail/settings was opened).
+        val createSection = device.findObject(findByText("Create New Sampling Site"))
+        assertTrue("Should still be on main screen (create section visible)", createSection.exists())
     }
     
     @Test
