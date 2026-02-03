@@ -765,7 +765,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 map
             }
             
-            val expandedFormsBySection = baseFormsBySection.mapValues { (section, forms) ->
+            val expandedFormsBySection = baseFormsBySection.mapValues { (section, _) ->
                 val result = mutableListOf<com.trec.customlogsheets.ui.FormListItem>()
                 val sectionConfigs = configsBySection[section] ?: emptyList()
                 val formsLookup = formsBySectionAndOccurrence[section] ?: emptyMap()
