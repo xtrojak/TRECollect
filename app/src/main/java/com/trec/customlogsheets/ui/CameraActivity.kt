@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,7 +46,12 @@ class CameraActivity : AppCompatActivity() {
         
         // Get output file path and URI from intent
         val filePath = intent.getStringExtra(EXTRA_OUTPUT_FILE_PATH)
-        outputFileUri = intent.getParcelableExtra(EXTRA_OUTPUT_URI)
+        outputFileUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_OUTPUT_URI, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_OUTPUT_URI)
+        }
         
         if (filePath != null) {
             outputFile = File(filePath)
@@ -53,7 +59,6 @@ class CameraActivity : AppCompatActivity() {
             outputFile?.parentFile?.mkdirs()
         }
         
-        val previewView: PreviewView = findViewById(R.id.previewView)
         val captureButton: FloatingActionButton = findViewById(R.id.captureButton)
         val cancelButton: FloatingActionButton = findViewById(R.id.cancelButton)
         
@@ -93,8 +98,14 @@ class CameraActivity : AppCompatActivity() {
                 }
             
             // Set up ImageCapture with back camera by default
+            val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display?.rotation ?: 0
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay.rotation
+            }
             imageCapture = ImageCapture.Builder()
-                .setTargetRotation(windowManager.defaultDisplay.rotation)
+                .setTargetRotation(rotation)
                 .build()
             
             // Select back camera (CameraSelector.LENS_FACING_BACK)

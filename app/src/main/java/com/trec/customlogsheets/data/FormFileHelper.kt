@@ -619,7 +619,7 @@ class FormFileHelper(private val context: Context) {
         val allFiles = mutableListOf<DocumentFile>()
         
         // Helper function to process files in a folder
-        fun processFolder(siteFolder: DocumentFile?, folderName: String) {
+        fun processFolder(siteFolder: DocumentFile?) {
             if (siteFolder != null && siteFolder.exists() && siteFolder.canRead()) {
                 val files = siteFolder.listFiles()
                 
@@ -681,13 +681,13 @@ class FormFileHelper(private val context: Context) {
         // Check ongoing folder
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
         val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        processFolder(ongoingSiteFolder, "ongoing")
+        processFolder(ongoingSiteFolder)
         
         // Check finished folder if requested
         if (checkFinished) {
             val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
             val finishedSiteFolder = finishedFolder?.findFile(siteName)
-            processFolder(finishedSiteFolder, "finished")
+            processFolder(finishedSiteFolder)
         }
         
         return FormStatusResult(statusMap, allFiles)

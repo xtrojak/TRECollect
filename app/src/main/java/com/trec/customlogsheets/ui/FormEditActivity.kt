@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
@@ -64,6 +65,14 @@ class FormEditActivity : AppCompatActivity() {
     private var isFormSaved = false // Track if form was just saved
     private val manuallyEditedCalculatedFields = mutableSetOf<String>() // Track manually edited calculated fields
     private var isLoadingForm = false // Track if we're currently loading form data (to prevent recalculation)
+    
+    /** Debounce Tab/Enter from barcode scanners: some devices deliver the key twice, causing two focus moves. */
+    private var lastFocusTraversalKeyTimeNs = 0L
+    
+    /** Undo rapid double focus move (one key triggering two moves on some devices). */
+    private var lastFocusChangeTimeNs = 0L
+    private var lastFocusedViewInForm: View? = null
+    private var isRevertingFocus = false
     
     // Helper to mark form as changed
     private fun markFormChanged() {
@@ -366,6 +375,7 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         renderFields()
+        setupFocusChangeDebounce()
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -567,6 +577,60 @@ class FormEditActivity : AppCompatActivity() {
                     showSubmitConfirmation()
                 }
             }
+        }
+    }
+    
+    /**
+     * Debounce Tab and Enter so a second key within 400ms is ignored.
+     * On some devices, barcode scanner input is delivered twice (only in this app), causing two focus moves.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        if (event != null && event.action == KeyEvent.ACTION_DOWN) {
+            val isFocusTraversal = event.keyCode == KeyEvent.KEYCODE_TAB ||
+                event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+            if (isFocusTraversal) {
+                val now = System.nanoTime()
+                val elapsedMs = (now - lastFocusTraversalKeyTimeNs) / 1_000_000
+                if (elapsedMs < FOCUS_TRAVERSAL_DEBOUNCE_MS && lastFocusTraversalKeyTimeNs != 0L) {
+                    return true
+                }
+                lastFocusTraversalKeyTimeNs = now
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+    
+    /** Returns true if [view] is [container] or a descendant of [container]. */
+    private fun isDescendantOf(container: ViewGroup, view: View?): Boolean {
+        var v: View? = view
+        while (v != null) {
+            if (v == container) return true
+            v = v.parent as? View
+        }
+        return false
+    }
+    
+    private fun setupFocusChangeDebounce() {
+        if (isReadOnly) return
+        window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener { oldFocus, newFocus ->
+            if (isRevertingFocus) {
+                isRevertingFocus = false
+                lastFocusedViewInForm = newFocus
+                lastFocusChangeTimeNs = System.nanoTime()
+                return@addOnGlobalFocusChangeListener
+            }
+            if (newFocus == null || oldFocus == null || !::containerFields.isInitialized) return@addOnGlobalFocusChangeListener
+            if (!isDescendantOf(containerFields, newFocus)) return@addOnGlobalFocusChangeListener
+            val now = System.nanoTime()
+            val elapsedMs = (now - lastFocusChangeTimeNs) / 1_000_000
+            if (elapsedMs < FOCUS_CHANGE_DEBOUNCE_MS && lastFocusedViewInForm != null) {
+                isRevertingFocus = true
+                lastFocusedViewInForm?.requestFocus()
+                return@addOnGlobalFocusChangeListener
+            }
+            lastFocusedViewInForm = newFocus
+            lastFocusChangeTimeNs = now
         }
     }
     
@@ -1499,6 +1563,8 @@ class FormEditActivity : AppCompatActivity() {
     
     companion object {
         private const val REQUEST_CODE_GPS_PICKER = 2001
+        private const val FOCUS_TRAVERSAL_DEBOUNCE_MS = 400L
+        private const val FOCUS_CHANGE_DEBOUNCE_MS = 120L
     }
     
     private fun createPhotoField(fieldConfig: FormFieldConfig): View {
