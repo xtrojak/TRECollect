@@ -1796,24 +1796,31 @@ class FormEditActivity : AppCompatActivity() {
         val existingValue = fieldValues[fieldConfig.id]
         val existingTableData = existingValue?.tableData ?: emptyMap()
         
+        // Light grid line (mutate per cell so drawable state not shared)
+        fun gridLine() = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.table_cell_grid_line)?.mutate()
+        val cellPadding = (8 * resources.displayMetrics.density).toInt() // 8dp
+        val minRowHeight = (40 * resources.displayMetrics.density).toInt() // 40dp
+        
         // Create header row
         val headerRow = android.widget.TableRow(this).apply {
             layoutParams = android.widget.TableLayout.LayoutParams(
                 android.widget.TableLayout.LayoutParams.MATCH_PARENT,
                 android.widget.TableLayout.LayoutParams.WRAP_CONTENT
-            )
+            ).apply { minimumHeight = minRowHeight }
         }
         
-        // Add empty cell for row header column
+        // Add empty cell for row header column (width=0 + weight 1f for equal columns, height=MATCH_PARENT for even row height)
         val emptyHeader = TextView(this).apply {
             text = ""
-            setPadding(8, 8, 8, 8)
+            setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
             setBackgroundColor(0xFFE0E0E0.toInt())
+            minimumHeight = minRowHeight
             layoutParams = android.widget.TableRow.LayoutParams(
                 0,
-                android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                android.widget.TableRow.LayoutParams.MATCH_PARENT,
                 1f
             )
+            gridLine()?.let { foreground = it }
         }
         headerRow.addView(emptyHeader)
         
@@ -1821,41 +1828,44 @@ class FormEditActivity : AppCompatActivity() {
         for (column in columns) {
             val columnHeader = TextView(this).apply {
                 text = column
-                setPadding(8, 8, 8, 8)
+                setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
                 setBackgroundColor(0xFFE0E0E0.toInt())
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER
+                minimumHeight = minRowHeight
                 layoutParams = android.widget.TableRow.LayoutParams(
                     0,
-                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                    android.widget.TableRow.LayoutParams.MATCH_PARENT,
                     1f
                 )
+                gridLine()?.let { foreground = it }
             }
             headerRow.addView(columnHeader)
         }
         tableLayout.addView(headerRow)
         
-        // Create data rows
+        // Create data rows (same min height and MATCH_PARENT cell height for alignment)
         for (row in rows) {
             val dataRow = android.widget.TableRow(this).apply {
                 layoutParams = android.widget.TableLayout.LayoutParams(
                     android.widget.TableLayout.LayoutParams.MATCH_PARENT,
                     android.widget.TableLayout.LayoutParams.WRAP_CONTENT
-                )
+                ).apply { minimumHeight = minRowHeight }
             }
             
             // Row header
             val rowHeader = TextView(this).apply {
                 text = row
-                setPadding(8, 8, 8, 8)
+                setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
                 setBackgroundColor(0xFFF5F5F5.toInt())
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = android.widget.TableRow.LayoutParams(
                     0,
-                    android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                    android.widget.TableRow.LayoutParams.MATCH_PARENT,
                     1f
                 )
+                gridLine()?.let { foreground = it }
             }
             dataRow.addView(rowHeader)
             
@@ -1873,7 +1883,8 @@ class FormEditActivity : AppCompatActivity() {
                             android.widget.TableRow.LayoutParams.MATCH_PARENT,
                             1f
                         )
-                        setPadding(8, 8, 8, 8)
+                        setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
+                        gridLine()?.let { foreground = it }
                     }
                     
                     val checkbox = CheckBox(this).apply {
@@ -1907,13 +1918,14 @@ class FormEditActivity : AppCompatActivity() {
                 val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
                     hint = ""
                     setText(cellValue)
-                    setPadding(8, 8, 8, 8)
+                    setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
                     setBackgroundColor(android.graphics.Color.WHITE)
                     layoutParams = android.widget.TableRow.LayoutParams(
                         0,
-                        android.widget.TableRow.LayoutParams.WRAP_CONTENT,
+                        android.widget.TableRow.LayoutParams.MATCH_PARENT,
                         1f
                     )
+                    gridLine()?.let { foreground = it }
                     
                     // Set input type
                     when (inputType.lowercase()) {
