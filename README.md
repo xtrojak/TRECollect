@@ -93,10 +93,18 @@ TRECollect is an Android application for collecting and managing field sampling 
 2. **Select Output Folder**: Choose where submissions will be stored
    - The app will create the folder structure: `TREC_logsheets/{team}/{subteam}/`
 
-3. **Optional - ownCloud Settings**: Configure in `app/src/main/res/values/strings.xml`:
-   - `owncloud_url`: Your ownCloud WebDAV endpoint URL
-   - `owncloud_access_token`: Your ownCloud access token
-   - Or configure through the app's Settings activity
+3. **Optional - ownCloud (uploads and logsheet downloads):** Credentials are **not** in the repo. Copy `local.properties.example` to `local.properties` and set:
+   - `owncloud.url`: Your ownCloud WebDAV base URL (e.g. `https://oc.example.com/public.php/webdav/`)
+   - `owncloud.access_token`: Token for the upload share
+   - `owncloud.logsheets_token`: Token for the logsheets download share  
+   If these are missing or empty, the app will build but upload/download to ownCloud will not work until configured.
+
+**CI (GitHub Actions):** The "Build Debug APK" workflow needs ownCloud credentials to produce an APK that can upload/download. In your repo, go to **Settings → Secrets and variables → Actions** and add:
+- `OWNCLOUD_URL` – WebDAV base URL
+- `OWNCLOUD_ACCESS_TOKEN` – upload share token  
+- `OWNCLOUD_LOGSHEETS_TOKEN` – logsheets share token  
+
+The workflow creates `local.properties` from these secrets before building. If the secrets are not set, the APK still builds but with empty ownCloud config.
 
 **Note**: The app requires team selection and output folder configuration before you can create sites.
 

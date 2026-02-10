@@ -5,7 +5,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.trec.customlogsheets.R
+import com.trec.customlogsheets.BuildConfig
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -28,10 +28,9 @@ class OwnCloudManager(private val context: Context) {
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
-    // Use the public ownCloud WebDAV endpoint
-    // Format: https://oc.embl.de/public.php/webdav/
-    private val baseWebDavUrl: String = context.getString(R.string.owncloud_url).trimEnd('/')
-    private val accessToken: String = context.getString(R.string.owncloud_access_token)
+    // Use the public ownCloud WebDAV endpoint (from BuildConfig; see local.properties / CI secrets)
+    private val baseWebDavUrl: String = BuildConfig.OWNCLOUD_URL.trim().trimEnd('/')
+    private val accessToken: String = BuildConfig.OWNCLOUD_ACCESS_TOKEN
     
     // For public shares, create UUID folder directly at the root
     // No need for target folder path - create UUID folder directly in the public share

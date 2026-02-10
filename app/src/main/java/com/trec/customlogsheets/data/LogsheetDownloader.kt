@@ -6,7 +6,7 @@ import android.net.NetworkCapabilities
 import android.util.Base64
 import android.util.Log
 import android.widget.Toast
-import com.trec.customlogsheets.R
+import com.trec.customlogsheets.BuildConfig
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,8 +34,8 @@ class LogsheetDownloader(private val context: Context) {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
     
-    private val baseWebDavUrl: String = context.getString(R.string.owncloud_url).trimEnd('/')
-    private val logsheetsToken: String = context.getString(R.string.owncloud_logsheets_token)
+    private val baseWebDavUrl: String = BuildConfig.OWNCLOUD_URL.trim().trimEnd('/')
+    private val logsheetsToken: String = BuildConfig.OWNCLOUD_LOGSHEETS_TOKEN
     
     private val logsheetsBaseUrl: String = baseWebDavUrl
     

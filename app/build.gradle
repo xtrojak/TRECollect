@@ -5,6 +5,20 @@ plugins {
     id 'kotlin-parcelize'
 }
 
+// Load ownCloud credentials from local.properties (or env vars in CI); never commit real values
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def owncloudUrl = System.getenv("OWNCLOUD_URL") ?: localProperties.getProperty("owncloud.url", "")
+def owncloudAccessToken = System.getenv("OWNCLOUD_ACCESS_TOKEN") ?: localProperties.getProperty("owncloud.access_token", "")
+def owncloudLogsheetsToken = System.getenv("OWNCLOUD_LOGSHEETS_TOKEN") ?: localProperties.getProperty("owncloud.logsheets_token", "")
+// Escape for Java string literal in BuildConfig
+def escapeBuildConfigString(String s) {
+    return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+}
+
 android {
     namespace = 'com.trec.customlogsheets'
     compileSdk = 34
@@ -17,6 +31,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "OWNCLOUD_URL", "\"${escapeBuildConfigString(owncloudUrl)}\""
+        buildConfigField "String", "OWNCLOUD_ACCESS_TOKEN", "\"${escapeBuildConfigString(owncloudAccessToken)}\""
+        buildConfigField "String", "OWNCLOUD_LOGSHEETS_TOKEN", "\"${escapeBuildConfigString(owncloudLogsheetsToken)}\""
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
