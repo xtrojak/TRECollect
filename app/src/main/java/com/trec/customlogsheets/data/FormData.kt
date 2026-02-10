@@ -382,15 +382,15 @@ data class FormData(
                     android.util.Log.e("FormData", "Missing logsheetVersion in XML for formId: $formId")
                     null
                 } else {
-                FormData(
-                    formId = formId,
-                    siteName = siteName,
-                    isSubmitted = isSubmitted,
-                    createdAt = createdAt,
-                    submittedAt = submittedAt,
+                    FormData(
+                        formId = formId,
+                        siteName = siteName,
+                        isSubmitted = isSubmitted,
+                        createdAt = createdAt,
+                        submittedAt = submittedAt,
                         logsheetVersion = logsheetVersion,
-                    fieldValues = fieldValues
-                )
+                        fieldValues = fieldValues
+                    )
                 }
             } catch (e: Exception) {
                 android.util.Log.e("FormData", "Error parsing XML: ${e.message}", e)

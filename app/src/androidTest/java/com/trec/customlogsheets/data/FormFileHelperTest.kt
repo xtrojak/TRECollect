@@ -116,6 +116,23 @@ class FormFileHelperTest {
         assertNotNull(formData.submittedAt)
         assertNotNull(formData.createdAt)
     }
+
+    @Test
+    fun saveFormData_emptyLogsheetVersion_returnsFalse() {
+        // Contract: saveFormData must not succeed when formData.logsheetVersion is empty.
+        // This prevents writing XML that would later fail "Existing file missing logsheetVersion" on update.
+        val formData = FormData(
+            formId = testFormId,
+            siteName = testSiteName,
+            isSubmitted = false,
+            createdAt = FormData.getCurrentTimestamp(),
+            submittedAt = null,
+            logsheetVersion = "",
+            fieldValues = listOf(FormFieldValue(fieldId = "field1", value = "v"))
+        )
+        val result = formFileHelper.saveFormData(formData, orderInSection = 0, subIndex = null)
+        assertFalse("saveFormData must return false when logsheetVersion is empty", result)
+    }
     
     @Test
     fun formData_toXml_serializesCorrectly() {
@@ -625,6 +642,20 @@ class FormFileHelperTest {
         
         // Should return null when logsheetVersion is missing
         assertNull(formData)
+    }
+
+    @Test
+    fun formData_emptyLogsheetVersionAttribute_returnsNull() {
+        // XML with logsheetVersion present but empty (e.g. legacy or corrupt write)
+        // Same outcome as missing attribute: fromXml should return null so load/save treat as invalid
+        val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" logsheetVersion="">
+    <fields>
+        <field id="field1" value="test" />
+    </fields>
+</form>"""
+        val formData = FormData.fromXml(xml)
+        assertNull("fromXml should return null when logsheetVersion is empty", formData)
     }
     
     @Test

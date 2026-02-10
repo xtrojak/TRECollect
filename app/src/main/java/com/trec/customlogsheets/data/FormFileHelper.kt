@@ -266,20 +266,38 @@ class FormFileHelper(private val context: Context) {
         return try {
             val xmlContent = formDataWithVersion.toXml()
             val outputStream: OutputStream? = context.contentResolver.openOutputStream(file.uri)
-            outputStream?.use { it.write(xmlContent.toByteArray()) }
-            val success = outputStream != null
-            if (success) {
-                val status = if (formData.submittedAt != null) "submitted" else "draft"
+            if (outputStream == null) {
+                AppLogger.e("FormFileHelper", "openOutputStream returned null for file: $fileName")
+                // If this was a newly created file, delete it to avoid leaving empty XML on disk
                 if (isNewFile) {
-                    AppLogger.i("FormFileHelper", "Created $status form: site=${formData.siteName}, form=${formData.formId}, file=$fileName")
-                } else {
-                    AppLogger.i("FormFileHelper", "Updated $status form: site=${formData.siteName}, form=${formData.formId}, file=$fileName")
+                    try {
+                        file.delete()
+                    } catch (_: Exception) {
+                    }
                 }
+                return false
             }
-            success
+            
+            outputStream.use { it.write(xmlContent.toByteArray()) }
+            
+            val status = if (formData.submittedAt != null) "submitted" else "draft"
+            if (isNewFile) {
+                AppLogger.i("FormFileHelper", "Created $status form: site=${formData.siteName}, form=${formData.formId}, file=$fileName")
+            } else {
+                AppLogger.i("FormFileHelper", "Updated $status form: site=${formData.siteName}, form=${formData.formId}, file=$fileName")
+            }
+            true
         } catch (e: Exception) {
             AppLogger.e("FormFileHelper", "Error saving form: site=${formData.siteName}, form=${formData.formId}, file=$fileName", e)
             android.util.Log.e("FormFileHelper", "Error saving form: ${e.message}", e)
+            // If this was a newly created file, delete it so we don't leave partial/empty XML
+            if (isNewFile && existingFile == null) {
+                try {
+                    val fileToDelete = siteFolder.findFile(fileName)
+                    fileToDelete?.delete()
+                } catch (_: Exception) {
+                }
+            }
             false
         }
     }
