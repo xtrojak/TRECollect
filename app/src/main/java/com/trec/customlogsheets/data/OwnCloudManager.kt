@@ -398,6 +398,23 @@ class OwnCloudManager(private val context: Context) {
     }
     
     /**
+     * Ensures a subfolder exists directly under the UUID folder (same level as team folders).
+     * Use for top-level device folders like "logs".
+     */
+    private suspend fun ensureUuidLevelSubfolderExists(uuidFolder: String, subfolderName: String, retries: Int = MAX_RETRIES): Boolean {
+        if (!folderExists(uuidFolder, retries)) {
+            if (!createFolder(uuidFolder, retries)) {
+                AppLogger.e(TAG, "Failed to ensure UUID folder exists: $uuidFolder")
+                return false
+            }
+        }
+        val subfolderUrl = "$targetFolderUrl/$uuidFolder/$subfolderName"
+        val exists = checkPathExists(subfolderUrl)
+        if (exists) return true
+        return createPath(subfolderUrl)
+    }
+    
+    /**
      * Deletes a folder from ownCloud.
      * Useful for cleanup after tests or when removing old folders.
      * 
@@ -441,7 +458,7 @@ class OwnCloudManager(private val context: Context) {
     }
     
     /**
-     * Uploads a text file to ownCloud
+     * Uploads a text file to ownCloud under the device (UUID) folder at top level (same level as team folders).
      * @param uuidFolder The UUID folder name
      * @param subfolder The subfolder name (e.g., "logs")
      * @param fileName The filename
@@ -454,23 +471,15 @@ class OwnCloudManager(private val context: Context) {
             return@withContext false
         }
         
-        // Ensure UUID/team/subteam folder structure exists
-        if (!ensureFolderExists(uuidFolder, retries)) {
-            AppLogger.e(TAG, "Failed to ensure UUID/team/subteam folder structure exists: $uuidFolder")
+        if (!ensureUuidLevelSubfolderExists(uuidFolder, subfolder, retries)) {
+            AppLogger.e(TAG, "Failed to ensure UUID-level subfolder exists: $uuidFolder/$subfolder")
             return@withContext false
         }
         
-        // Ensure subfolder exists
-        if (!ensureSubfolderExists(uuidFolder, subfolder)) {
-            AppLogger.e(TAG, "Failed to ensure subfolder exists: $uuidFolder/$subfolder")
-            return@withContext false
-        }
-        
+        val filePath = "$uuidFolder/$subfolder/$fileName"
         var lastException: Exception? = null
         var delayMs = INITIAL_RETRY_DELAY_MS
         
-        val teamSubteamPath = getTeamSubteamPath(uuidFolder)
-        val filePath = "$teamSubteamPath/$subfolder/$fileName"
         val fileUrl = "$targetFolderUrl/$filePath"
         
         repeat(retries) { attempt ->
