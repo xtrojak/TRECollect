@@ -518,63 +518,6 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
-     * Gets all submitted forms for a site (forms with submittedAt set)
-     * @param siteName The name of the site
-     * @param checkFinished If true, also checks the finished folder (for finalized sites)
-     */
-    fun getSubmittedForms(siteName: String, checkFinished: Boolean = true): List<String> {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        val formIds = mutableSetOf<String>()
-        
-        // Helper function to check a folder for submitted forms
-        fun checkFolder(siteFolder: DocumentFile?) {
-            if (siteFolder != null && siteFolder.exists() && siteFolder.canRead()) {
-                val files = siteFolder.listFiles()
-                files
-                    .filter { file ->
-                        val fileName = file.name
-                        file.isFile && fileName != null && fileName.endsWith(".xml")
-                    }
-                    .forEach { file ->
-                        try {
-                            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                            inputStream?.close()
-                            val formData = FormData.fromXml(xmlContent)
-                            if (formData != null && formData.submittedAt != null) {
-                                formIds.add(formData.formId)
-                            }
-                        } catch (e: Exception) {
-                            AppLogger.e("FormFileHelper", "Error reading form file to check submission status: ${file.name}", e)
-                        }
-                    }
-            }
-        }
-        
-        // Check ongoing folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        checkFolder(ongoingSiteFolder)
-        
-        // Check finished folder if requested
-        if (checkFinished) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            val finishedSiteFolder = finishedFolder?.findFile(siteName)
-            checkFolder(finishedSiteFolder)
-        }
-        
-        return formIds.toList()
-    }
-    
-    /**
-     * Efficiently loads all form statuses for a site by reading all XML files once
-     * Returns a map of (formId, orderInSection) -> (isSubmitted: Boolean, hasDraft: Boolean)
-     * @param siteName The name of the site
-     * @param checkFinished If true, also checks the finished folder (for finalized sites)
-     * @return Map where key is "formId_orderInSection" and value is Pair(isSubmitted, hasDraft)
-     */
-    /**
      * OPTIMIZATION: Lightweight parser that only reads formId and submittedAt from the root <form> tag
      * without parsing the entire XML file. This is much faster than full FormData.fromXml parsing.
      */
@@ -620,10 +563,6 @@ class FormFileHelper(private val context: Context) {
         val statusMap: Map<String, Pair<Boolean, Boolean>>,
         val fileList: List<DocumentFile> // Cached file list for reuse
     )
-    
-    fun getAllFormStatuses(siteName: String, checkFinished: Boolean = true): Map<String, Pair<Boolean, Boolean>> {
-        return getAllFormStatusesWithCache(siteName, checkFinished).statusMap
-    }
     
     /**
      * OPTIMIZATION: Returns both status map and cached file list to avoid multiple listFiles() calls
@@ -704,56 +643,6 @@ class FormFileHelper(private val context: Context) {
         }
         
         return FormStatusResult(statusMap, allFiles)
-    }
-    
-    /**
-     * Gets all forms with draft versions for a site (forms with submittedAt not set)
-     * @param siteName The name of the site
-     * @param checkFinished If true, also checks the finished folder (for finalized sites)
-     */
-    fun getDraftForms(siteName: String, checkFinished: Boolean = true): List<String> {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        val formIds = mutableSetOf<String>()
-        
-        // Helper function to check a folder for draft forms
-        fun checkFolder(siteFolder: DocumentFile?) {
-            if (siteFolder != null && siteFolder.exists() && siteFolder.canRead()) {
-                val files = siteFolder.listFiles()
-                files
-                    .filter { file ->
-                        val fileName = file.name
-                        file.isFile && fileName != null && fileName.endsWith(".xml")
-                    }
-                    .forEach { file ->
-                        try {
-                            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                            inputStream?.close()
-                            val formData = FormData.fromXml(xmlContent)
-                            if (formData != null && formData.submittedAt == null) {
-                                formIds.add(formData.formId)
-                            }
-                        } catch (e: Exception) {
-                            AppLogger.e("FormFileHelper", "Error reading form file to check draft status: ${file.name}", e)
-                        }
-                    }
-            }
-        }
-        
-        // Check ongoing folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        checkFolder(ongoingSiteFolder)
-        
-        // Check finished folder if requested
-        if (checkFinished) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            val finishedSiteFolder = finishedFolder?.findFile(siteName)
-            checkFolder(finishedSiteFolder)
-        }
-        
-        return formIds.toList()
     }
     
     /**

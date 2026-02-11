@@ -531,14 +531,6 @@ class MainViewModel(
         data class Error(val message: String) : RenameSiteResult()
     }
     
-    fun finishSite(site: SamplingSite) {
-        viewModelScope.launch {
-            database.samplingSiteDao().updateSite(
-                site.copy(status = SiteStatus.FINISHED)
-            )
-        }
-    }
-    
     suspend fun finalizeSite(site: SamplingSite): FinalizeSiteResult {
         AppLogger.i("MainViewModel", "Finalizing site: name='${site.name}', id=${site.id}")
         // Get storage settings

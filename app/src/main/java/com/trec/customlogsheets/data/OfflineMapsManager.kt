@@ -45,13 +45,6 @@ class OfflineMapsManager(private val context: Context) {
     }
     
     /**
-     * Gets a specific region by ID
-     */
-    fun getRegion(id: String): OfflineMapRegion? {
-        return loadRegion(id)
-    }
-    
-    /**
      * Saves a region (creates or updates)
      */
     fun saveRegion(region: OfflineMapRegion) {
@@ -98,9 +91,6 @@ class OfflineMapsManager(private val context: Context) {
         AppLogger.i("OfflineMapsManager", "Deleting map region: name='${region.name}', id=${region.id}")
         return withContext(Dispatchers.IO) {
             try {
-                // Delete tiles for this region
-                deleteRegionTiles(region)
-                
                 // Remove from preferences
                 prefs.edit().remove("${KEY_REGION_PREFIX}${region.id}").apply()
                 
@@ -130,14 +120,6 @@ class OfflineMapsManager(private val context: Context) {
             }
         }
         return deletedCount
-    }
-    
-    /**
-     * Deletes all regions
-     */
-    suspend fun deleteAllRegions(): Int {
-        val allRegions = getAllRegions()
-        return deleteRegions(allRegions)
     }
     
     /**
@@ -305,20 +287,6 @@ class OfflineMapsManager(private val context: Context) {
         }
         
         return downloaded
-    }
-    
-    /**
-     * Deletes tiles for a specific region
-     * Note: This is a simplified approach. In practice, OSMDroid's tile cache
-     * doesn't easily allow deleting specific regions. We'll mark the region as deleted
-     * and let OSMDroid manage its own cache cleanup.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    private fun deleteRegionTiles(region: OfflineMapRegion) {
-        // OSMDroid manages its own cache, so we can't easily delete specific tiles
-        // The region metadata deletion is sufficient - OSMDroid will handle cache size limits
-        // If needed, we could implement more sophisticated tile deletion, but it's complex
-        // and OSMDroid's cache management is usually sufficient
     }
     
     /**

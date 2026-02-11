@@ -393,47 +393,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun initializeAppUuidAndOwnCloud() {
-        // Skip ownCloud folder creation during tests to avoid creating test folders
-        if (isRunningInTest()) {
-            AppLogger.d("MainActivity", "Skipping ownCloud folder creation - running in test environment")
-            return
-        }
-        
-        lifecycleScope.launch {
-            try {
-                val settingsPreferences = SettingsPreferences(this@MainActivity)
-                val appUuid = settingsPreferences.getAppUuid()
-                AppLogger.i("MainActivity", "App UUID: $appUuid")
-                android.util.Log.d("MainActivity", "App UUID: $appUuid")
-                
-                // Check if folder was already verified
-                if (settingsPreferences.isOwnCloudFolderVerified()) {
-                    AppLogger.d("MainActivity", "OwnCloud folder already verified: $appUuid")
-                    android.util.Log.d("MainActivity", "OwnCloud folder already verified: $appUuid")
-                    return@launch
-                }
-                
-                // Ensure ownCloud folder exists
-                AppLogger.i("MainActivity", "Ensuring ownCloud folder exists for UUID: $appUuid")
-                val ownCloudManager = OwnCloudManager(this@MainActivity)
-                val folderCreated = ownCloudManager.ensureFolderExists(appUuid)
-                
-                if (folderCreated) {
-                    settingsPreferences.setOwnCloudFolderVerified(true)
-                    AppLogger.i("MainActivity", "OwnCloud folder ensured successfully: $appUuid")
-                    android.util.Log.d("MainActivity", "OwnCloud folder ensured: $appUuid")
-                } else {
-                    AppLogger.w("MainActivity", "Failed to ensure ownCloud folder: $appUuid (will retry later)")
-                    android.util.Log.w("MainActivity", "Failed to ensure ownCloud folder: $appUuid (will retry later)")
-                }
-            } catch (e: Exception) {
-                AppLogger.e("MainActivity", "Error initializing UUID/ownCloud: ${e.message}", e)
-                android.util.Log.e("MainActivity", "Error initializing UUID/ownCloud: ${e.message}", e)
-            }
-        }
-    }
-    
     /**
      * Checks if the app is running in a test environment.
      * This prevents creating ownCloud folders during testing.

@@ -55,14 +55,6 @@ class FormSectionAdapter(
     }
 
     override fun getItemCount(): Int = sections.size
-    
-    fun getSectionForForm(formId: String): String? {
-        return formsBySection.entries.firstOrNull { (_, formListItems) ->
-            formListItems.any { item ->
-                item is FormListItem.FormItem && item.form.id == formId
-            }
-        }?.key
-    }
 
     class SectionViewHolder(
         itemView: android.view.View,

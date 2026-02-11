@@ -63,7 +63,6 @@ class FormEditActivity : AppCompatActivity() {
     private val barcodeScanner = BarcodeScanning.getClient()
     private var isFormSaved = false // Track if form was just saved
     private val manuallyEditedCalculatedFields = mutableSetOf<String>() // Track manually edited calculated fields
-    private var isLoadingForm = false // Track if we're currently loading form data (to prevent recalculation)
     
     /** Debounce Tab/Enter from barcode scanners: some devices deliver the key twice, causing two focus moves. */
     private var lastFocusTraversalKeyTimeNs = 0L
@@ -1546,20 +1545,6 @@ class FormEditActivity : AppCompatActivity() {
         startActivityForResult(intent, REQUEST_CODE_GPS_PICKER)
     }
     
-    private fun openGPSPicker(fieldId: String) {
-        val intent = Intent(this, GPSPickerActivity::class.java).apply {
-            putExtra("fieldId", fieldId)
-            // Pass existing coordinates if available
-            val existingValue = fieldValues[fieldId]
-            if (existingValue?.gpsLatitude != null && existingValue.gpsLongitude != null) {
-                putExtra("latitude", existingValue.gpsLatitude)
-                putExtra("longitude", existingValue.gpsLongitude)
-            }
-        }
-        @Suppress("DEPRECATION")
-        startActivityForResult(intent, REQUEST_CODE_GPS_PICKER)
-    }
-    
     companion object {
         private const val REQUEST_CODE_GPS_PICKER = 2001
         private const val FOCUS_TRAVERSAL_DEBOUNCE_MS = 400L
@@ -1619,8 +1604,7 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
-    @Suppress("UNUSED_PARAMETER")
-    private fun capturePhoto(fieldId: String) {
+    private fun capturePhoto(_fieldId: String) {
         try {
             // Create a file to store the photo
             val photoDir = File(getExternalFilesDir(null), "photos")
@@ -2685,7 +2669,7 @@ class FormEditActivity : AppCompatActivity() {
         subFieldConfig: FormFieldConfig,
         uniqueFieldId: String,
         dynamicFieldId: String,
-        @Suppress("UNUSED_PARAMETER") instanceIndex: Int
+        _instanceIndex: Int
     ) {
         when (subFieldConfig.type) {
             FormFieldConfig.FieldType.TEXT,

@@ -366,60 +366,6 @@ class SiteDetailActivity : AppCompatActivity() {
             }
     }
     
-    /**
-     * Fallback method that loads files individually (slower, used when statuses not available)
-     */
-    private suspend fun checkAllMandatoryFormsSubmitted(): Boolean {
-        val formFileHelper = FormFileHelper(this)
-        
-        // OPTIMIZATION: Use cached forms data if available, otherwise load
-        val formsBySection = cachedBaseFormsBySection ?: run {
-            val sections = withContext(Dispatchers.IO) {
-                PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
-            }
-            sections.associateWith { section ->
-                PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
-            }
-        }
-        
-        val allForms = formsBySection.values.flatten()
-        if (allForms.none { it.mandatory }) {
-            return true // No mandatory forms, can finalize
-        }
-        
-        // OPTIMIZATION: Pre-compute instance indices for all forms to avoid recalculation
-        val instanceIndexMap = mutableMapOf<Triple<String, String, Int>, Int>() // (formId, section, orderInSection) -> instanceIndex
-        formsBySection.forEach { (section, forms) ->
-            forms.forEachIndexed { orderInSection, form ->
-                var instanceIndex = 0
-                for (i in 0 until orderInSection) {
-                    if (forms[i].id == form.id) {
-                        instanceIndex++
-                    }
-                }
-                instanceIndexMap[Triple(form.id, section, orderInSection)] = instanceIndex
-            }
-        }
-        
-        // Check each form occurrence by its own mandatory flag
-        return allForms
-            .filter { it.mandatory }
-            .all { form ->
-                val formsInSection = formsBySection[form.section] ?: emptyList()
-                val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
-                    .takeIf { it >= 0 } ?: 0
-                val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
-                if (form.isDynamic) {
-                    val instances = formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
-                    instances.any { subIndex ->
-                        formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex, subIndex)
-                    }
-                } else {
-                    formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
-                }
-            }
-    }
-    
     private fun showFinalizeConfirmationDialog() {
         lifecycleScope.launch {
             val formFileHelper = FormFileHelper(this@SiteDetailActivity)

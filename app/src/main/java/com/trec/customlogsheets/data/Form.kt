@@ -89,10 +89,6 @@ object PredefinedForms {
         return forms
     }
     
-    fun getSections(context: Context): List<String> {
-        return getForms(context).map { it.section }.distinct()
-    }
-    
     fun getSectionsForSite(context: Context, siteName: String): List<String> {
         return getFormsForSite(context, siteName).map { it.section }.distinct()
     }
@@ -127,12 +123,5 @@ object PredefinedForms {
         return configs.firstOrNull { it.id == formId }
     }
     
-    fun getMandatoryForms(context: Context): List<Form> {
-        return getForms(context).filter { it.mandatory }
-    }
-    
-    fun getMandatoryFormsForSite(context: Context, siteName: String): List<Form> {
-        return getFormsForSite(context, siteName).filter { it.mandatory }
-    }
 }
 

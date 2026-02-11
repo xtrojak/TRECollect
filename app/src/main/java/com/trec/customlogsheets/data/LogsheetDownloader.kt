@@ -782,37 +782,6 @@ class LogsheetDownloader(private val context: Context) {
     }
     
     /**
-     * Gets the local file path for a team config by folder ID (returns the latest version)
-     */
-    fun getTeamConfigFile(teamId: String): File? {
-        val teamFolder = File(teamsDir, teamId)
-        if (!teamFolder.exists() || !teamFolder.isDirectory) {
-            return null
-        }
-        
-        // Find the latest version file
-        val versionFiles = teamFolder.listFiles()?.filter { it.isFile && it.name.endsWith(".json") } ?: return null
-        if (versionFiles.isEmpty()) return null
-        
-        // Get the latest version by comparing version numbers
-        val latestFile = versionFiles.maxWithOrNull(Comparator { f1, f2 ->
-            val v1 = f1.name.removeSuffix(".json")
-            val v2 = f2.name.removeSuffix(".json")
-            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-            for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                val part1 = parts1.getOrNull(i) ?: 0
-                val part2 = parts2.getOrNull(i) ?: 0
-                val comparison = part1.compareTo(part2)
-                if (comparison != 0) return@Comparator comparison
-            }
-            0
-        })
-        
-        return latestFile
-    }
-    
-    /**
      * Gets a specific version of a team config by folder ID and version
      * @param teamId The team config folder ID
      * @param version The version string (e.g., "1.0.0")

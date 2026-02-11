@@ -11,8 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 object AppLogger {
     private val logQueue = ConcurrentLinkedQueue<LogEntry>()
     private const val MAX_LOGS = 500 // Keep last 500 log entries
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-    
+
     data class LogEntry(
         val timestamp: Long,
         val level: String,
@@ -72,15 +71,6 @@ object AppLogger {
      */
     fun getAllLogs(): String {
         return logQueue.joinToString("\n") { it.format() }
-    }
-    
-    /**
-     * Gets logs filtered by tag
-     */
-    fun getLogsByTag(tag: String): String {
-        return logQueue
-            .filter { it.tag.contains(tag, ignoreCase = true) }
-            .joinToString("\n") { it.format() }
     }
     
     /**

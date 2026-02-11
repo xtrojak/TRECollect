@@ -76,22 +76,5 @@ data class OfflineMapRegion(
         return expiresAt != null && System.currentTimeMillis() > expiresAt
     }
     
-    /**
-     * Gets the approximate area covered (in square kilometers)
-     */
-    fun getAreaKm2(): Double {
-        // Rough calculation using Haversine formula for center points
-        val centerLat = (minLatitude + maxLatitude) / 2.0
-        
-        // Calculate distance from center to corners
-        val latDiff = maxLatitude - minLatitude
-        val lonDiff = maxLongitude - minLongitude
-        
-        // Approximate using degrees (1 degree ≈ 111 km)
-        val latKm = latDiff * 111.0
-        val lonKm = lonDiff * 111.0 * kotlin.math.cos(centerLat * kotlin.math.PI / 180)
-        
-        return latKm * lonKm
-    }
 }
 
