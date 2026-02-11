@@ -15,7 +15,7 @@
         android:layout_height="wrap_content"
         android:adjustViewBounds="true"
         android:scaleType="fitCenter"
-        android:contentDescription="Display image" />
+        android:contentDescription="@string/display_image" />
 
     <TextView
         android:id="@+id/textImageDescription"

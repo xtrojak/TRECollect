@@ -47,7 +47,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Create New Sampling Site"
+                        android:text="@string/create_new_sampling_site"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="16dp" />
@@ -55,7 +55,7 @@
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Site Name"
+                        android:hint="@string/site_name"
                         android:layout_marginBottom="8dp">
 
                         <com.google.android.material.textfield.TextInputEditText
@@ -71,7 +71,7 @@
                         android:id="@+id/buttonCreateSite"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Create Site" />
+                        android:text="@string/create_site" />
 
                 </LinearLayout>
 
@@ -81,7 +81,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Ongoing Sampling Sites"
+                android:text="@string/ongoing_sampling_sites"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
@@ -105,7 +105,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Finished Sampling Sites"
+                    android:text="@string/finished_sampling_sites"
                     android:textSize="20sp"
                     android:textStyle="bold" />
 
@@ -113,7 +113,7 @@
                     android:id="@+id/buttonUploadAll"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Upload All" />
+                    android:text="@string/upload_all" />
 
             </LinearLayout>
 

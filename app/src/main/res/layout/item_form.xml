@@ -35,7 +35,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:text="Form Name" />
+                    android:text="@string/form_name" />
 
                 <TextView
                     android:id="@+id/textFormDescription"
@@ -44,7 +44,7 @@
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginTop="4dp"
-                    android:text="Form description"
+                    android:text="@string/form_description"
                     android:visibility="gone" />
 
             </LinearLayout>
@@ -61,7 +61,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:src="@android:drawable/checkbox_off_background"
-                    android:contentDescription="Form status" />
+                    android:contentDescription="@string/form_status" />
 
                 <ImageButton
                     android:id="@+id/buttonDeleteDynamic"
@@ -69,7 +69,7 @@
                     android:layout_height="32dp"
                     android:layout_marginStart="8dp"
                     android:src="@android:drawable/ic_menu_delete"
-                    android:contentDescription="Delete form instance"
+                    android:contentDescription="@string/delete_form_instance"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:visibility="gone" />
 

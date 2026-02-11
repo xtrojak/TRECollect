@@ -48,7 +48,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Submission Storage Location"
+                        android:text="@string/submission_storage_location"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -56,7 +56,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Select a folder where submissions will be stored."
+                        android:text="@string/select_folder_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -77,7 +77,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="No folder selected"
+                            android:text="@string/no_folder_selected"
                             android:textSize="14sp"
                             android:gravity="center_vertical" />
 
@@ -88,7 +88,7 @@
                             android:layout_marginStart="8dp"
                             android:src="@android:drawable/ic_menu_agenda"
                             android:visibility="gone"
-                            android:contentDescription="Folder selected" />
+                            android:contentDescription="@string/folder_selected" />
 
                     </LinearLayout>
 
@@ -96,7 +96,7 @@
                         android:id="@+id/buttonSelectFolder"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Select Folder" />
+                        android:text="@string/select_folder" />
 
                 </LinearLayout>
 
@@ -117,7 +117,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Sampling Team"
+                        android:text="@string/sampling_team"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -125,7 +125,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Select the sampling team. This will determine what content is displayed in the app."
+                        android:text="@string/sampling_team_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -133,7 +133,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Team:"
+                        android:text="@string/team_label"
                         android:textSize="14sp"
                         android:layout_marginBottom="8dp" />
 
@@ -148,7 +148,7 @@
                         android:id="@+id/textSubteamLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Subteam:"
+                        android:text="@string/subteam_label"
                         android:textSize="14sp"
                         android:layout_marginBottom="8dp"
                         android:visibility="gone" />
@@ -180,7 +180,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Logsheets"
+                        android:text="@string/logsheets"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -188,7 +188,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Download the latest versions of logsheets, team configs, and images from the server."
+                        android:text="@string/logsheets_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -200,7 +200,7 @@
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="8dp"
-                        android:text="Status: Not checked" />
+                        android:text="@string/status_not_checked" />
 
                     <ProgressBar
                         android:id="@+id/progressBarDownload"
@@ -226,7 +226,7 @@
                         android:id="@+id/buttonUpdateLogsheets"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Update Logsheets" />
+                        android:text="@string/update_logsheets" />
 
                 </LinearLayout>
 
@@ -248,7 +248,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Offline Maps"
+                        android:text="@string/offline_maps"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -256,7 +256,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Download map regions for offline use. Downloaded maps will be available to all GPS widgets in forms."
+                        android:text="@string/offline_maps_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -265,7 +265,7 @@
                         android:id="@+id/buttonOfflineMaps"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Manage Offline Maps"
+                        android:text="@string/manage_offline_maps"
                         app:icon="@android:drawable/ic_menu_mapmode" />
 
                 </LinearLayout>
@@ -288,7 +288,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="App Identifier (UUID)"
+                        android:text="@string/app_identifier_uuid"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -296,7 +296,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="This unique identifier is used to identify all submissions from this device."
+                        android:text="@string/app_identifier_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -316,7 +316,7 @@
                             android:fontFamily="monospace"
                             android:background="#F5F5F5"
                             android:padding="12dp"
-                            android:text="Loading..."
+                            android:text="@string/loading"
                             android:textIsSelectable="true"
                             android:focusable="true"
                             android:focusableInTouchMode="true" />
@@ -326,7 +326,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
-                            android:text="Copy" />
+                            android:text="@string/copy" />
 
                     </LinearLayout>
 
@@ -350,7 +350,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="App Logs"
+                        android:text="@string/app_logs"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -358,7 +358,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="View app logs for debugging. Search and filter logs by tag or text."
+                        android:text="@string/app_logs_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -367,7 +367,7 @@
                         android:id="@+id/buttonViewLogs"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="View Logs" />
+                        android:text="@string/view_logs" />
 
                 </LinearLayout>
 

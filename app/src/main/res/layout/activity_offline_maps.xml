@@ -14,7 +14,7 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
-            app:title="Offline Maps"
+            app:title="@string/offline_maps"
             app:navigationIcon="?attr/homeAsUpIndicator" />
 
     </com.google.android.material.appbar.AppBarLayout>
@@ -47,7 +47,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Map Expiry Settings"
+                        android:text="@string/map_expiry_settings"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -55,7 +55,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Maps will automatically expire and be deleted after the specified number of days. Set to 0 to never expire."
+                        android:text="@string/map_expiry_description"
                         android:textSize="14sp"
                         android:textColor="?android:attr/textColorSecondary"
                         android:layout_marginBottom="16dp" />
@@ -63,7 +63,7 @@
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="Expiry Days (0 = never)"
+                        android:hint="@string/expiry_days_hint"
                         android:layout_marginBottom="8dp">
 
                         <com.google.android.material.textfield.TextInputEditText
@@ -79,7 +79,7 @@
                         android:id="@+id/buttonSaveExpiry"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Save Expiry Settings" />
+                        android:text="@string/save_expiry_settings" />
 
                 </LinearLayout>
 
@@ -102,7 +102,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Storage Information"
+                        android:text="@string/storage_information"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:layout_marginBottom="8dp" />
@@ -111,7 +111,7 @@
                         android:id="@+id/textStorageUsed"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Calculating..."
+                        android:text="@string/calculating"
                         android:textSize="14sp" />
 
                 </LinearLayout>
@@ -124,7 +124,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:text="Download New Region"
+                android:text="@string/download_new_region"
                 app:icon="@android:drawable/ic_menu_add" />
 
             <!-- Regions List -->
@@ -139,7 +139,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Downloaded Regions"
+                    android:text="@string/downloaded_regions"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
@@ -147,7 +147,7 @@
                     android:id="@+id/buttonSelectAll"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Select All"
+                    android:text="@string/select_all"
                     android:visibility="gone" />
 
             </LinearLayout>

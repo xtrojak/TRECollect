@@ -16,7 +16,7 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
-            app:title="App Logs"
+            app:title="@string/app_logs"
             app:navigationIcon="?attr/homeAsUpIndicator" />
 
     </com.google.android.material.appbar.AppBarLayout>
@@ -40,7 +40,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Filter by tag or text"
+                android:hint="@string/filter_by_tag"
                 android:layout_marginEnd="8dp">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -57,7 +57,7 @@
                 android:id="@+id/buttonClearLogs"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Clear" />
+                android:text="@string/clear" />
 
         </LinearLayout>
 
@@ -71,7 +71,7 @@
             android:paddingEnd="16dp"
             android:textSize="12sp"
             android:textColor="?android:attr/textColorSecondary"
-            android:text="0 logs" />
+            android:text="@string/logs_count_default" />
 
         <!-- Logs Display -->
         <ScrollView
@@ -92,7 +92,7 @@
                 android:textIsSelectable="true"
                 android:focusable="false"
                 android:focusableInTouchMode="false"
-                android:text="No logs available" />
+                android:text="@string/no_logs_available" />
 
         </ScrollView>
 
@@ -108,14 +108,14 @@
                 android:id="@+id/buttonCopyLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Copy All"
+                android:text="@string/copy_all"
                 android:layout_marginBottom="8dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonReport"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Report" />
+                android:text="@string/report" />
 
         </LinearLayout>
 

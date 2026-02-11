@@ -30,7 +30,7 @@
         android:padding="12dp"
         android:background="#F5F5F5"
         android:textColor="?android:attr/textColorPrimary"
-        android:text="No selection"
+        android:text="@string/no_selection"
         android:layout_marginTop="8dp"
         android:visibility="gone" />
 

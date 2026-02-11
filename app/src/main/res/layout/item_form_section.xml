@@ -13,7 +13,7 @@
         android:textSize="20sp"
         android:textStyle="bold"
         android:layout_marginBottom="12dp"
-        android:text="Section Title" />
+        android:text="@string/section_title" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewForms"
@@ -25,7 +25,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Add Form"
+        android:text="@string/add_form"
         android:visibility="gone" />
 
 </LinearLayout>

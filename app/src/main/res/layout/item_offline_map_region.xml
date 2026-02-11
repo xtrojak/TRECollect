@@ -41,7 +41,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    android:text="Region Name" />
+                    android:text="@string/region_name" />
 
                 <TextView
                     android:id="@+id/textRegionBounds"
@@ -50,7 +50,7 @@
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginTop="4dp"
-                    android:text="Bounds: ..." />
+                    android:text="@string/bounds_placeholder" />
 
                 <TextView
                     android:id="@+id/textZoomLevels"
@@ -58,7 +58,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorSecondary"
-                    android:text="Zoom: ..." />
+                    android:text="@string/zoom_placeholder" />
 
                 <TextView
                     android:id="@+id/textRegionSize"
@@ -66,7 +66,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorSecondary"
-                    android:text="Size: ..." />
+                    android:text="@string/size_placeholder" />
 
                 <TextView
                     android:id="@+id/textDownloadDate"
@@ -75,7 +75,7 @@
                     android:textSize="12sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginTop="4dp"
-                    android:text="Downloaded: ..." />
+                    android:text="@string/downloaded_placeholder" />
 
                 <TextView
                     android:id="@+id/textExpiryDate"
@@ -83,7 +83,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="12sp"
                     android:textColor="?android:attr/textColorSecondary"
-                    android:text="Expires: ..."
+                    android:text="@string/expires_placeholder"
                     android:visibility="gone" />
 
             </LinearLayout>
@@ -94,7 +94,7 @@
                 android:layout_height="24dp"
                 android:layout_marginStart="8dp"
                 android:src="@android:drawable/ic_dialog_alert"
-                android:contentDescription="Expired"
+                android:contentDescription="@string/expired"
                 android:visibility="gone" />
 
         </LinearLayout>

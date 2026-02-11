@@ -35,7 +35,7 @@
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
                 android:inputType="numberDecimal|numberSigned"
-                android:hint="Latitude" />
+                android:hint="@string/latitude" />
 
         </com.google.android.material.textfield.TextInputLayout>
 
@@ -53,7 +53,7 @@
                 android:layout_height="wrap_content"
                 android:minHeight="48dp"
                 android:inputType="numberDecimal|numberSigned"
-                android:hint="Longitude" />
+                android:hint="@string/longitude" />
 
         </com.google.android.material.textfield.TextInputLayout>
 
@@ -62,7 +62,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Use map"
+            android:text="@string/use_map"
             android:icon="@android:drawable/ic_menu_mylocation" />
 
     </LinearLayout>

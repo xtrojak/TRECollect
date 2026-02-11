@@ -1,5 +1,130 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TRECollect</string>
-</resources>
 
+    <!-- Download region -->
+    <string name="download_map_region">Download Map Region</string>
+    <string name="download_region_instruction">Pan and zoom the map to select the region. The bounding box will be determined by the visible map area.</string>
+    <string name="region_name">Region Name</string>
+    <string name="current_bounding_box">Current Bounding Box (from visible map area)</string>
+    <string name="min_lat">Min Lat:</string>
+    <string name="max_lat">Max Lat:</string>
+    <string name="min_lon">Min Lon:</string>
+    <string name="max_lon">Max Lon:</string>
+    <string name="placeholder_dash">--</string>
+    <string name="zoom_levels">Zoom Levels</string>
+    <string name="zoom_recommended">Recommended: 10-16 (higher zoom = more detail but more storage)</string>
+    <string name="minimum_zoom_hint">Minimum Zoom (0-18)</string>
+    <string name="maximum_zoom_hint">Maximum Zoom (0-18)</string>
+    <string name="download_region">Download Region</string>
+
+    <!-- Form edit -->
+    <string name="save_draft">Save Draft</string>
+    <string name="submit">Submit</string>
+
+    <!-- GPS picker -->
+    <string name="current_location">Current Location</string>
+    <string name="use_this_location">Use This Location</string>
+
+    <!-- Logs -->
+    <string name="filter_by_tag">Filter by tag or text</string>
+    <string name="clear">Clear</string>
+    <string name="logs_count_default">0 logs</string>
+    <string name="no_logs_available">No logs available</string>
+    <string name="copy_all">Copy All</string>
+    <string name="report">Report</string>
+
+    <!-- Main -->
+    <string name="create_new_sampling_site">Create New Sampling Site</string>
+    <string name="site_name">Site Name</string>
+    <string name="create_site">Create Site</string>
+    <string name="ongoing_sampling_sites">Ongoing Sampling Sites</string>
+    <string name="finished_sampling_sites">Finished Sampling Sites</string>
+    <string name="upload_all">Upload All</string>
+
+    <!-- Offline maps -->
+    <string name="map_expiry_settings">Map Expiry Settings</string>
+    <string name="map_expiry_description">Maps will automatically expire and be deleted after the specified number of days. Set to 0 to never expire.</string>
+    <string name="expiry_days_hint">Expiry Days (0 = never)</string>
+    <string name="save_expiry_settings">Save Expiry Settings</string>
+    <string name="storage_information">Storage Information</string>
+    <string name="calculating">Calculating...</string>
+    <string name="download_new_region">Download New Region</string>
+    <string name="downloaded_regions">Downloaded Regions</string>
+    <string name="select_all">Select All</string>
+
+    <!-- Settings -->
+    <string name="submission_storage_location">Submission Storage Location</string>
+    <string name="select_folder_description">Select a folder where submissions will be stored.</string>
+    <string name="no_folder_selected">No folder selected</string>
+    <string name="folder_selected">Folder selected</string>
+    <string name="select_folder">Select Folder</string>
+    <string name="sampling_team">Sampling Team</string>
+    <string name="sampling_team_description">Select the sampling team. This will determine what content is displayed in the app.</string>
+    <string name="team_label">Team:</string>
+    <string name="subteam_label">Subteam:</string>
+    <string name="logsheets">Logsheets</string>
+    <string name="logsheets_description">Download the latest versions of logsheets, team configs, and images from the server.</string>
+    <string name="status_not_checked">Status: Not checked</string>
+    <string name="update_logsheets">Update Logsheets</string>
+    <string name="offline_maps">Offline Maps</string>
+    <string name="offline_maps_description">Download map regions for offline use. Downloaded maps will be available to all GPS widgets in forms.</string>
+    <string name="manage_offline_maps">Manage Offline Maps</string>
+    <string name="app_identifier_uuid">App Identifier (UUID)</string>
+    <string name="app_identifier_description">This unique identifier is used to identify all submissions from this device.</string>
+    <string name="loading">Loading...</string>
+    <string name="copy">Copy</string>
+    <string name="app_logs">App Logs</string>
+    <string name="app_logs_description">View app logs for debugging. Search and filter logs by tag or text.</string>
+    <string name="view_logs">View Logs</string>
+
+    <!-- Site detail -->
+    <string name="upload_status">Upload status</string>
+    <string name="retry_upload">Retry Upload</string>
+
+    <!-- Dialog -->
+    <string name="rename_site">Rename Site</string>
+    <string name="new_name">New Name</string>
+
+    <!-- Fields -->
+    <string name="scan">Scan</string>
+    <string name="add">Add</string>
+    <string name="latitude">Latitude</string>
+    <string name="longitude">Longitude</string>
+    <string name="use_map">Use map</string>
+    <string name="display_image">Display image</string>
+    <string name="take_photo">Take Photo</string>
+    <string name="no_selection">No selection</string>
+    <string name="table">Table</string>
+
+    <!-- Items -->
+    <string name="add_form">Add Form</string>
+    <string name="instance_1">Instance 1</string>
+    <string name="delete">Delete</string>
+    <string name="form_name">Form Name</string>
+    <string name="form_description">Form description</string>
+    <string name="form_status">Form status</string>
+    <string name="delete_form_instance">Delete form instance</string>
+    <string name="section_title">Section Title</string>
+    <string name="option_image">Option image</string>
+    <string name="bounds_placeholder">Bounds: ...</string>
+    <string name="zoom_placeholder">Zoom: ...</string>
+    <string name="size_placeholder">Size: ...</string>
+    <string name="downloaded_placeholder">Downloaded: ...</string>
+    <string name="expires_placeholder">Expires: ...</string>
+    <string name="expired">Expired</string>
+    <string name="upload">Upload</string>
+    <string name="rename">Rename</string>
+
+    <!-- Menus -->
+    <string name="clear_form">Clear Form</string>
+    <string name="settings">Settings</string>
+    <string name="select">Select</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete_selected">Delete Selected</string>
+    <string name="finalize">Finalize</string>
+
+    <!-- Camera (content descriptions) -->
+    <string name="camera_cancel">Cancel</string>
+    <string name="camera_capture">Take photo</string>
+</resources>

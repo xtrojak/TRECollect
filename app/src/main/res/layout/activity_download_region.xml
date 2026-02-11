@@ -14,7 +14,7 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
-            app:title="Download Map Region"
+            app:title="@string/download_map_region"
             app:navigationIcon="?attr/homeAsUpIndicator" />
 
     </com.google.android.material.appbar.AppBarLayout>
@@ -47,7 +47,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Pan and zoom the map to select the region. The bounding box will be determined by the visible map area."
+                    android:text="@string/download_region_instruction"
                     android:textSize="14sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginBottom="16dp" />
@@ -55,7 +55,7 @@
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Region Name"
+                    android:hint="@string/region_name"
                     android:layout_marginBottom="8dp">
 
                     <com.google.android.material.textfield.TextInputEditText
@@ -68,7 +68,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Current Bounding Box (from visible map area)"
+                    android:text="@string/current_bounding_box"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:layout_marginTop="8dp"
@@ -84,7 +84,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Min Lat:"
+                        android:text="@string/min_lat"
                         android:textSize="12sp"
                         android:textColor="?android:attr/textColorSecondary" />
 
@@ -93,7 +93,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="--"
+                        android:text="@string/placeholder_dash"
                         android:textSize="12sp"
                         android:fontFamily="monospace" />
 
@@ -109,7 +109,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Max Lat:"
+                        android:text="@string/max_lat"
                         android:textSize="12sp"
                         android:textColor="?android:attr/textColorSecondary" />
 
@@ -118,7 +118,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="--"
+                        android:text="@string/placeholder_dash"
                         android:textSize="12sp"
                         android:fontFamily="monospace" />
 
@@ -134,7 +134,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Min Lon:"
+                        android:text="@string/min_lon"
                         android:textSize="12sp"
                         android:textColor="?android:attr/textColorSecondary" />
 
@@ -143,7 +143,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="--"
+                        android:text="@string/placeholder_dash"
                         android:textSize="12sp"
                         android:fontFamily="monospace" />
 
@@ -159,7 +159,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Max Lon:"
+                        android:text="@string/max_lon"
                         android:textSize="12sp"
                         android:textColor="?android:attr/textColorSecondary" />
 
@@ -168,7 +168,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="--"
+                        android:text="@string/placeholder_dash"
                         android:textSize="12sp"
                         android:fontFamily="monospace" />
 
@@ -177,7 +177,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Zoom Levels"
+                android:text="@string/zoom_levels"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:layout_marginTop="8dp"
@@ -186,7 +186,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Recommended: 10-16 (higher zoom = more detail but more storage)"
+                android:text="@string/zoom_recommended"
                 android:textSize="12sp"
                 android:textColor="?android:attr/textColorSecondary"
                 android:layout_marginBottom="8dp" />
@@ -194,7 +194,7 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Minimum Zoom (0-18)"
+                android:hint="@string/minimum_zoom_hint"
                 android:layout_marginBottom="8dp">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -208,7 +208,7 @@
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Maximum Zoom (0-18)"
+                android:hint="@string/maximum_zoom_hint"
                 android:layout_marginBottom="16dp">
 
                 <com.google.android.material.textfield.TextInputEditText
@@ -223,7 +223,7 @@
                     android:id="@+id/buttonDownload"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Download Region"
+                    android:text="@string/download_region"
                     app:icon="@android:drawable/ic_menu_upload" />
 
             </LinearLayout>

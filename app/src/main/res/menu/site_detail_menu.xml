@@ -4,17 +4,17 @@
     <item
         android:id="@+id/action_finalize"
         android:icon="@android:drawable/ic_menu_upload"
-        android:title="Finalize"
+        android:title="@string/finalize"
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/action_rename"
         android:icon="@android:drawable/ic_menu_edit"
-        android:title="Rename"
+        android:title="@string/rename"
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/action_delete"
         android:icon="@android:drawable/ic_menu_delete"
-        android:title="Delete"
+        android:title="@string/delete"
         app:showAsAction="ifRoom" />
 </menu>
 

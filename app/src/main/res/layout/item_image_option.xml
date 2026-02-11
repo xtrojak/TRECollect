@@ -24,7 +24,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:scaleType="fitCenter"
-            android:contentDescription="Option image"
+            android:contentDescription="@string/option_image"
             android:background="#F5F5F5" />
 
         <TextView

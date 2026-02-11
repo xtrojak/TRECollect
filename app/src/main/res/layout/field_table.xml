@@ -13,7 +13,7 @@
         android:textSize="16sp"
         android:textStyle="bold"
         android:layout_marginBottom="8dp"
-        android:text="Table" />
+        android:text="@string/table" />
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
