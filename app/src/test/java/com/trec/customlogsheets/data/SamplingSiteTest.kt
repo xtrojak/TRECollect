@@ -268,8 +268,8 @@ class SamplingSiteTest {
         )
         val after = System.currentTimeMillis()
 
-        assertTrue("createdAt should be between before and after", 
-            site.createdAt >= before && site.createdAt <= after)
+        assertTrue("createdAt should be between before and after",
+            site.createdAt in before..after)
     }
 
     @Test

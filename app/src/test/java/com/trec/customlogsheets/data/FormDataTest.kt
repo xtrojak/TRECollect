@@ -21,7 +21,7 @@ class FormDataTest {
         // Should be recent (within last 5 seconds)
         val now = Instant.now()
         val diff = java.time.Duration.between(instant, now).seconds
-        assertTrue("Timestamp should be recent", diff >= 0 && diff <= 5)
+        assertTrue("Timestamp should be recent", diff in 0..5)
     }
 
     @Test

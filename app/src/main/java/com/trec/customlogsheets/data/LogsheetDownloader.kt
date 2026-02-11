@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Base64
-import android.util.Log
 import android.widget.Toast
 import com.trec.customlogsheets.BuildConfig
 import com.trec.customlogsheets.util.AppLogger
@@ -563,8 +562,8 @@ class LogsheetDownloader(private val context: Context) {
                 
                 // Extract href
                 val hrefMatch = "<d:href>([^<]+)</d:href>".toRegex().find(responseXml)
-                if (hrefMatch == null) continue
-                
+                    ?: continue
+
                 var href = hrefMatch.groupValues[1]
                 val originalHref = href
                 
@@ -593,7 +592,7 @@ class LogsheetDownloader(private val context: Context) {
                 
                 // Extract the item name (the part after the base path)
                 // Remove any trailing slashes and get just the filename/foldername
-                var itemName = href.substringAfter(expectedPrefix).trimEnd('/')
+                val itemName = href.substringAfter(expectedPrefix).trimEnd('/')
                 
                 // Skip empty item names (this would be the base path itself)
                 if (itemName.isEmpty()) {

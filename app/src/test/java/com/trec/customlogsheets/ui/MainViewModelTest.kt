@@ -7,7 +7,6 @@ import com.trec.customlogsheets.data.SamplingSiteDao
 import com.trec.customlogsheets.data.SiteStatus
 import com.trec.customlogsheets.data.UploadStatus
 import android.content.SharedPreferences
-import com.trec.customlogsheets.data.SettingsPreferences
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.*
 import org.junit.Before

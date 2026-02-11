@@ -144,7 +144,7 @@ class FormSectionAdapter(
             
             AppLogger.d("FormSectionAdapter", "Found dynamic form instances: startIndex=$startIndex, endIndex=$endIndex, total items=${currentList.size}")
             
-            if (startIndex >= 0 && endIndex >= startIndex) {
+            if (startIndex in 0..endIndex) {
                 // After updating the status for the deleted draft, check all instances in the group
                 // and ensure empty ones are not incorrectly marked as draft
                 val baseForms = formAdapter.baseFormsList
@@ -198,7 +198,7 @@ class FormSectionAdapter(
                 
                 // Use Handler.post to ensure status sets are fully updated before rebinding
                 // This prevents empty cards from showing as drafts due to timing issues
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                Handler(Looper.getMainLooper()).post {
                     // Notify all items in this dynamic group to rebind (to update button states, delete button states, etc.)
                     val count = endIndex - startIndex + 1
                     AppLogger.d("FormSectionAdapter", "Notifying $count items to rebind (from $startIndex to $endIndex)")
@@ -321,7 +321,7 @@ class FormSectionAdapter(
                 formAdapter.submitList(currentList) {
                     // This callback runs after DiffUtil has finished dispatching updates.
                     // Notify the old last instance and the new one to ensure both are rebound
-                    val notifyStart = if (addButtonIndex >= 0 && addButtonIndex < oldLastInstanceIndex) {
+                    val notifyStart = if (addButtonIndex in 0 until oldLastInstanceIndex) {
                         addButtonIndex
                     } else {
                         oldLastInstanceIndex

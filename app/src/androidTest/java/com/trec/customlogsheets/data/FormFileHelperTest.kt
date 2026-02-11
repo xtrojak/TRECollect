@@ -1,7 +1,6 @@
 package com.trec.customlogsheets.data
 
 import android.content.Context
-import androidx.documentfile.provider.DocumentFile
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.trec.customlogsheets.data.FormData
@@ -18,8 +17,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.io.FileOutputStream
 
 /**
  * Instrumented tests for FormFileHelper.
@@ -541,9 +538,8 @@ class FormFileHelperTest {
         assertNotNull("Table data should not be null", tableField.tableData)
         
         // Store in local variable to enable smart cast (can't smart cast across module boundaries)
-        val tableData = tableField.tableData
-        if (tableData == null) return // Early return if null
-        
+        val tableData = tableField.tableData ?: return // Early return if null
+
         assertEquals("Should have 2 rows", 2, tableData.size)
         assertTrue("Should contain row1", tableData.containsKey("row1"))
         assertTrue("Should contain row2", tableData.containsKey("row2"))

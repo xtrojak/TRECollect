@@ -21,7 +21,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.OfflineMapRegion
 import com.trec.customlogsheets.data.OfflineMapsManager
@@ -229,7 +228,7 @@ class OfflineMapsActivity : AppCompatActivity() {
     }
     
     private fun updateSelectAllButton() {
-        buttonSelectAll.visibility = if (isSelectionMode) android.view.View.VISIBLE else android.view.View.GONE
+        buttonSelectAll.visibility = if (isSelectionMode) View.VISIBLE else View.GONE
         if (isSelectionMode) {
             val allSelected = adapter.currentList.isNotEmpty() && 
                 adapter.currentList.all { selectedRegions.contains(it.id) }
@@ -357,7 +356,7 @@ class RegionAdapter(
         holder.bind(getItem(position), position)
     }
     
-    inner class RegionViewHolder(itemView: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView) {
+    inner class RegionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val textRegionName: TextView = itemView.findViewById(R.id.textRegionName)
         private val textRegionBounds: TextView = itemView.findViewById(R.id.textRegionBounds)
         private val textZoomLevels: TextView = itemView.findViewById(R.id.textZoomLevels)

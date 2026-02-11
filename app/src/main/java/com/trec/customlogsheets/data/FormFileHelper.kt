@@ -3,8 +3,6 @@ package com.trec.customlogsheets.data
 import android.content.Context
 import android.util.Xml
 import androidx.documentfile.provider.DocumentFile
-import com.trec.customlogsheets.data.FolderStructureHelper
-import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.util.AppLogger
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
@@ -127,7 +125,7 @@ class FormFileHelper(private val context: Context) {
                 val orderInSection = subIndexMatch.groupValues[1].toIntOrNull() ?: return null
                 
                 // Extract formId by removing the last two parts (orderInSection_subIndex)
-                val beforeSubIndex = nameWithoutExt.substring(0, subIndexMatch.range.first)
+                val beforeSubIndex = nameWithoutExt.take(subIndexMatch.range.first)
                 val lastUnderscoreBeforeOrder = beforeSubIndex.lastIndexOf("_")
                 if (lastUnderscoreBeforeOrder < 0) return null
                 
@@ -142,7 +140,7 @@ class FormFileHelper(private val context: Context) {
                 val orderInSection = orderMatch.groupValues[1].toIntOrNull() ?: return null
                 
                 // Extract formId by removing the last part (orderInSection)
-                val beforeOrder = nameWithoutExt.substring(0, orderMatch.range.first)
+                val beforeOrder = nameWithoutExt.take(orderMatch.range.first)
                 val lastUnderscoreBeforeOrder = beforeOrder.lastIndexOf("_")
                 if (lastUnderscoreBeforeOrder < 0) return null
                 
@@ -667,11 +665,8 @@ class FormFileHelper(private val context: Context) {
                         
                         // Parse filename to extract orderInSection and subIndex using known formId
                         val extracted = extractFormIdAndOrderAndSubIndex(fileName, formId)
-                        if (extracted == null) {
-                            // Invalid format, skip
-                            return@forEach
-                        }
-                        
+                            ?: return@forEach // Invalid format, skip
+
                         val (_, orderInSection, subIndex) = extracted
                         val key = if (subIndex != null) {
                             "${formId}_${orderInSection}_${subIndex}"

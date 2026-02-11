@@ -263,11 +263,8 @@ class MaskInputHelper(
             
             // Find which section the insertion is in
             val sectionInfo = findSectionForPosition(dstart, mask)
-            if (sectionInfo == null) {
-                // Not in a section (maybe at a colon position) - allow if it's a digit that will be formatted
-                return null
-            }
-            
+                ?: return null // Not in a section (maybe at a colon position) - allow if it's a digit that will be formatted
+
             val (_, sectionStart, sectionLength) = sectionInfo
             
             // Count digits currently in this section
@@ -288,7 +285,7 @@ class MaskInputHelper(
             // If we're trying to add more digits than the section allows
             if (sourceDigits.length > availableSlots && availableSlots > 0) {
                 // Allow only as many digits as fit
-                val allowedDigits = sourceDigits.substring(0, availableSlots)
+                val allowedDigits = sourceDigits.take(availableSlots)
                 // Return the allowed digits plus any non-digit characters from source (like spaces)
                 val nonDigits = source.toString().filter { !it.isDigit() && it != ':' }
                 return allowedDigits + nonDigits

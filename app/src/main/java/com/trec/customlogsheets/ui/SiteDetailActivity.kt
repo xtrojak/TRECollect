@@ -20,6 +20,7 @@ import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.AppDatabase
 import com.trec.customlogsheets.data.Form
 import com.trec.customlogsheets.data.FormConfigLoader
+import com.trec.customlogsheets.data.FormFileHelper
 import com.trec.customlogsheets.data.PredefinedForms
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
@@ -28,9 +29,7 @@ import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.UploadStatus
 import com.trec.customlogsheets.ui.MainViewModel
 import com.trec.customlogsheets.ui.MainViewModelFactory
-import com.trec.customlogsheets.ui.DownloadRegionActivity
 import com.trec.customlogsheets.util.AppLogger
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,7 +48,7 @@ class SiteDetailActivity : AppCompatActivity() {
     private var savedScrollPosition: Int = 0 // Save scroll position when refreshing
     
     // Cache for forms data to avoid reloading in other methods
-    private var cachedBaseFormsBySection: Map<String, List<com.trec.customlogsheets.data.Form>>? = null
+    private var cachedBaseFormsBySection: Map<String, List<Form>>? = null
     private var cachedSections: List<String>? = null
     
     // Flag to prevent duplicate setupFormsList calls
@@ -337,7 +336,7 @@ class SiteDetailActivity : AppCompatActivity() {
      */
     private fun checkAllMandatoryFormsSubmittedFromStatuses(
         allStatuses: Map<String, Pair<Boolean, Boolean>>,
-        formsBySection: Map<String, List<com.trec.customlogsheets.data.Form>>,
+        formsBySection: Map<String, List<Form>>,
         instanceIndexMap: Map<Triple<String, String, Int>, Int>
     ): Boolean {
         val allForms = formsBySection.values.flatten()
@@ -371,7 +370,7 @@ class SiteDetailActivity : AppCompatActivity() {
      * Fallback method that loads files individually (slower, used when statuses not available)
      */
     private suspend fun checkAllMandatoryFormsSubmitted(): Boolean {
-        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
+        val formFileHelper = FormFileHelper(this)
         
         // OPTIMIZATION: Use cached forms data if available, otherwise load
         val formsBySection = cachedBaseFormsBySection ?: run {
@@ -423,7 +422,7 @@ class SiteDetailActivity : AppCompatActivity() {
     
     private fun showFinalizeConfirmationDialog() {
         lifecycleScope.launch {
-            val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            val formFileHelper = FormFileHelper(this@SiteDetailActivity)
             
             // OPTIMIZATION: Use cached forms data if available, otherwise load
             val formsBySection = cachedBaseFormsBySection ?: run {
@@ -683,7 +682,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 val forms = configs
                     .filter { it.id != "horizontal_line" } // Exclude dividers from Form list
                     .map { config ->
-                        com.trec.customlogsheets.data.Form(
+                        Form(
                             id = config.id,
                             name = config.name,
                             section = config.section,
@@ -708,7 +707,7 @@ class SiteDetailActivity : AppCompatActivity() {
             
             // Expand dynamic forms to include their instances
             // OPTIMIZATION: Batch all file I/O operations into a single withContext block
-            val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            val formFileHelper = FormFileHelper(this@SiteDetailActivity)
             
             // Pre-calculate instance indices for all forms (not just dynamic) to avoid repeated calculations
             // Map: (formId, section, orderInSection) -> instanceIndex
@@ -755,7 +754,7 @@ class SiteDetailActivity : AppCompatActivity() {
             
             // OPTIMIZATION: Build form lookup map for O(1) access instead of linear search
             val formsBySectionAndOccurrence = baseFormsBySection.mapValues { (_, forms) ->
-                val map = mutableMapOf<Pair<String, Int>, com.trec.customlogsheets.data.Form>() // (formId, occurrence) -> Form
+                val map = mutableMapOf<Pair<String, Int>, Form>() // (formId, occurrence) -> Form
                 val occurrenceCount = mutableMapOf<String, Int>() // formId -> current occurrence
                 forms.forEach { form ->
                     val occurrence = occurrenceCount.getOrDefault(form.id, 0)
@@ -766,7 +765,7 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             
             val expandedFormsBySection = baseFormsBySection.mapValues { (section, _) ->
-                val result = mutableListOf<com.trec.customlogsheets.ui.FormListItem>()
+                val result = mutableListOf<FormListItem>()
                 val sectionConfigs = configsBySection[section] ?: emptyList()
                 val formsLookup = formsBySectionAndOccurrence[section] ?: emptyMap()
                 
@@ -778,7 +777,7 @@ class SiteDetailActivity : AppCompatActivity() {
                 sectionConfigs.forEach { config ->
                     if (config.id == "horizontal_line") {
                         // Insert divider
-                        result.add(com.trec.customlogsheets.ui.FormListItem.DividerItem)
+                        result.add(FormListItem.DividerItem)
                     } else {
                         // Find the matching form by ID and occurrence using O(1) lookup
                         val occurrence = formOccurrenceMap.getOrDefault(config.id, 0)
@@ -803,12 +802,12 @@ class SiteDetailActivity : AppCompatActivity() {
                                 }
                                 
                                 // Add all instances
-                                result.addAll(formInstances.map { com.trec.customlogsheets.ui.FormListItem.FormItem(it) })
+                                result.addAll(formInstances.map { FormListItem.FormItem(it) })
                                 
                                 // Add button after this dynamic form group
-                                result.add(com.trec.customlogsheets.ui.FormListItem.AddButtonItem(foundForm))
+                                result.add(FormListItem.AddButtonItem(foundForm))
                             } else {
-                                result.add(com.trec.customlogsheets.ui.FormListItem.FormItem(foundForm))
+                                result.add(FormListItem.FormItem(foundForm))
                             }
                         }
                     }
@@ -867,7 +866,7 @@ class SiteDetailActivity : AppCompatActivity() {
             expandedFormsBySection.forEach { (section, formListItems) ->
                 formListItems.forEach innerForEach@{ item ->
                     // Only process FormItem, skip AddButtonItem and DividerItem
-                    if (item !is com.trec.customlogsheets.ui.FormListItem.FormItem) return@innerForEach
+                    if (item !is FormListItem.FormItem) return@innerForEach
                     
                     val form = item.form
                     // Check if this is a dynamic form instance (name contains " #")
@@ -964,7 +963,7 @@ class SiteDetailActivity : AppCompatActivity() {
             }
         }
         
-        val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this)
+        val formFileHelper = FormFileHelper(this)
         
         // OPTIMIZATION: Batch file operations
         lifecycleScope.launch(Dispatchers.IO) {
@@ -1039,7 +1038,7 @@ class SiteDetailActivity : AppCompatActivity() {
         }
         
         lifecycleScope.launch {
-            val formFileHelper = com.trec.customlogsheets.data.FormFileHelper(this@SiteDetailActivity)
+            val formFileHelper = FormFileHelper(this@SiteDetailActivity)
             
             // Check if this is the last instance
             // We need to check both file-based instances AND UI-based instances
@@ -1056,7 +1055,7 @@ class SiteDetailActivity : AppCompatActivity() {
             
             // Find this instance in the UI list (only check FormItem, skip AddButtonItem)
             val currentInstanceIndex = currentFormsInSection.indexOfFirst { item ->
-                item is com.trec.customlogsheets.ui.FormListItem.FormItem && 
+                item is FormListItem.FormItem && 
                 item.form.isDynamic && 
                 item.form.id == baseForm.id && 
                 item.form.name == currentInstanceName
@@ -1065,7 +1064,7 @@ class SiteDetailActivity : AppCompatActivity() {
             // Check if there are any instances after this one in the UI list
             val hasLaterInstancesInUI = if (currentInstanceIndex >= 0) {
                 currentFormsInSection.subList(currentInstanceIndex + 1, currentFormsInSection.size).any { item ->
-                    item is com.trec.customlogsheets.ui.FormListItem.FormItem &&
+                    item is FormListItem.FormItem &&
                     item.form.isDynamic && 
                     item.form.id == baseForm.id && 
                     item.form.name.contains(" #")

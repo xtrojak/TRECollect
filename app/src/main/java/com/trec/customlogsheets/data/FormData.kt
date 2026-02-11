@@ -2,10 +2,8 @@ package com.trec.customlogsheets.data
 
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlSerializer
 import java.io.StringWriter
 import java.time.Instant
-import java.time.format.DateTimeFormatter
 
 /**
  * Represents the value of a form field
@@ -168,7 +166,7 @@ data class FormData(
                 var isSubmitted = false
                 var createdAt: String? = null
                 var submittedAt: String? = null
-                var logsheetVersion: String = ""
+                var logsheetVersion = ""
                 val fieldValues = mutableListOf<FormFieldValue>()
                 
                 var eventType = parser.eventType

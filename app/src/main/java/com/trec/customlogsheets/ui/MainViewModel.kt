@@ -58,7 +58,7 @@ class MainViewModel(
         }
         lastLoadTime = currentTime
         
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
             val settingsPreferences = SettingsPreferences(context)
             val folderUriString = settingsPreferences.getFolderUri()
             
@@ -452,7 +452,7 @@ class MainViewModel(
         data class Error(val message: String) : CreateSiteResult()
     }
     
-    suspend fun renameSite(site: SamplingSite, newName: String): RenameSiteResult {
+    fun renameSite(site: SamplingSite, newName: String): RenameSiteResult {
         val trimmedName = newName.trim()
         if (trimmedName.isBlank()) {
             return RenameSiteResult.Error("Site name cannot be empty")

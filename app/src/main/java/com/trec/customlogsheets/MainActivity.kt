@@ -1,5 +1,6 @@
 package com.trec.customlogsheets
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
@@ -10,7 +11,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
-import com.trec.customlogsheets.R
 import com.trec.customlogsheets.data.AppDatabase
 import com.trec.customlogsheets.data.OfflineMapsManager
 import com.trec.customlogsheets.data.SamplingSite
@@ -19,12 +19,11 @@ import com.trec.customlogsheets.ui.MainViewModelFactory
 import com.trec.customlogsheets.ui.SamplingSiteAdapter
 import com.trec.customlogsheets.ui.SettingsActivity
 import com.trec.customlogsheets.ui.SiteDetailActivity
-import com.trec.customlogsheets.ui.DownloadRegionActivity
 import com.trec.customlogsheets.data.SettingsPreferences
 import com.trec.customlogsheets.data.OwnCloudManager
-import com.trec.customlogsheets.data.LogsheetDownloader
 import com.trec.customlogsheets.data.FormConfigLoader
 import com.trec.customlogsheets.data.PredefinedForms
+import com.trec.customlogsheets.data.UploadStatus
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.launch
 
@@ -263,7 +262,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun uploadSite(site: SamplingSite) {
         // Check if already uploaded and show warning
-        if (site.uploadStatus == com.trec.customlogsheets.data.UploadStatus.UPLOADED) {
+        if (site.uploadStatus == UploadStatus.UPLOADED) {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Re-upload Site")
                 .setMessage("${site.name} has already been uploaded successfully. Re-uploading will overwrite the existing submission. Continue?")
@@ -288,7 +287,7 @@ class MainActivity : AppCompatActivity() {
             // Get all finished sites that haven't been uploaded yet
             val finishedSites = viewModel.finishedSites.value
             val sitesToUpload = finishedSites.filter { 
-                it.uploadStatus != com.trec.customlogsheets.data.UploadStatus.UPLOADED 
+                it.uploadStatus != UploadStatus.UPLOADED 
             }
             
             if (sitesToUpload.isEmpty()) {
@@ -312,7 +311,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun performUploadAll(sites: List<com.trec.customlogsheets.data.SamplingSite>) {
+    private fun performUploadAll(sites: List<SamplingSite>) {
         lifecycleScope.launch {
             AppLogger.i("MainActivity", "Starting batch upload for ${sites.size} site(s)")
             
@@ -458,7 +457,7 @@ class MainActivity : AppCompatActivity() {
                 // Method 3: Check process name (heuristic - less reliable but catches some cases)
                 val processName = android.os.Process.myPid().let { pid ->
                     try {
-                        val activityManager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
                         activityManager.runningAppProcesses?.find { it.pid == pid }?.processName
                     } catch (e: Exception) {
                         null

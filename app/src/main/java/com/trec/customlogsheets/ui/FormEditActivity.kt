@@ -27,7 +27,6 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.google.android.gms.tasks.Tasks
 import com.trec.customlogsheets.R
@@ -1771,7 +1770,7 @@ class FormEditActivity : AppCompatActivity() {
         ) as LinearLayout
         
         val textLabel = container.findViewById<TextView>(R.id.textLabel)
-        val tableLayout = container.findViewById<android.widget.TableLayout>(R.id.tableLayout)
+        val tableLayout = container.findViewById<TableLayout>(R.id.tableLayout)
         
         // Set label
         textLabel.text = if (fieldConfig.required) {
@@ -1797,15 +1796,15 @@ class FormEditActivity : AppCompatActivity() {
         val existingTableData = existingValue?.tableData ?: emptyMap()
         
         // Light grid line (mutate per cell so drawable state not shared)
-        fun gridLine() = androidx.core.content.ContextCompat.getDrawable(this, R.drawable.table_cell_grid_line)?.mutate()
+        fun gridLine() = ContextCompat.getDrawable(this, R.drawable.table_cell_grid_line)?.mutate()
         val cellPadding = (8 * resources.displayMetrics.density).toInt() // 8dp
         val minRowHeight = (40 * resources.displayMetrics.density).toInt() // 40dp
         
         // Create header row
-        val headerRow = android.widget.TableRow(this).apply {
-            layoutParams = android.widget.TableLayout.LayoutParams(
-                android.widget.TableLayout.LayoutParams.MATCH_PARENT,
-                android.widget.TableLayout.LayoutParams.WRAP_CONTENT
+        val headerRow = TableRow(this).apply {
+            layoutParams = TableLayout.LayoutParams(
+                TableLayout.LayoutParams.MATCH_PARENT,
+                TableLayout.LayoutParams.WRAP_CONTENT
             ).apply { minimumHeight = minRowHeight }
         }
         
@@ -1815,9 +1814,9 @@ class FormEditActivity : AppCompatActivity() {
             setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
             setBackgroundColor(0xFFE0E0E0.toInt())
             minimumHeight = minRowHeight
-            layoutParams = android.widget.TableRow.LayoutParams(
+            layoutParams = TableRow.LayoutParams(
                 0,
-                android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                TableRow.LayoutParams.MATCH_PARENT,
                 1f
             )
             gridLine()?.let { foreground = it }
@@ -1833,9 +1832,9 @@ class FormEditActivity : AppCompatActivity() {
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER
                 minimumHeight = minRowHeight
-                layoutParams = android.widget.TableRow.LayoutParams(
+                layoutParams = TableRow.LayoutParams(
                     0,
-                    android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                    TableRow.LayoutParams.MATCH_PARENT,
                     1f
                 )
                 gridLine()?.let { foreground = it }
@@ -1846,10 +1845,10 @@ class FormEditActivity : AppCompatActivity() {
         
         // Create data rows (same min height and MATCH_PARENT cell height for alignment)
         for (row in rows) {
-            val dataRow = android.widget.TableRow(this).apply {
-                layoutParams = android.widget.TableLayout.LayoutParams(
-                    android.widget.TableLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.TableLayout.LayoutParams.WRAP_CONTENT
+            val dataRow = TableRow(this).apply {
+                layoutParams = TableLayout.LayoutParams(
+                    TableLayout.LayoutParams.MATCH_PARENT,
+                    TableLayout.LayoutParams.WRAP_CONTENT
                 ).apply { minimumHeight = minRowHeight }
             }
             
@@ -1860,9 +1859,9 @@ class FormEditActivity : AppCompatActivity() {
                 setBackgroundColor(0xFFF5F5F5.toInt())
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                layoutParams = android.widget.TableRow.LayoutParams(
+                layoutParams = TableRow.LayoutParams(
                     0,
-                    android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                    TableRow.LayoutParams.MATCH_PARENT,
                     1f
                 )
                 gridLine()?.let { foreground = it }
@@ -1878,9 +1877,9 @@ class FormEditActivity : AppCompatActivity() {
                     val checkboxContainer = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER
-                        layoutParams = android.widget.TableRow.LayoutParams(
+                        layoutParams = TableRow.LayoutParams(
                             0,
-                            android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                            TableRow.LayoutParams.MATCH_PARENT,
                             1f
                         )
                         setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
@@ -1915,14 +1914,14 @@ class FormEditActivity : AppCompatActivity() {
                     dataRow.addView(checkboxContainer)
                 } else {
                     // Create text input for other input types
-                val editText = com.google.android.material.textfield.TextInputEditText(this).apply {
+                val editText = TextInputEditText(this).apply {
                     hint = ""
                     setText(cellValue)
                     setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
                     setBackgroundColor(android.graphics.Color.WHITE)
-                    layoutParams = android.widget.TableRow.LayoutParams(
+                    layoutParams = TableRow.LayoutParams(
                         0,
-                        android.widget.TableRow.LayoutParams.MATCH_PARENT,
+                        TableRow.LayoutParams.MATCH_PARENT,
                         1f
                     )
                     gridLine()?.let { foreground = it }
@@ -1977,19 +1976,19 @@ class FormEditActivity : AppCompatActivity() {
     /**
      * Helper method to collect table data from a TableLayout and update fieldValues
      */
-    private fun updateTableFieldValue(fieldId: String, tableLayout: android.widget.TableLayout) {
+    private fun updateTableFieldValue(fieldId: String, tableLayout: TableLayout) {
         val tableData = mutableMapOf<String, MutableMap<String, String>>()
         
         // Iterate through table rows (skip header row at index 0)
         for (i in 1 until tableLayout.childCount) {
-            val row = tableLayout.getChildAt(i) as? android.widget.TableRow ?: continue
+            val row = tableLayout.getChildAt(i) as? TableRow ?: continue
             // First child is row header, rest are data cells
             val rowHeader = row.getChildAt(0) as? TextView
             val rowName = rowHeader?.text?.toString() ?: continue
             
             val rowData = mutableMapOf<String, String>()
             // Get column names from header row
-            val headerRow = tableLayout.getChildAt(0) as? android.widget.TableRow
+            val headerRow = tableLayout.getChildAt(0) as? TableRow
             val columnNames = mutableListOf<String>()
             if (headerRow != null) {
                 for (j in 1 until headerRow.childCount) {
@@ -2017,7 +2016,7 @@ class FormEditActivity : AppCompatActivity() {
                         is CheckBox -> {
                             if (cell.isChecked) "true" else "false"
                         }
-                        is com.google.android.material.textfield.TextInputEditText -> {
+                        is TextInputEditText -> {
                             cell.text?.toString()?.trim() ?: ""
                         }
                         else -> ""
@@ -2081,10 +2080,8 @@ class FormEditActivity : AppCompatActivity() {
         val existingInstances = existingValue?.dynamicData ?: emptyList()
         
         // Create initial instance if none exist
-        val instancesToCreate = if (existingInstances.isEmpty()) {
+        val instancesToCreate = existingInstances.ifEmpty {
             listOf(emptyMap<String, FormFieldValue>())
-        } else {
-            existingInstances
         }
         
         // Create instances
@@ -2743,7 +2740,7 @@ class FormEditActivity : AppCompatActivity() {
                                 val instancePrefix = if (uniqueFieldId.contains("_instance")) {
                                     val lastUnderscore = uniqueFieldId.lastIndexOf("_")
                                     if (lastUnderscore > 0) {
-                                        uniqueFieldId.substring(0, lastUnderscore + 1)
+                                        uniqueFieldId.take(lastUnderscore + 1)
                                     } else {
                                         null
                                     }
@@ -3502,10 +3499,10 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.DATE -> {
                     val dateValue = if (defaultValue.lowercase() == "now") {
                         // Get current date in yyyy-MM-dd format
-                        val calendar = java.util.Calendar.getInstance()
-                        String.format("%04d-%02d-%02d", calendar.get(java.util.Calendar.YEAR),
-                            calendar.get(java.util.Calendar.MONTH) + 1,
-                            calendar.get(java.util.Calendar.DAY_OF_MONTH))
+                        val calendar = Calendar.getInstance()
+                        String.format("%04d-%02d-%02d", calendar.get(Calendar.YEAR),
+                            calendar.get(Calendar.MONTH) + 1,
+                            calendar.get(Calendar.DAY_OF_MONTH))
                     } else {
                         defaultValue
                     }
@@ -3517,9 +3514,9 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TIME -> {
                     val timeValue = if (defaultValue.lowercase() == "now") {
                         // Get current time in HH:mm format
-                        val calendar = java.util.Calendar.getInstance()
-                        String.format("%02d:%02d", calendar.get(java.util.Calendar.HOUR_OF_DAY),
-                            calendar.get(java.util.Calendar.MINUTE))
+                        val calendar = Calendar.getInstance()
+                        String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY),
+                            calendar.get(Calendar.MINUTE))
                     } else {
                         defaultValue
                     }
@@ -3617,10 +3614,10 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.DATE -> {
                     val dateValue = if (prefillValue.lowercase() == "now") {
                         // Get current date in yyyy-MM-dd format
-                        val calendar = java.util.Calendar.getInstance()
-                        String.format("%04d-%02d-%02d", calendar.get(java.util.Calendar.YEAR),
-                            calendar.get(java.util.Calendar.MONTH) + 1,
-                            calendar.get(java.util.Calendar.DAY_OF_MONTH))
+                        val calendar = Calendar.getInstance()
+                        String.format("%04d-%02d-%02d", calendar.get(Calendar.YEAR),
+                            calendar.get(Calendar.MONTH) + 1,
+                            calendar.get(Calendar.DAY_OF_MONTH))
                     } else {
                         prefillValue
                     }
@@ -3632,9 +3629,9 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TIME -> {
                     val timeValue = if (prefillValue.lowercase() == "now") {
                         // Get current time in HH:mm format
-                        val calendar = java.util.Calendar.getInstance()
-                        String.format("%02d:%02d", calendar.get(java.util.Calendar.HOUR_OF_DAY),
-                            calendar.get(java.util.Calendar.MINUTE))
+                        val calendar = Calendar.getInstance()
+                        String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY),
+                            calendar.get(Calendar.MINUTE))
                     } else {
                         prefillValue
                     }
@@ -3744,18 +3741,18 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.TABLE -> {
                 // Collect table data from all cells
                 val tableData = mutableMapOf<String, MutableMap<String, String>>()
-                val tableLayout = fieldView.findViewById<android.widget.TableLayout>(R.id.tableLayout)
+                val tableLayout = fieldView.findViewById<TableLayout>(R.id.tableLayout)
                 
                 // Iterate through table rows (skip header row at index 0)
                 for (i in 1 until tableLayout.childCount) {
-                    val row = tableLayout.getChildAt(i) as? android.widget.TableRow ?: continue
+                    val row = tableLayout.getChildAt(i) as? TableRow ?: continue
                     // First child is row header, rest are data cells
                     val rowHeader = row.getChildAt(0) as? TextView
                     val rowName = rowHeader?.text?.toString() ?: continue
                     
                     val rowData = mutableMapOf<String, String>()
                     // Get column names from header row
-                    val headerRow = tableLayout.getChildAt(0) as? android.widget.TableRow
+                    val headerRow = tableLayout.getChildAt(0) as? TableRow
                     val columnNames = mutableListOf<String>()
                     if (headerRow != null) {
                         for (j in 1 until headerRow.childCount) {
@@ -3783,7 +3780,7 @@ class FormEditActivity : AppCompatActivity() {
                                 is CheckBox -> {
                                     if (cell.isChecked) "true" else "false"
                                 }
-                                is com.google.android.material.textfield.TextInputEditText -> {
+                                is TextInputEditText -> {
                                     cell.text?.toString()?.trim() ?: ""
                                 }
                                 else -> ""
@@ -3921,7 +3918,7 @@ class FormEditActivity : AppCompatActivity() {
                     }
                     FormFieldConfig.FieldType.GPS -> {
                         // Read GPS values from text fields
-                        val fieldView = fieldViews[fieldConfig.id] ?: return@validateForm false
+                        val fieldView = fieldViews[fieldConfig.id] ?: return false
                         val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
                         val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
                         val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
@@ -4163,7 +4160,7 @@ class FormEditActivity : AppCompatActivity() {
                     AppLogger.i("FormEditActivity", "Form submitted: site=$siteName, form=$formId")
                     Toast.makeText(this@FormEditActivity, "Form submitted", Toast.LENGTH_SHORT).show()
                     // Mark as completed in database
-                    val database = com.trec.customlogsheets.data.AppDatabase.getDatabase(this@FormEditActivity)
+                    val database = AppDatabase.getDatabase(this@FormEditActivity)
                     database.formCompletionDao().insertCompletion(
                         FormCompletion(
                             siteName = siteName,
@@ -4189,7 +4186,7 @@ class FormEditActivity : AppCompatActivity() {
  * Adapter for displaying image-based options in a RecyclerView
  */
 private class ImageOptionAdapter(
-    private val imageOptions: List<com.trec.customlogsheets.data.ImageOption>,
+    private val imageOptions: List<ImageOption>,
     private val isMultiSelect: Boolean,
     private val onSelectionChanged: (List<String>) -> Unit
 ) : androidx.recyclerview.widget.RecyclerView.Adapter<ImageOptionAdapter.ImageOptionViewHolder>() {
@@ -4242,7 +4239,7 @@ private class ImageOptionAdapter(
         private val textLabel: TextView = itemView.findViewById(R.id.textOptionLabel)
         private val cardView: com.google.android.material.card.MaterialCardView = itemView as com.google.android.material.card.MaterialCardView
         
-        fun bind(option: com.trec.customlogsheets.data.ImageOption, isSelected: Boolean, onClick: () -> Unit) {
+        fun bind(option: ImageOption, isSelected: Boolean, onClick: () -> Unit) {
             // Load image from downloaded files
             try {
                 val downloader = LogsheetDownloader(itemView.context)

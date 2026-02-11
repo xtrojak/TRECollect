@@ -16,8 +16,6 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.trec.customlogsheets.R
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -94,7 +92,7 @@ class CameraActivity : AppCompatActivity() {
             val preview = Preview.Builder()
                 .build()
                 .also {
-                    it.setSurfaceProvider(findViewById<PreviewView>(R.id.previewView).surfaceProvider)
+                    it.surfaceProvider = findViewById<PreviewView>(R.id.previewView).surfaceProvider
                 }
             
             // Set up ImageCapture with back camera by default

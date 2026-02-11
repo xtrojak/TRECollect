@@ -6,12 +6,17 @@ import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.modules.MapTileDownloader
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
-import org.osmdroid.util.MapTileIndex
-import org.osmdroid.util.TileSystem
 import android.graphics.Point
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.tan
 import java.io.File
 
 /**
@@ -217,10 +222,10 @@ class OfflineMapsManager(private val context: Context) {
      * Converts latitude/longitude to tile coordinates using standard Mercator projection
      */
     private fun latLonToTileXY(latitude: Double, longitude: Double, zoomLevel: Int): Point {
-        val n = Math.pow(2.0, zoomLevel.toDouble())
+        val n = 2.0.pow(zoomLevel)
         val tileX = ((longitude + 180.0) / 360.0 * n).toInt()
-        val latRad = Math.toRadians(latitude)
-        val tileY = ((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n).toInt()
+        val latRad = latitude * PI / 180
+        val tileY = ((1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * n).toInt()
         return Point(tileX, tileY)
     }
     
@@ -231,19 +236,19 @@ class OfflineMapsManager(private val context: Context) {
         val topLeft = latLonToTileXY(boundingBox.latNorth, boundingBox.lonWest, zoom)
         val bottomRight = latLonToTileXY(boundingBox.latSouth, boundingBox.lonEast, zoom)
         
-        val minTileX = Math.min(topLeft.x, bottomRight.x)
-        val maxTileX = Math.max(topLeft.x, bottomRight.x)
-        val minTileY = Math.min(topLeft.y, bottomRight.y)
-        val maxTileY = Math.max(topLeft.y, bottomRight.y)
+        val minTileX = min(topLeft.x, bottomRight.x)
+        val maxTileX = max(topLeft.x, bottomRight.x)
+        val minTileY = min(topLeft.y, bottomRight.y)
+        val maxTileY = max(topLeft.y, bottomRight.y)
         
-        return (Math.abs(maxTileX - minTileX) + 1) * (Math.abs(maxTileY - minTileY) + 1)
+        return (abs(maxTileX - minTileX) + 1) * (abs(maxTileY - minTileY) + 1)
     }
     
     /**
      * Downloads tiles for a specific zoom level
      * Uses OSMDroid's cache directory structure
      */
-    private suspend fun downloadTilesForZoom(
+    private fun downloadTilesForZoom(
         boundingBox: BoundingBox,
         zoom: Int,
         tileSource: org.osmdroid.tileprovider.tilesource.ITileSource,
@@ -253,10 +258,10 @@ class OfflineMapsManager(private val context: Context) {
         val topLeft = latLonToTileXY(boundingBox.latNorth, boundingBox.lonWest, zoom)
         val bottomRight = latLonToTileXY(boundingBox.latSouth, boundingBox.lonEast, zoom)
         
-        val minTileX = Math.min(topLeft.x, bottomRight.x)
-        val maxTileX = Math.max(topLeft.x, bottomRight.x)
-        val minTileY = Math.min(topLeft.y, bottomRight.y)
-        val maxTileY = Math.max(topLeft.y, bottomRight.y)
+        val minTileX = min(topLeft.x, bottomRight.x)
+        val maxTileX = max(topLeft.x, bottomRight.x)
+        val minTileY = min(topLeft.y, bottomRight.y)
+        val maxTileY = max(topLeft.y, bottomRight.y)
         
         var downloaded = 0
         
@@ -309,7 +314,7 @@ class OfflineMapsManager(private val context: Context) {
      * and let OSMDroid manage its own cache cleanup.
      */
     @Suppress("UNUSED_PARAMETER")
-    private suspend fun deleteRegionTiles(region: OfflineMapRegion) {
+    private fun deleteRegionTiles(region: OfflineMapRegion) {
         // OSMDroid manages its own cache, so we can't easily delete specific tiles
         // The region metadata deletion is sufficient - OSMDroid will handle cache size limits
         // If needed, we could implement more sophisticated tile deletion, but it's complex

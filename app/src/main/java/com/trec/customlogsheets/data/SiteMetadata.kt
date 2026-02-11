@@ -2,7 +2,6 @@ package com.trec.customlogsheets.data
 
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlSerializer
 import java.io.StringWriter
 
 /**

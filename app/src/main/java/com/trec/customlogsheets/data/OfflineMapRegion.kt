@@ -89,7 +89,7 @@ data class OfflineMapRegion(
         
         // Approximate using degrees (1 degree ≈ 111 km)
         val latKm = latDiff * 111.0
-        val lonKm = lonDiff * 111.0 * Math.cos(Math.toRadians(centerLat))
+        val lonKm = lonDiff * 111.0 * kotlin.math.cos(centerLat * kotlin.math.PI / 180)
         
         return latKm * lonKm
     }

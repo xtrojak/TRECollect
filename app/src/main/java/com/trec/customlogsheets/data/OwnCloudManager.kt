@@ -255,7 +255,7 @@ class OwnCloudManager(private val context: Context) {
      * Ensures the target folder path exists (creates parent directories if needed)
      * For public shares, we create the UUID folder directly at the root
      */
-    private suspend fun ensureTargetFolderPath(): Boolean {
+    private fun ensureTargetFolderPath(): Boolean {
         // For public shares, no parent folders needed - create UUID folder directly
         return true
     }
@@ -634,7 +634,7 @@ class OwnCloudManager(private val context: Context) {
      * Returns a map of relative path -> DocumentFile
      */
     private fun collectAllFiles(folder: DocumentFile, basePath: String = ""): Map<String, DocumentFile> {
-        val files = mutableMapOf<String, androidx.documentfile.provider.DocumentFile>()
+        val files = mutableMapOf<String, DocumentFile>()
         
         try {
             val folderFiles = folder.listFiles()

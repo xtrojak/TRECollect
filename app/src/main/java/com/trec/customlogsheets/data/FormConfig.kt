@@ -1,6 +1,5 @@
 package com.trec.customlogsheets.data
 
-import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -183,7 +182,7 @@ object FormConfigLoader {
         
         // Verify it matches the expected team/subteam
         try {
-            val configObj = org.json.JSONObject(teamConfigJson)
+            val configObj = JSONObject(teamConfigJson)
             val configTeam = configObj.optString("team", "")
             val configName = configObj.optString("name", "")
             
@@ -254,7 +253,7 @@ object FormConfigLoader {
                 async {
                     // Handle horizontal_line divider - no logsheet file needed
                     if (formEntry.formId == "horizontal_line") {
-                        val teamObj = org.json.JSONObject(teamConfigJson)
+                        val teamObj = JSONObject(teamConfigJson)
                         val sectionsArray = teamObj.getJSONArray("sections")
                         val sectionObj = sectionsArray.getJSONObject(formEntry.sectionIndex)
                         val sectionName = sectionObj.optString("name", "")
@@ -274,10 +273,8 @@ object FormConfigLoader {
                     }
                     
                     val logsheetFile = downloader.getLogsheetFile(formEntry.formId)
-                    if (logsheetFile == null) {
-                        return@async Pair(index, null)
-                    }
-                    
+                        ?: return@async Pair(index, null)
+
                     val logsheetJson = try {
                         logsheetFile.readText()
                     } catch (e: Exception) {
@@ -329,7 +326,7 @@ object FormConfigLoader {
      */
     private fun parseTeamConfig(teamConfigJson: String): List<FormEntry> {
         val formEntries = mutableListOf<FormEntry>()
-        val jsonObject = org.json.JSONObject(teamConfigJson)
+        val jsonObject = JSONObject(teamConfigJson)
         val sectionsArray = jsonObject.getJSONArray("sections")
         
         for (i in 0 until sectionsArray.length()) {
@@ -357,17 +354,17 @@ object FormConfigLoader {
      * @param formEntry The form entry from team config containing position and dynamic info
      * @param teamConfigJson The team config JSON
      */
-    private fun parseLogsheetConfig(logsheetJson: String, formEntry: FormEntry, teamConfigJson: String): FormConfig? {
+    private fun parseLogsheetConfig(logsheetJson: String, formEntry: FormEntry, teamConfigJson: String): FormConfig {
         val formId = formEntry.formId
         val sectionIndex = formEntry.sectionIndex
         val formIndex = formEntry.formIndex
-        val logsheetObj = org.json.JSONObject(logsheetJson)
-        val teamObj = org.json.JSONObject(teamConfigJson)
+        val logsheetObj = JSONObject(logsheetJson)
+        val teamObj = JSONObject(teamConfigJson)
         
         // Find form info from team config using the specific position
         var formName = logsheetObj.optString("name", formId)
         var formSection = "" // Default to empty string (no section name)
-        var formDescription = logsheetObj.optString("description").takeIf { it.isNotEmpty() }
+        val formDescription = logsheetObj.optString("description").takeIf { it.isNotEmpty() }
         var formMandatory = false
         
         // Get the specific form entry from team config using the position indices
@@ -559,12 +556,8 @@ object FormConfigLoader {
             val jsonObject = JSONObject(jsonString)
             // Use optJSONArray to handle missing or null "forms" key gracefully
             val formsArray = jsonObject.optJSONArray("forms")
-            
-            // If forms array is missing or null, return empty list
-            if (formsArray == null) {
-                return forms
-            }
-            
+                ?: return forms
+
             for (i in 0 until formsArray.length()) {
                 try {
                     val formObj = formsArray.getJSONObject(i)

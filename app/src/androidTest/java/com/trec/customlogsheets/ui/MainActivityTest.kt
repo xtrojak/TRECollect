@@ -10,8 +10,6 @@ import androidx.test.uiautomator.UiSelector
 import com.trec.customlogsheets.MainActivity
 import com.trec.customlogsheets.data.AppDatabase
 import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
