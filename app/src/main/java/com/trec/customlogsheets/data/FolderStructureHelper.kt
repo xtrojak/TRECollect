@@ -2,6 +2,7 @@ package com.trec.customlogsheets.data
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 
 class FolderStructureHelper(private val context: Context) {
@@ -19,7 +20,7 @@ class FolderStructureHelper(private val context: Context) {
         val uriString = settingsPreferences.getFolderUri()
         return if (uriString.isNotEmpty()) {
             try {
-                Uri.parse(uriString)
+                uriString.toUri()
             } catch (e: Exception) {
                 null
             }

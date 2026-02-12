@@ -21,6 +21,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.isEmpty
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
@@ -419,14 +420,18 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     override fun onBackPressed() {
-        handleBackPress()
+        if (hasUnsavedChanges()) {
+            showSaveChangesDialog()
+        } else {
+            super.onBackPressed()
+        }
     }
     
     private fun handleBackPress() {
         if (hasUnsavedChanges()) {
             showSaveChangesDialog()
         } else {
-            finish()
+            super.onBackPressed()
         }
     }
     
@@ -2813,7 +2818,7 @@ class FormEditActivity : AppCompatActivity() {
         containerInstances: LinearLayout,
         subFields: List<FormFieldConfig>
     ) {
-        if (containerInstances.childCount == 0) {
+        if (containerInstances.isEmpty()) {
             buttonAdd.isEnabled = true
             return
         }

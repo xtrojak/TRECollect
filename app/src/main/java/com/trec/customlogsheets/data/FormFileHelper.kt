@@ -566,6 +566,8 @@ class FormFileHelper(private val context: Context) {
     
     /**
      * OPTIMIZATION: Returns both status map and cached file list to avoid multiple listFiles() calls
+     * @param siteName The name of the site
+     * @param checkFinished If true, also checks the finished folder (for finalized sites)
      */
     fun getAllFormStatusesWithCache(siteName: String, checkFinished: Boolean = true): FormStatusResult {
         val settingsPreferences = SettingsPreferences(context)

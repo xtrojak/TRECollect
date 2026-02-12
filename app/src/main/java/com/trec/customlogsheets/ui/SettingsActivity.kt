@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Bundle
 import android.provider.DocumentsContract
 import android.widget.ArrayAdapter
@@ -162,7 +163,7 @@ class SettingsActivity : AppCompatActivity() {
                     val folderUri = settingsPreferences.getFolderUri()
                     if (folderUri.isNotEmpty()) {
                         try {
-                            val uri = Uri.parse(folderUri)
+                            val uri = folderUri.toUri()
                             verifyFolderStructure(uri)
                         } catch (e: Exception) {
                             android.util.Log.w("SettingsActivity", "Error verifying folder structure after team change: ${e.message}")
@@ -187,7 +188,7 @@ class SettingsActivity : AppCompatActivity() {
                     val folderUri = settingsPreferences.getFolderUri()
                     if (folderUri.isNotEmpty()) {
                         try {
-                            val uri = Uri.parse(folderUri)
+                            val uri = folderUri.toUri()
                             verifyFolderStructure(uri)
                         } catch (e: Exception) {
                             android.util.Log.w("SettingsActivity", "Error verifying folder structure after subteam change: ${e.message}")
@@ -248,7 +249,7 @@ class SettingsActivity : AppCompatActivity() {
         val folderUri = settingsPreferences.getFolderUri()
         if (folderUri.isNotEmpty()) {
             try {
-                val uri = Uri.parse(folderUri)
+                val uri = folderUri.toUri()
                 val documentFile = DocumentFile.fromTreeUri(this, uri)
                 val fullPath = getFullPath(uri, documentFile)
                 folderPathText.text = fullPath

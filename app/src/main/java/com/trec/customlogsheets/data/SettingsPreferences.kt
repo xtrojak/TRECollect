@@ -2,6 +2,7 @@ package com.trec.customlogsheets.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 class SettingsPreferences(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(
@@ -28,7 +29,7 @@ class SettingsPreferences(context: Context) {
     }
     
     fun setSubmissionPath(path: String) {
-        prefs.edit().putString(KEY_SUBMISSION_PATH, path).apply()
+        prefs.edit { putString(KEY_SUBMISSION_PATH, path) }
     }
     
     fun getFolderUri(): String {
@@ -36,7 +37,7 @@ class SettingsPreferences(context: Context) {
     }
     
     fun setFolderUri(uri: String) {
-        prefs.edit().putString(KEY_FOLDER_URI, uri).apply()
+        prefs.edit { putString(KEY_FOLDER_URI, uri) }
     }
     
     fun getSamplingTeam(): String {
@@ -44,7 +45,7 @@ class SettingsPreferences(context: Context) {
     }
     
     fun setSamplingTeam(team: String) {
-        prefs.edit().putString(KEY_SAMPLING_TEAM, team).apply()
+        prefs.edit { putString(KEY_SAMPLING_TEAM, team) }
     }
     
     fun isSamplingTeamSet(): Boolean {
@@ -56,7 +57,7 @@ class SettingsPreferences(context: Context) {
     }
     
     fun setSamplingSubteam(subteam: String) {
-        prefs.edit().putString(KEY_SAMPLING_SUBTEAM, subteam).apply()
+        prefs.edit { putString(KEY_SAMPLING_SUBTEAM, subteam) }
     }
     
     fun isSamplingSubteamSet(): Boolean {
@@ -76,7 +77,7 @@ class SettingsPreferences(context: Context) {
      * Sets the map expiry time in days (0 means never expire)
      */
     fun setMapExpiryDays(days: Long) {
-        prefs.edit().putLong(KEY_MAP_EXPIRY_DAYS, days).apply()
+        prefs.edit { putLong(KEY_MAP_EXPIRY_DAYS, days) }
     }
     
     /**
@@ -86,7 +87,7 @@ class SettingsPreferences(context: Context) {
         var uuid = prefs.getString(KEY_APP_UUID, null)
         if (uuid == null) {
             uuid = java.util.UUID.randomUUID().toString()
-            prefs.edit().putString(KEY_APP_UUID, uuid).apply()
+            prefs.edit { putString(KEY_APP_UUID, uuid) }
         }
         return uuid
     }
@@ -102,7 +103,7 @@ class SettingsPreferences(context: Context) {
      * Marks ownCloud folder as verified/created
      */
     fun setOwnCloudFolderVerified(verified: Boolean) {
-        prefs.edit().putBoolean(KEY_OWNCLOUD_FOLDER_VERIFIED, verified).apply()
+        prefs.edit { putBoolean(KEY_OWNCLOUD_FOLDER_VERIFIED, verified) }
     }
     
     /**
@@ -116,7 +117,7 @@ class SettingsPreferences(context: Context) {
      * Marks logsheets as downloaded
      */
     fun setLogsheetsDownloaded(downloaded: Boolean) {
-        prefs.edit().putBoolean(KEY_LOGSHEETS_DOWNLOADED, downloaded).apply()
+        prefs.edit { putBoolean(KEY_LOGSHEETS_DOWNLOADED, downloaded) }
     }
 }
 

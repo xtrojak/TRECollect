@@ -41,12 +41,14 @@
             android:name=".ui.FormEditActivity"
             android:parentActivityName=".ui.SiteDetailActivity"
             android:label="Edit Form" />
+        <!-- Portrait locked for consistent camera preview; see AndroidLintLockedOrientationActivity -->
         <activity
             android:name=".ui.CameraActivity"
             android:parentActivityName=".ui.FormEditActivity"
             android:label="Camera"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.TRECCustomLogsheets" />
+            android:theme="@style/Theme.TRECCustomLogsheets"
+            tools:ignore="LockedOrientationActivity" />
            <activity
                android:name=".ui.GPSPickerActivity"
                android:parentActivityName=".ui.FormEditActivity"

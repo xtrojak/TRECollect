@@ -2,6 +2,7 @@ package com.trec.customlogsheets.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.trec.customlogsheets.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -49,7 +50,7 @@ class OfflineMapsManager(private val context: Context) {
      */
     fun saveRegion(region: OfflineMapRegion) {
         val regionJson = region.toJson()
-        prefs.edit().putString("${KEY_REGION_PREFIX}${region.id}", regionJson).apply()
+        prefs.edit { putString("${KEY_REGION_PREFIX}${region.id}", regionJson) }
         
         // Update the list of region IDs
         val regionIds = getRegionIds().toMutableSet()
@@ -81,7 +82,7 @@ class OfflineMapsManager(private val context: Context) {
      * Saves the list of region IDs
      */
     private fun saveRegionIds(ids: List<String>) {
-        prefs.edit().putString(KEY_REGIONS, ids.joinToString(",")).apply()
+        prefs.edit { putString(KEY_REGIONS, ids.joinToString(",")) }
     }
     
     /**
@@ -92,7 +93,7 @@ class OfflineMapsManager(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 // Remove from preferences
-                prefs.edit().remove("${KEY_REGION_PREFIX}${region.id}").apply()
+                prefs.edit { remove("${KEY_REGION_PREFIX}${region.id}") }
                 
                 // Update region IDs list
                 val regionIds = getRegionIds().toMutableSet()
