@@ -3,6 +3,12 @@ package com.trec.customlogsheets.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import com.trec.customlogsheets.data.AppDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -12,6 +18,7 @@ import org.mockito.kotlin.mock
  * Unit tests for MainViewModelFactory.
  * Tests ViewModel factory creation logic.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelFactoryTest {
     private lateinit var mockDatabase: AppDatabase
     private lateinit var mockContext: Context
@@ -19,9 +26,15 @@ class MainViewModelFactoryTest {
 
     @Before
     fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         mockDatabase = mock()
         mockContext = mock()
         factory = MainViewModelFactory(mockDatabase, mockContext)
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
     }
 
     @Test

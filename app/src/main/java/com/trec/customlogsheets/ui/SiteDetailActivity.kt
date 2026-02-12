@@ -22,8 +22,8 @@ import com.trec.customlogsheets.data.Form
 import com.trec.customlogsheets.data.FormConfigLoader
 import com.trec.customlogsheets.data.FormFileHelper
 import com.trec.customlogsheets.data.PredefinedForms
-import android.widget.ImageView
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import com.google.android.material.button.MaterialButton
 import com.trec.customlogsheets.data.SamplingSite
 import com.trec.customlogsheets.data.UploadStatus
@@ -41,7 +41,6 @@ class SiteDetailActivity : AppCompatActivity() {
     private lateinit var viewModel: MainViewModel
     private lateinit var siteNameText: TextView
     private lateinit var cardUploadStatus: com.google.android.material.card.MaterialCardView
-    private lateinit var imageViewUploadStatus: ImageView
     private lateinit var textViewUploadStatus: TextView
     private lateinit var buttonRetryUpload: MaterialButton
     private var canFinalize: Boolean = false
@@ -85,7 +84,6 @@ class SiteDetailActivity : AppCompatActivity() {
         supportActionBar?.title = site.name
         
         cardUploadStatus = findViewById(R.id.cardUploadStatus)
-        imageViewUploadStatus = findViewById(R.id.imageViewUploadStatus)
         textViewUploadStatus = findViewById(R.id.textViewUploadStatus)
         buttonRetryUpload = findViewById(R.id.buttonRetryUpload)
         
@@ -149,36 +147,24 @@ class SiteDetailActivity : AppCompatActivity() {
             
             when (site.uploadStatus) {
                 UploadStatus.UPLOADED -> {
-                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_upload)
-                    imageViewUploadStatus.setColorFilter(
-                        ContextCompat.getColor(this, android.R.color.holo_green_dark)
-                    )
+                    setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_upload, android.R.color.holo_green_dark)
                     textViewUploadStatus.text = "Uploaded successfully"
                     buttonRetryUpload.visibility = android.view.View.VISIBLE
                     buttonRetryUpload.text = "Re-upload"
                 }
                 UploadStatus.UPLOAD_FAILED -> {
-                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-                    imageViewUploadStatus.setColorFilter(
-                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
-                    )
+                    setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_close_clear_cancel, android.R.color.holo_red_dark)
                     textViewUploadStatus.text = "Upload failed"
                     buttonRetryUpload.visibility = android.view.View.VISIBLE
                     buttonRetryUpload.text = "Retry Upload"
                 }
                 UploadStatus.UPLOADING -> {
-                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_upload)
-                    imageViewUploadStatus.setColorFilter(
-                        ContextCompat.getColor(this, android.R.color.holo_orange_dark)
-                    )
+                    setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_upload, android.R.color.holo_orange_dark)
                     textViewUploadStatus.text = "Uploading..."
                     buttonRetryUpload.visibility = android.view.View.GONE
                 }
                 UploadStatus.NOT_UPLOADED -> {
-                    imageViewUploadStatus.setImageResource(android.R.drawable.ic_menu_upload)
-                    imageViewUploadStatus.setColorFilter(
-                        ContextCompat.getColor(this, android.R.color.darker_gray)
-                    )
+                    setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_upload, android.R.color.darker_gray)
                     textViewUploadStatus.text = "Not uploaded"
                     buttonRetryUpload.visibility = android.view.View.VISIBLE
                     buttonRetryUpload.text = "Upload Now"
@@ -191,6 +177,12 @@ class SiteDetailActivity : AppCompatActivity() {
         } else {
             cardUploadStatus.visibility = android.view.View.GONE
         }
+    }
+    
+    private fun setUploadStatusCompoundDrawable(drawableResId: Int, tintColorResId: Int) {
+        val drawable = ContextCompat.getDrawable(this, drawableResId)?.mutate()
+        drawable?.let { DrawableCompat.setTint(it, ContextCompat.getColor(this, tintColorResId)) }
+        textViewUploadStatus.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null)
     }
     
     private fun retryUpload() {
@@ -866,10 +858,9 @@ class SiteDetailActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 if (savedScrollPosition > 0) {
                     // Wait for layout to complete before restoring scroll
-                    val recyclerViewForScroll = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
-                    recyclerViewForScroll.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                    recyclerView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
                         override fun onGlobalLayout() {
-                            recyclerViewForScroll.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                            recyclerView.viewTreeObserver.removeOnGlobalLayoutListener(this)
                             restoreScrollPosition()
                         }
                     })

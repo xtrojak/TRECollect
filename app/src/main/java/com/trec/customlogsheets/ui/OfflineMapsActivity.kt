@@ -366,7 +366,7 @@ class RegionAdapter(
         private val imageExpired: android.widget.ImageView = itemView.findViewById(R.id.imageExpired)
         private val checkboxSelect: CheckBox = itemView.findViewById(R.id.checkboxSelect)
         
-        fun bind(region: OfflineMapRegion, _position: Int) {
+        fun bind(region: OfflineMapRegion, @Suppress("UNUSED_PARAMETER") position: Int) {
             textRegionName.text = region.name
             textRegionBounds.text = "Bounds: ${String.format("%.4f", region.minLatitude)}, ${String.format("%.4f", region.minLongitude)} to ${String.format("%.4f", region.maxLatitude)}, ${String.format("%.4f", region.maxLongitude)}"
             textZoomLevels.text = "Zoom: ${region.minZoom} - ${region.maxZoom}"

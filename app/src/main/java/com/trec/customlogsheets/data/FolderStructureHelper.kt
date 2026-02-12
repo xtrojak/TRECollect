@@ -278,11 +278,11 @@ class FolderStructureHelper(private val context: Context) {
             // Create TREC_logsheets folder - this should ALWAYS be created regardless of team/subteam
             android.util.Log.i("FolderStructureHelper", "TREC_logsheets folder does not exist, creating it...")
             try {
-            trecFolder = baseFolder.createDirectory(PARENT_FOLDER_NAME)
+                trecFolder = baseFolder.createDirectory(PARENT_FOLDER_NAME)
                 if (trecFolder == null) {
                     android.util.Log.e("FolderStructureHelper", "createDirectory returned null for TREC_logsheets - this usually means permission denied or storage full")
                     return null
-        }
+                }
                 android.util.Log.i("FolderStructureHelper", "createDirectory returned: name='${trecFolder.name}', exists=${trecFolder.exists()}, canWrite=${trecFolder.canWrite()}")
             } catch (e: Exception) {
                 android.util.Log.e("FolderStructureHelper", "Exception during createDirectory: ${e.message}", e)

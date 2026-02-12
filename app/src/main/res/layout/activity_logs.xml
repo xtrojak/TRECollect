@@ -87,7 +87,7 @@
                 android:id="@+id/textLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="10sp"
+                android:textSize="12sp"
                 android:fontFamily="monospace"
                 android:textIsSelectable="true"
                 android:focusable="false"

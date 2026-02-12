@@ -56,29 +56,15 @@
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <LinearLayout
+                    <TextView
+                        android:id="@+id/textViewUploadStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
+                        android:layout_marginBottom="8dp"
+                        android:drawablePadding="8dp"
+                        android:textSize="16sp"
                         android:gravity="center_vertical"
-                        android:layout_marginBottom="8dp">
-
-                        <ImageView
-                            android:id="@+id/imageViewUploadStatus"
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:layout_marginEnd="8dp"
-                            android:contentDescription="@string/upload_status" />
-
-                        <TextView
-                            android:id="@+id/textViewUploadStatus"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:textSize="16sp"
-                            android:text="@string/upload_status" />
-
-                    </LinearLayout>
+                        android:text="@string/upload_status" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/buttonRetryUpload"

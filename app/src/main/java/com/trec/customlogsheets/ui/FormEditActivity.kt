@@ -1604,7 +1604,8 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
-    private fun capturePhoto(_fieldId: String) {
+    @Suppress("UNUSED_PARAMETER")
+    private fun capturePhoto(fieldId: String) {
         try {
             // Create a file to store the photo
             val photoDir = File(getExternalFilesDir(null), "photos")
@@ -1666,9 +1667,9 @@ class FormEditActivity : AppCompatActivity() {
         // Try to find the view in regular fields first
         val fieldView = fieldViews[fieldId]
         if (fieldView != null) {
-        val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
-        textFileName?.text = "Photo: $fileName"
-        textFileName?.visibility = View.VISIBLE
+            val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
+            textFileName?.text = "Photo: $fileName"
+            textFileName?.visibility = View.VISIBLE
             return
         }
         
@@ -2139,7 +2140,8 @@ class FormEditActivity : AppCompatActivity() {
                         instanceIndex,
                         subFieldConfig,
                         instanceData[subFieldConfig.id],
-                        isReadOnly
+                        isReadOnly,
+                        containerSubFields
                     )
                     containerSubFields.addView(subFieldView)
                 } catch (e: Exception) {
@@ -2194,7 +2196,8 @@ class FormEditActivity : AppCompatActivity() {
         instanceIndex: Int,
         subFieldConfig: FormFieldConfig,
         existingValue: FormFieldValue?,
-        isReadOnly: Boolean
+        isReadOnly: Boolean,
+        parent: ViewGroup
     ): View {
         // Create a unique field ID for this sub-field in this instance
         val uniqueFieldId = "${dynamicFieldId}_instance${instanceIndex}_${subFieldConfig.id}"
@@ -2207,16 +2210,16 @@ class FormEditActivity : AppCompatActivity() {
         // Create the sub-field view using helper methods that accept a parent parameter
         val subFieldView = try {
             when (subFieldConfig.type) {
-                FormFieldConfig.FieldType.TEXT -> createTextFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.TEXTAREA -> createTextAreaFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.DATE -> createDateFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.TIME -> createTimeFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.SELECT -> createSelectFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.BARCODE -> createBarcodeFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.CHECKBOX -> createCheckboxFieldForSubField(subFieldConfig, uniqueFieldId)
-                FormFieldConfig.FieldType.PHOTO -> createPhotoFieldForSubField(subFieldConfig, uniqueFieldId)
+                FormFieldConfig.FieldType.TEXT -> createTextFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.TEXTAREA -> createTextAreaFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.DATE -> createDateFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.TIME -> createTimeFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.SELECT -> createSelectFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.BARCODE -> createBarcodeFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.CHECKBOX -> createCheckboxFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.PHOTO -> createPhotoFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 else -> {
                     android.util.Log.w("FormEditActivity", "Unsupported sub-field type: ${subFieldConfig.type} in dynamic widget")
                     TextView(this).apply {
@@ -2254,12 +2257,12 @@ class FormEditActivity : AppCompatActivity() {
         return subFieldView
     }
     
-    // Helper methods to create sub-fields for dynamic widgets (using null as parent)
-    private fun createTextFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    // Helper methods to create sub-fields for dynamic widgets
+    private fun createTextFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            null,
+            parent,
             false
         ) as TextInputLayout
         
@@ -2316,11 +2319,11 @@ class FormEditActivity : AppCompatActivity() {
         return textInputLayout
     }
     
-    private fun createCheckboxFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createCheckboxFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
             R.layout.field_checkbox,
-            null,
+            parent,
             false
         ) as LinearLayout
         
@@ -2346,11 +2349,11 @@ class FormEditActivity : AppCompatActivity() {
         return container
     }
     
-    private fun createTextAreaFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createTextAreaFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            null,
+            parent,
             false
         ) as TextInputLayout
         
@@ -2380,11 +2383,11 @@ class FormEditActivity : AppCompatActivity() {
         return textInputLayout
     }
     
-    private fun createDateFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createDateFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            null,
+            parent,
             false
         ) as TextInputLayout
         
@@ -2414,11 +2417,11 @@ class FormEditActivity : AppCompatActivity() {
         return textInputLayout
     }
     
-    private fun createTimeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createTimeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            null,
+            parent,
             false
         ) as TextInputLayout
         
@@ -2448,11 +2451,11 @@ class FormEditActivity : AppCompatActivity() {
         return textInputLayout
     }
     
-    private fun createSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            null,
+            parent,
             false
         ) as TextInputLayout
         
@@ -2482,11 +2485,11 @@ class FormEditActivity : AppCompatActivity() {
         return textInputLayout
     }
     
-    private fun createMultiSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createMultiSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            null,
+            parent,
             false
         ) as TextInputLayout
         
@@ -2522,11 +2525,11 @@ class FormEditActivity : AppCompatActivity() {
         return textInputLayout
     }
     
-    private fun createGPSFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createGPSFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
             R.layout.field_gps,
-            null,
+            parent,
             false
         ) as LinearLayout
         
@@ -2576,11 +2579,11 @@ class FormEditActivity : AppCompatActivity() {
         return container
     }
     
-    private fun createPhotoFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createPhotoFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
             R.layout.field_photo,
-            null,
+            parent,
             false
         ) as LinearLayout
         
@@ -2620,11 +2623,11 @@ class FormEditActivity : AppCompatActivity() {
         return container
     }
     
-    private fun createBarcodeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String): View {
+    private fun createBarcodeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
             R.layout.field_barcode,
-            null,
+            parent,
             false
         ) as LinearLayout
         
@@ -2669,7 +2672,7 @@ class FormEditActivity : AppCompatActivity() {
         subFieldConfig: FormFieldConfig,
         uniqueFieldId: String,
         dynamicFieldId: String,
-        _instanceIndex: Int
+        @Suppress("UNUSED_PARAMETER") instanceIndex: Int
     ) {
         when (subFieldConfig.type) {
             FormFieldConfig.FieldType.TEXT,

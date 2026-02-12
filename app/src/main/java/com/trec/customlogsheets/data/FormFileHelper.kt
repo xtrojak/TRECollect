@@ -683,7 +683,7 @@ class FormFileHelper(private val context: Context) {
         
         // Try to delete from any folder that has the file
         for (siteFolder in siteFolders) {
-        val file = siteFolder.findFile(fileName)
+            val file = siteFolder.findFile(fileName)
             if (file != null && file.exists()) {
                 AppLogger.d("FormFileHelper", "Found file to delete: ${file.uri}, exists=${file.exists()}, canWrite=${file.canWrite()}")
                 try {
