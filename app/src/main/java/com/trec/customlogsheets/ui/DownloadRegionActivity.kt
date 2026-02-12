@@ -27,6 +27,7 @@ import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Polyline
+import java.util.Locale
 
 /**
  * Activity for downloading a new offline map region
@@ -100,8 +101,8 @@ class DownloadRegionActivity : AppCompatActivity() {
         mapController?.setCenter(GeoPoint(0.0, 0.0))
         
         // Set default zoom levels
-        editTextMinZoom.setText("10")
-        editTextMaxZoom.setText("16")
+        editTextMinZoom.setText(getString(R.string.default_zoom_min))
+        editTextMaxZoom.setText(getString(R.string.default_zoom_max))
         
         // Update bounding box when map moves
         mapView.addMapListener(object : MapListener {
@@ -134,10 +135,10 @@ class DownloadRegionActivity : AppCompatActivity() {
             val minLon = boundingBox.lonWest
             val maxLon = boundingBox.lonEast
             
-            textMinLat.text = String.format("%.6f", minLat)
-            textMaxLat.text = String.format("%.6f", maxLat)
-            textMinLon.text = String.format("%.6f", minLon)
-            textMaxLon.text = String.format("%.6f", maxLon)
+            textMinLat.text = String.format(Locale.getDefault(), "%.6f", minLat)
+            textMaxLat.text = String.format(Locale.getDefault(), "%.6f", maxLat)
+            textMinLon.text = String.format(Locale.getDefault(), "%.6f", minLon)
+            textMaxLon.text = String.format(Locale.getDefault(), "%.6f", maxLon)
             
             // Draw bounding box overlay
             drawBoundingBox(boundingBox)
@@ -173,14 +174,14 @@ class DownloadRegionActivity : AppCompatActivity() {
     private fun downloadRegion() {
         val name = editTextName.text?.toString()?.trim() ?: ""
         if (name.isEmpty()) {
-            Toast.makeText(this, "Please enter a region name", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.please_enter_region_name), Toast.LENGTH_SHORT).show()
             return
         }
         
         // Get bounding box from visible map area
         val boundingBox = mapView.boundingBox
         if (boundingBox == null) {
-            Toast.makeText(this, "Unable to determine map bounds. Please try again.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.unable_to_determine_bounds), Toast.LENGTH_SHORT).show()
             return
         }
         
@@ -193,7 +194,7 @@ class DownloadRegionActivity : AppCompatActivity() {
         val maxZoom = editTextMaxZoom.text?.toString()?.toIntOrNull()
         
         if (minZoom == null || maxZoom == null || minZoom < 0 || maxZoom > 18 || minZoom > maxZoom) {
-            Toast.makeText(this, "Please enter valid zoom levels (0-18, min <= max)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.please_enter_valid_zoom), Toast.LENGTH_SHORT).show()
             return
         }
         
@@ -210,21 +211,19 @@ class DownloadRegionActivity : AppCompatActivity() {
         // Show confirmation dialog with estimated tile count
         val estimatedTiles = estimateTileCount(region)
         val estimatedMB = estimatedTiles * 0.02 // Rough estimate: ~20KB per tile
+        val minLatStr = String.format(Locale.getDefault(), "%.6f", minLat)
+        val minLonStr = String.format(Locale.getDefault(), "%.6f", minLon)
+        val maxLatStr = String.format(Locale.getDefault(), "%.6f", maxLat)
+        val maxLonStr = String.format(Locale.getDefault(), "%.6f", maxLon)
+        val estimatedMBStr = String.format(Locale.getDefault(), "%.1f", estimatedMB)
         
         AlertDialog.Builder(this)
-            .setTitle("Confirm Download")
-            .setMessage(
-                "Region: $name\n" +
-                "Bounds: ($minLat, $minLon) to ($maxLat, $maxLon)\n" +
-                "Zoom Levels: $minZoom - $maxZoom\n" +
-                "Estimated Tiles: ~$estimatedTiles\n" +
-                "Estimated Size: ~${String.format("%.1f", estimatedMB)} MB\n\n" +
-                "This may take several minutes. Continue?"
-            )
-            .setPositiveButton("Download") { _, _ ->
+            .setTitle(R.string.confirm_download)
+            .setMessage(getString(R.string.confirm_download_message, name, minLatStr, minLonStr, maxLatStr, maxLonStr, minZoom, maxZoom, estimatedTiles, estimatedMBStr))
+            .setPositiveButton(R.string.download_button) { _, _ ->
                 startDownload(region)
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(R.string.cancel, null)
             .show()
     }
     
@@ -257,9 +256,9 @@ class DownloadRegionActivity : AppCompatActivity() {
                         progressDialog.isIndeterminate = false
                         progressDialog.max = total
                         progressDialog.progress = downloaded
-                        progressDialog.setMessage("Downloaded $downloaded / $total tiles")
+                        progressDialog.setMessage(this@DownloadRegionActivity.getString(R.string.download_progress_tiles, downloaded, total))
                     } else {
-                        progressDialog.setMessage("Downloading tiles... ($downloaded)")
+                        progressDialog.setMessage(this@DownloadRegionActivity.getString(R.string.download_progress_downloading, downloaded))
                     }
                 }
             }
@@ -268,11 +267,11 @@ class DownloadRegionActivity : AppCompatActivity() {
             
             if (success) {
                 AppLogger.i("DownloadRegionActivity", "Map region download completed successfully: name='${region.name}'")
-                Toast.makeText(this@DownloadRegionActivity, "Region downloaded successfully", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@DownloadRegionActivity, getString(R.string.region_downloaded_success), Toast.LENGTH_SHORT).show()
                 finish()
             } else {
                 AppLogger.e("DownloadRegionActivity", "Map region download failed: name='${region.name}'")
-                Toast.makeText(this@DownloadRegionActivity, "Error downloading region. Please check your internet connection.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@DownloadRegionActivity, getString(R.string.region_download_error), Toast.LENGTH_LONG).show()
             }
         }
     }

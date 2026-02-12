@@ -127,4 +127,60 @@
     <!-- Camera (content descriptions) -->
     <string name="camera_cancel">Cancel</string>
     <string name="camera_capture">Take photo</string>
+
+    <!-- Step 5 – Kotlin i18n (setText / Toasts / dialogs) -->
+    <string name="uploaded_successfully">Uploaded successfully</string>
+    <string name="re_upload">Re-upload</string>
+    <string name="upload_failed">Upload failed</string>
+    <string name="retry_upload_button">Retry Upload</string>
+    <string name="uploading">Uploading…</string>
+    <string name="not_uploaded">Not uploaded</string>
+    <string name="upload_now">Upload Now</string>
+    <string name="storage_used_mb">Storage used: %1$s MB</string>
+    <string name="bounds_format">Bounds: %1$s, %2$s to %3$s, %4$s</string>
+    <string name="zoom_range">Zoom: %1$d - %2$d</string>
+    <string name="size_mb">Size: %1$s MB</string>
+    <string name="downloaded_at">Downloaded: %1$s</string>
+    <string name="expires_at">Expires: %1$s</string>
+    <string name="expires_never">Expires: Never</string>
+    <string name="error_loading_field">Error loading field: %1$s</string>
+    <string name="error_label">Error: %1$s</string>
+    <string name="label_required">%1$s *</string>
+    <string name="photo_filename">Photo: %1$s</string>
+    <string name="instance_number">%1$s %2$d</string>
+    <string name="no_logs_matching">No logs available matching \"%1$s\"</string>
+    <string name="error_loading_path">Error loading path: %1$s</string>
+    <string name="status_last_download_completed">Status: Last download completed</string>
+    <string name="status_partially_downloaded">Status: Partially downloaded</string>
+    <string name="status_not_downloaded">Status: Not downloaded</string>
+    <string name="downloading">Downloading…</string>
+    <string name="status_downloading">Status: Downloading…</string>
+    <string name="initializing">Initializing…</string>
+    <string name="phase_label">Phase: %1$s</string>
+    <string name="downloading_file">Downloading: %1$s (%2$d/%3$d)</string>
+    <string name="no_new_files_to_download">No new files to download</string>
+    <string name="phase_downloaded_failed">%1$s: %2$d downloaded, %3$d failed</string>
+    <string name="status_update_failed">Status: Update failed</string>
+    <string name="status_error">Status: Error - %1$s</string>
+    <string name="default_zoom_min">10</string>
+    <string name="default_zoom_max">16</string>
+    <string name="please_enter_region_name">Please enter a region name</string>
+    <string name="unable_to_determine_bounds">Unable to determine map bounds. Please try again.</string>
+    <string name="please_enter_valid_zoom">Please enter valid zoom levels (0-18, min &lt;= max)</string>
+    <string name="confirm_download">Confirm Download</string>
+    <string name="confirm_download_message">Region: %1$s\nBounds: (%2$s, %3$s) to (%4$s, %5$s)\nZoom Levels: %6$d - %7$d\nEstimated Tiles: ~%8$d\nEstimated Size: ~%9$s MB\n\nThis may take several minutes. Continue?</string>
+    <string name="download_button">Download</string>
+    <string name="please_save_instances_before_add">Please save all existing instances before adding a new one</string>
+    <string name="no_offline_maps_yet">No offline maps downloaded yet</string>
+    <string name="invalid_number">Invalid number</string>
+    <string name="expiry_settings_saved">Expiry settings saved</string>
+    <string name="logs_count">%d logs</string>
+    <string name="logs_count_filtered">%1$d of %2$d logs (filtered: \"%3$s\")</string>
+    <string name="logsheets_updated_success">Logsheets updated successfully</string>
+    <string name="logsheets_some_failed">Some logsheets failed to update. Check logs for details.</string>
+    <string name="error_updating_logsheets">Error updating logsheets: %1$s</string>
+    <string name="download_progress_tiles">Downloaded %1$d / %2$d tiles</string>
+    <string name="download_progress_downloading">Downloading tiles… (%1$d)</string>
+    <string name="region_downloaded_success">Region downloaded successfully</string>
+    <string name="region_download_error">Error downloading region. Please check your internet connection.</string>
 </resources>

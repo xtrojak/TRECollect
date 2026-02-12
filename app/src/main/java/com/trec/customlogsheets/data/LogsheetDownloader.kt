@@ -13,6 +13,7 @@ import okhttp3.*
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -163,7 +164,7 @@ class LogsheetDownloader(private val context: Context) {
             
             // Print summary
             AppLogger.i(TAG, "=== Download Summary ===")
-            AppLogger.i(TAG, "Total time: ${String.format("%.2f", totalTimeSeconds)} seconds")
+            AppLogger.i(TAG, "Total time: ${String.format(Locale.getDefault(), "%.2f", totalTimeSeconds)} seconds")
             if (downloadedFiles.isNotEmpty()) {
                 AppLogger.i(TAG, "Downloaded ${downloadedFiles.size} file(s):")
                 downloadedFiles.forEach { file ->

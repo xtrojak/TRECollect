@@ -685,7 +685,7 @@ class FormEditActivity : AppCompatActivity() {
                     android.util.Log.e("FormEditActivity", "Error creating field ${fieldConfig.id}: ${e.message}", e)
                     // Create a simple error view instead of crashing
                     val errorView = TextView(this).apply {
-                        text = "Error loading field: ${fieldConfig.label}"
+                        text = getString(R.string.error_loading_field, fieldConfig.label)
                         setTextColor(android.graphics.Color.RED)
                     }
                     containerFields.addView(errorView)
@@ -826,7 +826,7 @@ class FormEditActivity : AppCompatActivity() {
             android.util.Log.e("FormEditActivity", "Error creating field view for ${fieldConfig.id}: ${e.message}", e)
             // Return a simple error TextView as fallback
             TextView(this).apply {
-                text = "Error: ${fieldConfig.label}"
+                text = getString(R.string.error_label, fieldConfig.label)
                 setTextColor(android.graphics.Color.RED)
             }
         }
@@ -1308,7 +1308,7 @@ class FormEditActivity : AppCompatActivity() {
         val textSelected = container.findViewById<TextView>(R.id.textSelected)
         
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
         } else {
             textLabel.text = fieldConfig.label
         }
@@ -1357,7 +1357,7 @@ class FormEditActivity : AppCompatActivity() {
         val textSelected = container.findViewById<TextView>(R.id.textSelected)
         
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
         } else {
             textLabel.text = fieldConfig.label
         }
@@ -1408,7 +1408,7 @@ class FormEditActivity : AppCompatActivity() {
         
         // Set label
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
         } else {
             textLabel.text = fieldConfig.label
         }
@@ -1574,7 +1574,7 @@ class FormEditActivity : AppCompatActivity() {
         // Load existing photo filename
         val existingValue = fieldValues[fieldConfig.id]
         if (existingValue?.photoFileName != null) {
-            textFileName.text = "Photo: ${existingValue.photoFileName}"
+            textFileName.text = getString(R.string.photo_filename, existingValue.photoFileName)
             textFileName.visibility = View.VISIBLE
         }
         
@@ -1668,7 +1668,7 @@ class FormEditActivity : AppCompatActivity() {
         val fieldView = fieldViews[fieldId]
         if (fieldView != null) {
             val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = "Photo: $fileName"
+            textFileName?.text = getString(R.string.photo_filename, fileName)
             textFileName?.visibility = View.VISIBLE
             return
         }
@@ -1678,7 +1678,7 @@ class FormEditActivity : AppCompatActivity() {
         val photoView = containerFields.findViewWithTag<View>(fieldId)
         if (photoView != null) {
             val textFileName = photoView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = "Photo: $fileName"
+            textFileName?.text = getString(R.string.photo_filename, fileName)
             textFileName?.visibility = View.VISIBLE
         }
     }
@@ -2127,7 +2127,7 @@ class FormEditActivity : AppCompatActivity() {
             
             // Use custom instance name if provided, otherwise default to "Instance"
             val instanceName = formConfig.fields.firstOrNull { it.id == dynamicFieldId }?.instanceName ?: "Instance"
-            textInstanceNumber.text = "$instanceName ${instanceIndex + 1}"
+            textInstanceNumber.text = getString(R.string.instance_number, instanceName, instanceIndex + 1)
             
             // Store instance index in tag
             instanceView.tag = instanceIndex
@@ -2332,7 +2332,7 @@ class FormEditActivity : AppCompatActivity() {
         
         // Set label
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
         } else {
             textLabel.text = fieldConfig.label
         }
@@ -2544,7 +2544,7 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
         } else {
             textLabel.text = fieldConfig.label
         }
@@ -2597,7 +2597,7 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         if (fieldConfig.required) {
-            textLabel.text = "${fieldConfig.label} *"
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
         } else {
             textLabel.text = fieldConfig.label
         }
@@ -2607,7 +2607,7 @@ class FormEditActivity : AppCompatActivity() {
         // Load existing photo filename
         val existingValue = fieldValues[uniqueFieldId]
         if (existingValue?.photoFileName != null) {
-            textFileName.text = "Photo: ${existingValue.photoFileName}"
+            textFileName.text = getString(R.string.photo_filename, existingValue.photoFileName)
             textFileName.visibility = View.VISIBLE
         }
         
@@ -2892,7 +2892,7 @@ class FormEditActivity : AppCompatActivity() {
             } else {
                 "Instance"
             }
-            textInstanceNumber?.text = "$instanceName ${i + 1}"
+            textInstanceNumber?.text = getString(R.string.instance_number, instanceName, i + 1)
             instanceView?.tag = i
             
             // Update tags in sub-fields
@@ -3090,7 +3090,7 @@ class FormEditActivity : AppCompatActivity() {
         TimePickerDialog(
             this,
             { _, hourOfDay, minute ->
-                val timeString = String.format("%02d:%02d", hourOfDay, minute)
+                val timeString = String.format(Locale.getDefault(), "%02d:%02d", hourOfDay, minute)
                 editText.setText(timeString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
                 markFormChanged()
@@ -3154,7 +3154,7 @@ class FormEditActivity : AppCompatActivity() {
         TimePickerDialog(
             this,
             { _, hourOfDay, minute ->
-                val timeString = String.format("%02d:%02d", hourOfDay, minute)
+                val timeString = String.format(Locale.getDefault(), "%02d:%02d", hourOfDay, minute)
                 editText.setText(timeString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
                 markFormChanged()
@@ -3487,7 +3487,7 @@ class FormEditActivity : AppCompatActivity() {
                     val dateValue = if (defaultValue.lowercase() == "now") {
                         // Get current date in yyyy-MM-dd format
                         val calendar = Calendar.getInstance()
-                        String.format("%04d-%02d-%02d", calendar.get(Calendar.YEAR),
+                        String.format(Locale.getDefault(), "%04d-%02d-%02d", calendar.get(Calendar.YEAR),
                             calendar.get(Calendar.MONTH) + 1,
                             calendar.get(Calendar.DAY_OF_MONTH))
                     } else {
@@ -3502,7 +3502,7 @@ class FormEditActivity : AppCompatActivity() {
                     val timeValue = if (defaultValue.lowercase() == "now") {
                         // Get current time in HH:mm format
                         val calendar = Calendar.getInstance()
-                        String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY),
+                        String.format(Locale.getDefault(), "%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY),
                             calendar.get(Calendar.MINUTE))
                     } else {
                         defaultValue
@@ -3602,7 +3602,7 @@ class FormEditActivity : AppCompatActivity() {
                     val dateValue = if (prefillValue.lowercase() == "now") {
                         // Get current date in yyyy-MM-dd format
                         val calendar = Calendar.getInstance()
-                        String.format("%04d-%02d-%02d", calendar.get(Calendar.YEAR),
+                        String.format(Locale.getDefault(), "%04d-%02d-%02d", calendar.get(Calendar.YEAR),
                             calendar.get(Calendar.MONTH) + 1,
                             calendar.get(Calendar.DAY_OF_MONTH))
                     } else {
@@ -3617,7 +3617,7 @@ class FormEditActivity : AppCompatActivity() {
                     val timeValue = if (prefillValue.lowercase() == "now") {
                         // Get current time in HH:mm format
                         val calendar = Calendar.getInstance()
-                        String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY),
+                        String.format(Locale.getDefault(), "%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY),
                             calendar.get(Calendar.MINUTE))
                     } else {
                         prefillValue

@@ -20,6 +20,7 @@ object AppLogger {
         val throwable: Throwable? = null
     ) {
         fun format(): String {
+            // Use default locale at format time so logs reflect current locale if user changes it
             val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(timestamp))
             val throwableStr = throwable?.let { "\n${it.stackTraceToString()}" } ?: ""
             return "[$time] $level/$tag: $message$throwableStr"

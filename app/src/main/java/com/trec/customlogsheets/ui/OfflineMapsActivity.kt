@@ -165,7 +165,7 @@ class OfflineMapsActivity : AppCompatActivity() {
         adapter.submitList(regions)
         
         if (regions.isEmpty()) {
-            Toast.makeText(this, "No offline maps downloaded yet", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.no_offline_maps_yet), Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -173,7 +173,7 @@ class OfflineMapsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val storageBytes = mapsManager.getStorageUsed()
             val storageMB = storageBytes / (1024.0 * 1024.0)
-            textStorageUsed.text = "Storage used: ${String.format("%.2f", storageMB)} MB"
+            textStorageUsed.text = getString(R.string.storage_used_mb, String.format(Locale.getDefault(), "%.2f", storageMB))
         }
     }
     
@@ -187,12 +187,12 @@ class OfflineMapsActivity : AppCompatActivity() {
         val days = try {
             daysText.toLong().coerceAtLeast(0)
         } catch (e: NumberFormatException) {
-            Toast.makeText(this, "Invalid number", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.invalid_number), Toast.LENGTH_SHORT).show()
             return
         }
         
         settingsPreferences.setMapExpiryDays(days)
-        Toast.makeText(this, "Expiry settings saved", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.expiry_settings_saved), Toast.LENGTH_SHORT).show()
         
         // Update existing regions with new expiry
         lifecycleScope.launch {
@@ -368,19 +368,23 @@ class RegionAdapter(
         
         fun bind(region: OfflineMapRegion, @Suppress("UNUSED_PARAMETER") position: Int) {
             textRegionName.text = region.name
-            textRegionBounds.text = "Bounds: ${String.format("%.4f", region.minLatitude)}, ${String.format("%.4f", region.minLongitude)} to ${String.format("%.4f", region.maxLatitude)}, ${String.format("%.4f", region.maxLongitude)}"
-            textZoomLevels.text = "Zoom: ${region.minZoom} - ${region.maxZoom}"
+            val minLat = String.format(Locale.getDefault(), "%.4f", region.minLatitude)
+            val minLon = String.format(Locale.getDefault(), "%.4f", region.minLongitude)
+            val maxLat = String.format(Locale.getDefault(), "%.4f", region.maxLatitude)
+            val maxLon = String.format(Locale.getDefault(), "%.4f", region.maxLongitude)
+            textRegionBounds.text = itemView.context.getString(R.string.bounds_format, minLat, minLon, maxLat, maxLon)
+            textZoomLevels.text = itemView.context.getString(R.string.zoom_range, region.minZoom, region.maxZoom)
             
             // Calculate and display size
             val sizeBytes = mapsManager.estimateRegionSize(region)
             val sizeMB = sizeBytes / (1024.0 * 1024.0)
-            textRegionSize.text = "Size: ${String.format("%.2f", sizeMB)} MB"
+            textRegionSize.text = itemView.context.getString(R.string.size_mb, String.format(Locale.getDefault(), "%.2f", sizeMB))
             
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-            textDownloadDate.text = "Downloaded: ${dateFormat.format(Date(region.downloadedAt))}"
+            textDownloadDate.text = itemView.context.getString(R.string.downloaded_at, dateFormat.format(Date(region.downloadedAt)))
             
             if (region.expiresAt != null) {
-                textExpiryDate.text = "Expires: ${dateFormat.format(Date(region.expiresAt))}"
+                textExpiryDate.text = itemView.context.getString(R.string.expires_at, dateFormat.format(Date(region.expiresAt)))
                 textExpiryDate.visibility = View.VISIBLE
                 
                 if (region.isExpired()) {
@@ -391,7 +395,7 @@ class RegionAdapter(
                     textExpiryDate.setTextColor(itemView.context.getColor(android.R.color.darker_gray))
                 }
             } else {
-                textExpiryDate.text = "Expires: Never"
+                textExpiryDate.text = itemView.context.getString(R.string.expires_never)
                 textExpiryDate.visibility = View.VISIBLE
                 imageExpired.visibility = View.GONE
             }

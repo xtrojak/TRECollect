@@ -148,26 +148,26 @@ class SiteDetailActivity : AppCompatActivity() {
             when (site.uploadStatus) {
                 UploadStatus.UPLOADED -> {
                     setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_upload, android.R.color.holo_green_dark)
-                    textViewUploadStatus.text = "Uploaded successfully"
+                    textViewUploadStatus.text = getString(R.string.uploaded_successfully)
                     buttonRetryUpload.visibility = android.view.View.VISIBLE
-                    buttonRetryUpload.text = "Re-upload"
+                    buttonRetryUpload.text = getString(R.string.re_upload)
                 }
                 UploadStatus.UPLOAD_FAILED -> {
                     setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_close_clear_cancel, android.R.color.holo_red_dark)
-                    textViewUploadStatus.text = "Upload failed"
+                    textViewUploadStatus.text = getString(R.string.upload_failed)
                     buttonRetryUpload.visibility = android.view.View.VISIBLE
-                    buttonRetryUpload.text = "Retry Upload"
+                    buttonRetryUpload.text = getString(R.string.retry_upload_button)
                 }
                 UploadStatus.UPLOADING -> {
                     setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_upload, android.R.color.holo_orange_dark)
-                    textViewUploadStatus.text = "Uploading..."
+                    textViewUploadStatus.text = getString(R.string.uploading)
                     buttonRetryUpload.visibility = android.view.View.GONE
                 }
                 UploadStatus.NOT_UPLOADED -> {
                     setUploadStatusCompoundDrawable(android.R.drawable.ic_menu_upload, android.R.color.darker_gray)
-                    textViewUploadStatus.text = "Not uploaded"
+                    textViewUploadStatus.text = getString(R.string.not_uploaded)
                     buttonRetryUpload.visibility = android.view.View.VISIBLE
-                    buttonRetryUpload.text = "Upload Now"
+                    buttonRetryUpload.text = getString(R.string.upload_now)
                 }
             }
             
@@ -907,7 +907,7 @@ class SiteDetailActivity : AppCompatActivity() {
             val canAdd = formFileHelper.canAddDynamicFormInstance(site.name, baseForm.id, instanceIndex)
             if (!canAdd) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@SiteDetailActivity, "Please save all existing instances before adding a new one", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@SiteDetailActivity, getString(R.string.please_save_instances_before_add), Toast.LENGTH_LONG).show()
                 }
                 return@launch
             }

@@ -126,13 +126,13 @@ class LogsActivity : AppCompatActivity() {
         }
         
         textLogCount.text = if (filter.isNullOrEmpty()) {
-            "$totalLogCount logs"
+            getString(R.string.logs_count, totalLogCount)
         } else {
-            "$filteredCount of $totalLogCount logs (filtered: \"$filter\")"
+            getString(R.string.logs_count_filtered, filteredCount, totalLogCount, filter)
         }
         
         if (logs.isEmpty()) {
-            textLogs.text = "No logs available${if (!filter.isNullOrEmpty()) " matching \"$filter\"" else ""}"
+            textLogs.text = if (!filter.isNullOrEmpty()) getString(R.string.no_logs_matching, filter) else getString(R.string.no_logs_available)
         } else {
             textLogs.text = logs
             // Auto-scroll to bottom to show most recent logs

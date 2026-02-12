@@ -257,11 +257,11 @@ class SettingsActivity : AppCompatActivity() {
                 iconFolderSelected.visibility = android.view.View.VISIBLE
                 iconFolderSelected.setImageResource(android.R.drawable.checkbox_on_background)
             } catch (e: Exception) {
-                folderPathText.text = "Error loading path: ${e.message}"
+                folderPathText.text = getString(R.string.error_loading_path, e.message ?: "")
                 resetFolderVisualState()
             }
         } else {
-            folderPathText.text = "No folder selected"
+            folderPathText.text = getString(R.string.no_folder_selected)
             resetFolderVisualState()
         }
         
@@ -313,13 +313,13 @@ class SettingsActivity : AppCompatActivity() {
         val isDownloaded = settingsPreferences.areLogsheetsDownloaded()
         
         if (hasDownloaded && isDownloaded) {
-            textLogsheetsStatus.text = "Status: Last download completed"
+            textLogsheetsStatus.text = getString(R.string.status_last_download_completed)
             textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
         } else if (hasDownloaded && !isDownloaded) {
-            textLogsheetsStatus.text = "Status: Partially downloaded"
+            textLogsheetsStatus.text = getString(R.string.status_partially_downloaded)
             textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_orange_dark))
         } else {
-            textLogsheetsStatus.text = "Status: Not downloaded"
+            textLogsheetsStatus.text = getString(R.string.status_not_downloaded)
             textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
         }
     }
@@ -580,18 +580,18 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun updateLogsheets() {
         buttonUpdateLogsheets.isEnabled = false
-        buttonUpdateLogsheets.text = "Downloading..."
-        textLogsheetsStatus.text = "Status: Downloading..."
+        buttonUpdateLogsheets.text = getString(R.string.downloading)
+        textLogsheetsStatus.text = getString(R.string.status_downloading)
         textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_blue_dark))
         progressBarDownload.visibility = android.view.View.VISIBLE
         progressBarDownload.progress = 0
         textDownloadProgress.visibility = android.view.View.VISIBLE
-        textDownloadProgress.text = "Initializing..."
+        textDownloadProgress.text = getString(R.string.initializing)
         
         val progressCallback = object : LogsheetDownloader.DownloadProgressCallback {
             override fun onPhaseStarted(phase: String) {
                 runOnUiThread {
-                    textDownloadProgress.text = "Phase: $phase"
+                    textDownloadProgress.text = getString(R.string.phase_label, phase)
                     progressBarDownload.progress = 0
                 }
             }
@@ -605,16 +605,16 @@ class SettingsActivity : AppCompatActivity() {
                     }
                     progressBarDownload.progress = progress
                     if (total > 0) {
-                        textDownloadProgress.text = "Downloading: $fileName ($current/$total)"
+                        textDownloadProgress.text = getString(R.string.downloading_file, fileName, current, total)
                     } else {
-                        textDownloadProgress.text = "No new files to download"
+                        textDownloadProgress.text = getString(R.string.no_new_files_to_download)
                     }
                 }
             }
             
             override fun onPhaseCompleted(phase: String, downloaded: Int, failed: Int) {
                 runOnUiThread {
-                    textDownloadProgress.text = "$phase: $downloaded downloaded, $failed failed"
+                    textDownloadProgress.text = getString(R.string.phase_downloaded_failed, phase, downloaded, failed)
                 }
             }
         }
@@ -629,22 +629,22 @@ class SettingsActivity : AppCompatActivity() {
                     // Clear form config cache to reload from downloaded files
                     FormConfigLoader.clearCache()
                     PredefinedForms.clearCache()
-                    textLogsheetsStatus.text = "Status: Last download completed"
+                    textLogsheetsStatus.text = getString(R.string.status_last_download_completed)
                     textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
-                    Toast.makeText(this@SettingsActivity, "Logsheets updated successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SettingsActivity, getString(R.string.logsheets_updated_success), Toast.LENGTH_SHORT).show()
                 } else {
-                    textLogsheetsStatus.text = "Status: Update failed"
+                    textLogsheetsStatus.text = getString(R.string.status_update_failed)
                     textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
-                    Toast.makeText(this@SettingsActivity, "Some logsheets failed to update. Check logs for details.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@SettingsActivity, getString(R.string.logsheets_some_failed), Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SettingsActivity", "Error updating logsheets: ${e.message}", e)
-                textLogsheetsStatus.text = "Status: Error - ${e.message?.take(50)}"
+                textLogsheetsStatus.text = getString(R.string.status_error, e.message?.take(50) ?: "")
                 textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
-                Toast.makeText(this@SettingsActivity, "Error updating logsheets: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@SettingsActivity, getString(R.string.error_updating_logsheets, e.message ?: ""), Toast.LENGTH_LONG).show()
             } finally {
                 buttonUpdateLogsheets.isEnabled = true
-                buttonUpdateLogsheets.text = "Update Logsheets"
+                buttonUpdateLogsheets.text = getString(R.string.update_logsheets)
                 progressBarDownload.visibility = android.view.View.GONE
                 textDownloadProgress.visibility = android.view.View.GONE
             }
