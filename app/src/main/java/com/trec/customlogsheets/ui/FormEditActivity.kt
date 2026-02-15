@@ -61,6 +61,7 @@ class FormEditActivity : AppCompatActivity() {
     private var currentPhotoFieldId: String? = null
     private var photoFile: File? = null
     private var currentBarcodeFieldId: String? = null
+    private var gpsPickerLaunched: Boolean = false
     private val barcodeScanner = BarcodeScanning.getClient()
     private var isFormSaved = false // Track if form was just saved
     private val manuallyEditedCalculatedFields = mutableSetOf<String>() // Track manually edited calculated fields
@@ -252,19 +253,22 @@ class FormEditActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
-        if (requestCode == REQUEST_CODE_GPS_PICKER && resultCode == RESULT_OK) {
-            val fieldId = data?.getStringExtra("fieldId")
-            val latitude = data?.getDoubleExtra("latitude", 0.0)
-            val longitude = data?.getDoubleExtra("longitude", 0.0)
-            
-            if (fieldId != null && latitude != null && longitude != null && latitude != 0.0 && longitude != 0.0) {
-                fieldValues[fieldId] = FormFieldValue(
-                    fieldId,
-                    gpsLatitude = latitude,
-                    gpsLongitude = longitude
-                )
-                updateGPSFieldView(fieldId, latitude, longitude)
-                markFormChanged()
+        if (requestCode == REQUEST_CODE_GPS_PICKER) {
+            gpsPickerLaunched = false
+            if (resultCode == RESULT_OK) {
+                val fieldId = data?.getStringExtra("fieldId")
+                val latitude = data?.getDoubleExtra("latitude", 0.0)
+                val longitude = data?.getDoubleExtra("longitude", 0.0)
+                
+                if (fieldId != null && latitude != null && longitude != null && latitude != 0.0 && longitude != 0.0) {
+                    fieldValues[fieldId] = FormFieldValue(
+                        fieldId,
+                        gpsLatitude = latitude,
+                        gpsLongitude = longitude
+                    )
+                    updateGPSFieldView(fieldId, latitude, longitude)
+                    markFormChanged()
+                }
             }
         }
     }
@@ -1531,6 +1535,8 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun openGPSPicker(fieldId: String, currentLat: Double? = null, currentLon: Double? = null) {
+        if (gpsPickerLaunched) return
+        gpsPickerLaunched = true
         val intent = Intent(this, GPSPickerActivity::class.java).apply {
             putExtra("fieldId", fieldId)
             // Pass current coordinates if available

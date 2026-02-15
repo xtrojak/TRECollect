@@ -97,11 +97,25 @@ class SiteDetailActivity : AppCompatActivity() {
         setupFormsList()
         loadFormCompletions()
         
-        // Show offline maps prompt if this is a newly created site
+        // Show offline maps prompt only the first time a site is created (once per site).
+        // We persist "already shown" so that if the activity is recreated (e.g. process death,
+        // rotation), we don't show the dialog again due to the same intent extra being present.
         val showOfflineMapsPrompt = intent.getBooleanExtra("showOfflineMapsPrompt", false)
-        if (showOfflineMapsPrompt) {
+        if (showOfflineMapsPrompt && !hasAlreadyShownOfflineMapsPromptForSite(site.name)) {
+            markOfflineMapsPromptShownForSite(site.name)
             showOfflineMapsPrompt()
         }
+    }
+    
+    private fun hasAlreadyShownOfflineMapsPromptForSite(siteName: String): Boolean {
+        val prefs = getSharedPreferences(PREFS_OFFLINE_MAPS_PROMPT, MODE_PRIVATE)
+        return prefs.getStringSet(KEY_OFFLINE_MAPS_PROMPT_SHOWN_SITES, emptySet())?.contains(siteName) == true
+    }
+    
+    private fun markOfflineMapsPromptShownForSite(siteName: String) {
+        val prefs = getSharedPreferences(PREFS_OFFLINE_MAPS_PROMPT, MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_OFFLINE_MAPS_PROMPT_SHOWN_SITES, emptySet()) ?: emptySet()
+        prefs.edit().putStringSet(KEY_OFFLINE_MAPS_PROMPT_SHOWN_SITES, current + siteName).apply()
     }
     
     override fun onResume() {
@@ -1281,6 +1295,11 @@ class SiteDetailActivity : AppCompatActivity() {
                 // Do nothing, user dismissed the prompt
             }
             .show()
+    }
+    
+    companion object {
+        private const val PREFS_OFFLINE_MAPS_PROMPT = "site_detail_offline_maps_prompt"
+        private const val KEY_OFFLINE_MAPS_PROMPT_SHOWN_SITES = "offline_maps_prompt_shown_sites"
     }
 }
 

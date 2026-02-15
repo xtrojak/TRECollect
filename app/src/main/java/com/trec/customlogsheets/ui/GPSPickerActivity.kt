@@ -95,6 +95,8 @@ class GPSPickerActivity : AppCompatActivity() {
         mapView.overlays.add(0, mapEventsOverlay)
         
         buttonGetCurrentLocation.setOnClickListener {
+            // Prevent multiple rapid taps from stacking location requests
+            if (!buttonGetCurrentLocation.isEnabled) return@setOnClickListener
             getCurrentLocation()
         }
         
@@ -170,15 +172,28 @@ class GPSPickerActivity : AppCompatActivity() {
             return
         }
         
+        // Remove any existing location updates so rapid taps don't stack multiple callbacks
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+            locationCallback = null
+        }
+        
+        buttonGetCurrentLocation.isEnabled = false
+        
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
             .setMaxUpdateDelayMillis(2000)
             .build()
         
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
+                if (isDestroyed || isFinishing) return
                 locationResult.lastLocation?.let { location ->
                     updateMarker(location.latitude, location.longitude)
                     fusedLocationClient.removeLocationUpdates(this)
+                    locationCallback = null
+                    if (!isDestroyed && !isFinishing) {
+                        buttonGetCurrentLocation.isEnabled = true
+                    }
                 }
             }
         }
@@ -191,8 +206,17 @@ class GPSPickerActivity : AppCompatActivity() {
         
         // Also try to get last known location immediately
         fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (isDestroyed || isFinishing) return@addOnSuccessListener
             location?.let {
                 updateMarker(it.latitude, it.longitude)
+            }
+            if (!isDestroyed && !isFinishing) {
+                buttonGetCurrentLocation.isEnabled = true
+            }
+        }
+        fusedLocationClient.lastLocation.addOnFailureListener {
+            if (!isDestroyed && !isFinishing) {
+                buttonGetCurrentLocation.isEnabled = true
             }
         }
     }
@@ -223,7 +247,9 @@ class GPSPickerActivity : AppCompatActivity() {
         mapView.onPause()
         locationCallback?.let {
             fusedLocationClient.removeLocationUpdates(it)
+            locationCallback = null
         }
+        buttonGetCurrentLocation.isEnabled = true
     }
     
     companion object {
