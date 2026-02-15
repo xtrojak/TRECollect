@@ -28,6 +28,7 @@ class CameraActivity : AppCompatActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
+        if (isDestroyed || isFinishing) return@registerForActivityResult
         if (isGranted) {
             startCamera()
         } else {
@@ -87,6 +88,7 @@ class CameraActivity : AppCompatActivity() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         
         cameraProviderFuture.addListener({
+            if (isDestroyed || isFinishing) return@addListener
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
             
             val preview = Preview.Builder()
@@ -144,6 +146,7 @@ class CameraActivity : AppCompatActivity() {
             object : ImageCapture.OnImageSavedCallback {
                 override fun onError(exception: ImageCaptureException) {
                     runOnUiThread {
+                        if (isDestroyed || isFinishing) return@runOnUiThread
                         Toast.makeText(this@CameraActivity, "Error capturing photo: ${exception.message}", Toast.LENGTH_LONG).show()
                     }
                     android.util.Log.e("CameraActivity", "Photo capture failed", exception)
@@ -151,6 +154,7 @@ class CameraActivity : AppCompatActivity() {
                 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     runOnUiThread {
+                        if (isDestroyed || isFinishing) return@runOnUiThread
                         val resultIntent = Intent().apply {
                             outputFileUri?.let { putExtra(EXTRA_OUTPUT_URI, it) }
                         }

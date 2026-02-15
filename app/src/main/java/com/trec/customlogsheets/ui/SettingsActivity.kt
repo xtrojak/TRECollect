@@ -592,6 +592,7 @@ class SettingsActivity : AppCompatActivity() {
         val progressCallback = object : LogsheetDownloader.DownloadProgressCallback {
             override fun onPhaseStarted(phase: String) {
                 runOnUiThread {
+                    if (isDestroyed || isFinishing) return@runOnUiThread
                     textDownloadProgress.text = getString(R.string.phase_label, phase)
                     progressBarDownload.progress = 0
                 }
@@ -599,6 +600,7 @@ class SettingsActivity : AppCompatActivity() {
             
             override fun onFileProgress(current: Int, total: Int, fileName: String) {
                 runOnUiThread {
+                    if (isDestroyed || isFinishing) return@runOnUiThread
                     val progress = if (total > 0) {
                         (current * 100) / total
                     } else {
@@ -615,6 +617,7 @@ class SettingsActivity : AppCompatActivity() {
             
             override fun onPhaseCompleted(phase: String, downloaded: Int, failed: Int) {
                 runOnUiThread {
+                    if (isDestroyed || isFinishing) return@runOnUiThread
                     textDownloadProgress.text = getString(R.string.phase_downloaded_failed, phase, downloaded, failed)
                 }
             }
@@ -624,7 +627,7 @@ class SettingsActivity : AppCompatActivity() {
             try {
                 val downloader = LogsheetDownloader(this@SettingsActivity)
                 val success = downloader.downloadAll(progressCallback)
-                
+                if (isDestroyed || isFinishing) return@launch
                 if (success) {
                     settingsPreferences.setLogsheetsDownloaded(true)
                     // Clear form config cache to reload from downloaded files
@@ -640,14 +643,18 @@ class SettingsActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SettingsActivity", "Error updating logsheets: ${e.message}", e)
-                textLogsheetsStatus.text = getString(R.string.status_error, e.message?.take(50) ?: "")
-                textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
-                Toast.makeText(this@SettingsActivity, getString(R.string.error_updating_logsheets, e.message ?: ""), Toast.LENGTH_LONG).show()
+                if (!isDestroyed && !isFinishing) {
+                    textLogsheetsStatus.text = getString(R.string.status_error, e.message?.take(50) ?: "")
+                    textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))
+                    Toast.makeText(this@SettingsActivity, getString(R.string.error_updating_logsheets, e.message ?: ""), Toast.LENGTH_LONG).show()
+                }
             } finally {
-                buttonUpdateLogsheets.isEnabled = true
-                buttonUpdateLogsheets.text = getString(R.string.update_logsheets)
-                progressBarDownload.visibility = android.view.View.GONE
-                textDownloadProgress.visibility = android.view.View.GONE
+                if (!isDestroyed && !isFinishing) {
+                    buttonUpdateLogsheets.isEnabled = true
+                    buttonUpdateLogsheets.text = getString(R.string.update_logsheets)
+                    progressBarDownload.visibility = android.view.View.GONE
+                    textDownloadProgress.visibility = android.view.View.GONE
+                }
             }
         }
     }

@@ -210,6 +210,7 @@ class FormEditActivity : AppCompatActivity() {
     private val cameraActivityLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        if (isDestroyed || isFinishing) return@registerForActivityResult
         if (result.resultCode == RESULT_OK && photoFile != null) {
             if (currentPhotoFieldId == "temp_barcode_scan" && currentBarcodeFieldId != null) {
                 // Process barcode from photo
@@ -237,6 +238,7 @@ class FormEditActivity : AppCompatActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
+        if (isDestroyed || isFinishing) return@registerForActivityResult
         if (isGranted) {
             if (currentPhotoFieldId == "temp_barcode_scan" && currentBarcodeFieldId != null) {
                 capturePhotoForBarcode()
@@ -3006,7 +3008,7 @@ class FormEditActivity : AppCompatActivity() {
                 val barcodes = withContext(Dispatchers.IO) {
                     Tasks.await(task)
                 }
-                
+                if (isDestroyed || isFinishing) return@launch
                 if (barcodes != null && barcodes.isNotEmpty()) {
                     val barcode = barcodes[0]
                     val barcodeValue = when {
@@ -3025,15 +3027,17 @@ class FormEditActivity : AppCompatActivity() {
                         Toast.makeText(this@FormEditActivity, "Barcode scanned: $barcodeValue", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    Toast.makeText(this@FormEditActivity, "No barcode found in image", Toast.LENGTH_SHORT).show()
+                    if (!isDestroyed && !isFinishing) {
+                        Toast.makeText(this@FormEditActivity, "No barcode found in image", Toast.LENGTH_SHORT).show()
+                    }
                 }
-                
-                // Clean up
                 currentBarcodeFieldId = null
                 currentPhotoFieldId = null
             } catch (e: Exception) {
-                Toast.makeText(this@FormEditActivity, "Error scanning barcode: ${e.message}", Toast.LENGTH_LONG).show()
                 android.util.Log.e("FormEditActivity", "Error processing barcode", e)
+                if (!isDestroyed && !isFinishing) {
+                    Toast.makeText(this@FormEditActivity, "Error scanning barcode: ${e.message}", Toast.LENGTH_LONG).show()
+                }
                 currentBarcodeFieldId = null
                 currentPhotoFieldId = null
             }

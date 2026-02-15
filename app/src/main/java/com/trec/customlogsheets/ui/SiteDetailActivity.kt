@@ -1093,6 +1093,7 @@ class SiteDetailActivity : AppCompatActivity() {
                                                     // before we update the status and rebind (submitList is asynchronous)
                                                     AppLogger.d("SiteDetailActivity", "Scheduling updateFormStatus with 100ms delay")
                                                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                                        if (isDestroyed || isFinishing) return@postDelayed
                                                         AppLogger.d("SiteDetailActivity", "Handler.postDelayed executed, calling updateFormStatus")
                                                         // Update status in place - card remains, just becomes empty
                                                         foundViewHolder.updateFormStatus(form, subIndex, instanceIndex, isCompleted = false, isDraft = false)
@@ -1101,6 +1102,7 @@ class SiteDetailActivity : AppCompatActivity() {
                                                             val instances = withContext(Dispatchers.IO) {
                                                                 formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
                                                             }
+                                                            if (isDestroyed || isFinishing) return@launch
                                                             val statusMap = withContext(Dispatchers.IO) {
                                                                 formFileHelper.getAllFormStatusesWithCache(site.name).statusMap
                                                             }
@@ -1108,6 +1110,7 @@ class SiteDetailActivity : AppCompatActivity() {
                                                                 statusMap, baseForm.id, instanceIndex, instances
                                                             )
                                                             withContext(Dispatchers.Main) {
+                                                                if (isDestroyed || isFinishing) return@withContext
                                                                 foundViewHolder.updateAddButtonState(baseForm) { f ->
                                                                     if (f.id == baseForm.id && f.isDynamic) canAdd else false
                                                                 }

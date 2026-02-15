@@ -252,6 +252,7 @@ class DownloadRegionActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val success = mapsManager.downloadRegion(region) { downloaded, total ->
                 runOnUiThread {
+                    if (isDestroyed || isFinishing) return@runOnUiThread
                     if (total > 0) {
                         progressDialog.isIndeterminate = false
                         progressDialog.max = total
@@ -262,9 +263,8 @@ class DownloadRegionActivity : AppCompatActivity() {
                     }
                 }
             }
-            
+            if (isDestroyed || isFinishing) return@launch
             progressDialog.dismiss()
-            
             if (success) {
                 AppLogger.i("DownloadRegionActivity", "Map region download completed successfully: name='${region.name}'")
                 Toast.makeText(this@DownloadRegionActivity, getString(R.string.region_downloaded_success), Toast.LENGTH_SHORT).show()
