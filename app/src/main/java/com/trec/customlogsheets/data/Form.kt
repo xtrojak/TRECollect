@@ -37,13 +37,13 @@ object PredefinedForms {
         }
         
         val configs = FormConfigLoader.load(context)
-            // Convert FormConfig to Form
+        // Convert FormConfig to Form
         val forms = configs.map { config ->
-                Form(
-                    id = config.id,
-                    name = config.name,
-                    section = config.section,
-                    description = config.description,
+            Form(
+                id = config.id,
+                name = config.name,
+                section = config.section,
+                description = config.description,
                 mandatory = config.mandatory,
                 isDynamic = config.isDynamic,
                 dynamicButtonName = config.dynamicButtonName
