@@ -151,9 +151,23 @@ data class FormData(
         fun getCurrentTimestamp(): String {
             return Instant.now().toString()
         }
-        
+
+        /**
+         * Parses a timestamp attribute from XML (ISO 8601 or legacy Long milliseconds).
+         * @return ISO 8601 string or null if attr is null/invalid
+         */
+        private fun parseTimestampAttribute(attr: String?): String? {
+            if (attr == null) return null
+            return try {
+                Instant.parse(attr).toString()
+            } catch (e: Exception) {
+                attr.toLongOrNull()?.let { Instant.ofEpochMilli(it).toString() }
+            }
+        }
+
         /**
          * Deserializes XML to form data
+         * @throws IllegalArgumentException if logsheetVersion is missing or empty (fail-fast; there should never be such case)
          */
         fun fromXml(xmlString: String): FormData? {
             return try {
@@ -198,40 +212,10 @@ data class FormData(
                                     siteName = parser.getAttributeValue(null, "siteName") ?: ""
                                     isSubmitted = parser.getAttributeValue(null, "isSubmitted")?.toBoolean() ?: false
                                     logsheetVersion = parser.getAttributeValue(null, "logsheetVersion") ?: ""
-                                    
-                                    // Read createdAt - handle both ISO 8601 string and legacy Long format
-                                    val createdAtAttr = parser.getAttributeValue(null, "createdAt")
-                                    createdAt = if (createdAtAttr != null) {
-                                        // Try to parse as ISO 8601 first, fall back to Long conversion if needed
-                                        try {
-                                            // If it's already a valid ISO 8601 string, use it
-                                            Instant.parse(createdAtAttr).toString()
-                                        } catch (e: Exception) {
-                                            // Legacy format: convert Long to ISO 8601
-                                            createdAtAttr.toLongOrNull()?.let { 
-                                                Instant.ofEpochMilli(it).toString()
-                                            }
-                                        }
-                                    } else {
-                                        null
-                                    }
-                                    
-                                    // Read submittedAt - handle both ISO 8601 string and legacy Long format
-                                    val submittedAtAttr = parser.getAttributeValue(null, "submittedAt")
-                                    submittedAt = if (submittedAtAttr != null) {
-                                        // Try to parse as ISO 8601 first, fall back to Long conversion if needed
-                                        try {
-                                            // If it's already a valid ISO 8601 string, use it
-                                            Instant.parse(submittedAtAttr).toString()
-                                        } catch (e: Exception) {
-                                            // Legacy format: convert Long to ISO 8601
-                                            submittedAtAttr.toLongOrNull()?.let { 
-                                                Instant.ofEpochMilli(it).toString()
-                                            }
-                                        }
-                                    } else {
-                                        null
-                                    }
+
+                                    // Read createdAt and submittedAt (ISO 8601 or legacy Long format)
+                                    createdAt = parseTimestampAttribute(parser.getAttributeValue(null, "createdAt"))
+                                    submittedAt = parseTimestampAttribute(parser.getAttributeValue(null, "submittedAt"))
                                 }
                                 "field" -> {
                                     if (!inDynamicInstances) {
@@ -377,20 +361,19 @@ data class FormData(
                 }
                 
                 if (logsheetVersion.isEmpty()) {
-                    android.util.Log.e("FormData", "Missing logsheetVersion in XML for formId: $formId")
-                    null
-                } else {
-                    FormData(
-                        formId = formId,
-                        siteName = siteName,
-                        isSubmitted = isSubmitted,
-                        createdAt = createdAt,
-                        submittedAt = submittedAt,
-                        logsheetVersion = logsheetVersion,
-                        fieldValues = fieldValues
-                    )
+                    throw IllegalArgumentException("Missing or empty logsheetVersion in XML for formId: $formId")
                 }
+                FormData(
+                    formId = formId,
+                    siteName = siteName,
+                    isSubmitted = isSubmitted,
+                    createdAt = createdAt,
+                    submittedAt = submittedAt,
+                    logsheetVersion = logsheetVersion,
+                    fieldValues = fieldValues
+                )
             } catch (e: Exception) {
+                if (e is IllegalArgumentException) throw e
                 android.util.Log.e("FormData", "Error parsing XML: ${e.message}", e)
                 null
             }

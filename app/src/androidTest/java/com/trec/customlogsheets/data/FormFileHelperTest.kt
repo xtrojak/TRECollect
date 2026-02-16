@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -624,7 +625,7 @@ class FormFileHelperTest {
     }
     
     @Test
-    fun formData_missingLogsheetVersion_returnsNull() {
+    fun formData_missingLogsheetVersion_throws() {
         // Create XML without required logsheetVersion attribute
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <form formId="$testFormId" siteName="$testSiteName" isSubmitted="false">
@@ -632,26 +633,24 @@ class FormFileHelperTest {
         <field id="field1" value="test" />
     </fields>
 </form>"""
-        
-        // Deserialize from XML - should return null because logsheetVersion is required
-        val formData = FormData.fromXml(xml)
-        
-        // Should return null when logsheetVersion is missing
-        assertNull(formData)
+
+        // fromXml fails fast when logsheetVersion is missing
+        val e = assertThrows(IllegalArgumentException::class.java) { FormData.fromXml(xml) }
+        assertTrue(e.message!!.contains("logsheetVersion"))
     }
 
     @Test
-    fun formData_emptyLogsheetVersionAttribute_returnsNull() {
+    fun formData_emptyLogsheetVersionAttribute_throws() {
         // XML with logsheetVersion present but empty (e.g. legacy or corrupt write)
-        // Same outcome as missing attribute: fromXml should return null so load/save treat as invalid
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <form formId="$testFormId" siteName="$testSiteName" isSubmitted="false" logsheetVersion="">
     <fields>
         <field id="field1" value="test" />
     </fields>
 </form>"""
-        val formData = FormData.fromXml(xml)
-        assertNull("fromXml should return null when logsheetVersion is empty", formData)
+        // fromXml fails fast when logsheetVersion is empty
+        val e = assertThrows(IllegalArgumentException::class.java) { FormData.fromXml(xml) }
+        assertTrue(e.message!!.contains("logsheetVersion"))
     }
     
     @Test
@@ -686,20 +685,10 @@ class FormFileHelperTest {
     // Edge cases and error conditions
     
     @Test
-    fun formData_emptyXml_returnsNull() {
+    fun formData_emptyXml_throws() {
         val emptyXml = ""
-        val formData = FormData.fromXml(emptyXml)
-        
-        // Empty XML might return null or an empty FormData object depending on parser behavior
-        // Check if it's null or has empty required fields
-        if (formData != null) {
-            // If it returns an object, it should have empty required fields
-            assertTrue("FormId should be empty", formData.formId.isEmpty())
-            assertTrue("SiteName should be empty", formData.siteName.isEmpty())
-        } else {
-            // Null is also acceptable
-            assertNull(formData)
-        }
+        // Empty XML yields no form tag, so logsheetVersion stays empty -> fail-fast
+        assertThrows(IllegalArgumentException::class.java) { FormData.fromXml(emptyXml) }
     }
     
     @Test
@@ -711,33 +700,23 @@ class FormFileHelperTest {
     }
     
     @Test
-    fun formData_missingFormTag_returnsNull() {
+    fun formData_missingFormTag_throws() {
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <notForm formId="$testFormId" siteName="$testSiteName" isSubmitted="false">
     <fields />
 </notForm>"""
-        
-        val formData = FormData.fromXml(xml)
-        
-        // Should return null or handle gracefully (either is acceptable)
-        // Just verify it doesn't crash - the actual behavior (null or empty FormData) is acceptable
-        // Suppress unused variable warning by using it in assertion
-        assertTrue("Should handle gracefully without crashing", formData == null || formData.formId.isEmpty())
+        // No "form" tag -> logsheetVersion never set -> fail-fast
+        assertThrows(IllegalArgumentException::class.java) { FormData.fromXml(xml) }
     }
     
     @Test
-    fun formData_missingRequiredAttributes_handlesGracefully() {
+    fun formData_missingRequiredAttributes_throws() {
         val xml = """<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <form>
     <fields />
 </form>"""
-        
-        val formData = FormData.fromXml(xml)
-        
-        // Should handle missing required attributes
-        if (formData != null) {
-            assertTrue("Should have default or empty values", true)
-        }
+        // form tag present but logsheetVersion missing -> fail-fast
+        assertThrows(IllegalArgumentException::class.java) { FormData.fromXml(xml) }
     }
     
     @Test
