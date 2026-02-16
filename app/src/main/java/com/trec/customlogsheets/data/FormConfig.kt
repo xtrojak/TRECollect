@@ -191,8 +191,8 @@ object FormConfigLoader {
                 return null
             }
             
-            // For LSI, verify subteam matches
-            if (team == "LSI" && subteam.isNotEmpty()) {
+            // When subteam is set, verify team config name matches (for all teams)
+            if (subteam.isNotEmpty()) {
                 if (!configName.equals(subteam, ignoreCase = true)) {
                     android.util.Log.w("FormConfigLoader", "Team config version $teamConfigVersion for ID $teamConfigId has name=$configName, expected $subteam")
                     return null
@@ -449,6 +449,25 @@ object FormConfigLoader {
     }
     
     /**
+     * Loads team config JSON for a site using its stored metadata (teamConfigId, teamConfigVersion).
+     * @return The team config JSON string, or null if metadata is missing or config could not be read
+     */
+    private fun getTeamConfigJsonForSite(context: android.content.Context, siteName: String): String? {
+        return try {
+            val formFileHelper = FormFileHelper(context)
+            val metadata = formFileHelper.loadSiteMetadata(siteName) ?: return null
+            val teamConfigId = metadata.teamConfigId ?: return null
+            val teamConfigVersion = metadata.teamConfigVersion ?: return null
+            val downloader = LogsheetDownloader(context)
+            val teamConfigFile = downloader.getTeamConfigFile(teamConfigId, teamConfigVersion) ?: return null
+            teamConfigFile.readText()
+        } catch (e: Exception) {
+            android.util.Log.w("FormConfigLoader", "Could not load team config for site $siteName: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Loads a specific FormConfig for a formId and version
      * This is used when loading a form submission that has a pinned version
      * @param context The Android context
@@ -465,40 +484,23 @@ object FormConfigLoader {
         orderInSection: Int? = null
     ): FormConfig? {
         val downloader = LogsheetDownloader(context)
-        
+
         // Get the specific version of the logsheet
         val logsheetFile = downloader.getLogsheetFile(formId, version)
             ?: run {
                 android.util.Log.w("FormConfigLoader", "Logsheet version $version not found for formId $formId")
                 return null
             }
-        
+
         val logsheetJson = try {
             logsheetFile.readText()
         } catch (e: Exception) {
             android.util.Log.e("FormConfigLoader", "Error reading logsheet $formId version $version: ${e.message}", e)
             return null
         }
-        
+
         // If siteName is provided, try to get team config for section/title info
-        // Otherwise, use defaults from logsheet config
-        val teamConfigJson = if (siteName != null) {
-            try {
-                val formFileHelper = FormFileHelper(context)
-                val metadata = formFileHelper.loadSiteMetadata(siteName)
-                if (metadata != null && metadata.teamConfigId != null && metadata.teamConfigVersion != null) {
-                    val teamConfigFile = downloader.getTeamConfigFile(metadata.teamConfigId, metadata.teamConfigVersion)
-                    teamConfigFile?.readText()
-                } else {
-                    null
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("FormConfigLoader", "Could not load team config for site $siteName: ${e.message}")
-                null
-                    }
-        } else {
-            null
-        }
+        val teamConfigJson = if (siteName != null) getTeamConfigJsonForSite(context, siteName) else null
         
         // If we have team config, try to find the form entry to get section/title
         // Otherwise, use defaults from logsheet config
