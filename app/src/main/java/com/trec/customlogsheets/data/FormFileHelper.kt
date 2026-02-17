@@ -16,9 +16,9 @@ class FormFileHelper(private val context: Context) {
     companion object {
         /**
          * Sanitizes a section name for use in filenames.
-         * Replaces spaces with underscores and removes/sanitizes special characters.
+         * Replaces spaces with hyphens and removes/sanitizes special characters.
          * Empty or null section names are converted to "default".
-         * 
+         *
          * @param sectionName The section name to sanitize
          * @return Sanitized section name safe for use in filenames
          */
@@ -26,9 +26,9 @@ class FormFileHelper(private val context: Context) {
             if (sectionName.isNullOrBlank()) {
                 return "default"
             }
-            
-            // Replace spaces with underscores
-            var sanitized = sectionName.replace(" ", "_")
+
+            // Replace spaces with hyphens (underscores are used as field separators in filename parsing)
+            var sanitized = sectionName.replace(" ", "-")
             
             // Remove or replace special characters that are problematic in filenames
             // Characters to remove: / \ : * ? " < > |
@@ -44,8 +44,8 @@ class FormFileHelper(private val context: Context) {
                 .replace("<", "")
                 .replace(">", "")
             
-            // Remove leading/trailing underscores and dots (Windows doesn't allow these)
-            sanitized = sanitized.trim('_', '.')
+            // Remove leading/trailing underscores and dots (problematic in filenames)
+            sanitized = sanitized.trim('_', '.', '-')
             
             // If empty after sanitization, use "default"
             if (sanitized.isEmpty()) {
@@ -205,7 +205,7 @@ class FormFileHelper(private val context: Context) {
                 return false
             }
         
-        // Generate filename using new pattern (with sub-index for dynamic forms)
+        // Generate filename
         val fileName = generateFileName(formConfig.section, formData.formId, actualOrderInSection, subIndex)
         
         AppLogger.d("FormFileHelper", "Saving form: site=${formData.siteName}, formId=${formData.formId}, orderInSection=$actualOrderInSection, subIndex=$subIndex, fileName=$fileName")
@@ -846,7 +846,6 @@ class FormFileHelper(private val context: Context) {
      * @return List of sub-indices that have saved forms (draft or submitted), sorted ascending
      */
     fun getDynamicFormInstances(siteName: String, formId: String, orderInSection: Int): List<Int> {
-        val startTime = System.currentTimeMillis()
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
         
@@ -864,11 +863,8 @@ class FormFileHelper(private val context: Context) {
         // Check both ongoing and finished folders
         listOfNotNull(ongoingSiteFolder, finishedSiteFolder).forEach outer@{ siteFolder ->
             if (siteFolder.exists() && siteFolder.canRead()) {
-                val listFilesStartTime = System.currentTimeMillis()
                 val files = siteFolder.listFiles()
-                val listFilesEndTime = System.currentTimeMillis()
-                AppLogger.d("FormFileHelper", "listFiles() for $siteName took ${listFilesEndTime - listFilesStartTime}ms, found ${files.size} files")
-                
+
                 files.forEach { file ->
                     val fileName = file.name ?: return@forEach
                     if (file.isFile && fileName.endsWith(".xml") && fileName != "site_metadata.xml") {
@@ -884,12 +880,10 @@ class FormFileHelper(private val context: Context) {
                 }
             }
         }
-        
-        val endTime = System.currentTimeMillis()
-        AppLogger.d("FormFileHelper", "getDynamicFormInstances($siteName, $formId, $orderInSection) took ${endTime - startTime}ms, found ${instances.size} instances")
+
         return instances.sorted()
     }
-    
+
     /**
      * OPTIMIZATION: Get dynamic form instances from cached file list (avoids listFiles() call)
      */
