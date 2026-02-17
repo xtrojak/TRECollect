@@ -78,77 +78,48 @@ class FormFileHelper(private val context: Context) {
         /**
          * Extracts form ID, orderInSection, and subIndex from a filename.
          * Pattern: ${sectionName}_${formId}_${orderInSection}.xml or ${sectionName}_${formId}_${orderInSection}_${subIndex}.xml
-         * Since section name and formId might contain underscores, we parse from the end.
-         * 
+         *
+         * When [knownFormId] is provided, the filename is split at "_${knownFormId}_" so that formIds
+         * containing underscores (e.g. "horizontal_line") are parsed correctly. When null, parsing
+         * assumes formId is a single segment (no underscores).
+         *
          * @param fileName The filename to parse
-         * @param knownFormId Optional: if the formId is already known (e.g., from XML), use it to parse more accurately
+         * @param knownFormId Optional: when the formId is already known (e.g. from XML), pass it to parse correctly when formId contains underscores
          * @return Triple of (formId, orderInSection, subIndex) or null if parsing fails
          */
         fun extractFormIdAndOrderAndSubIndex(fileName: String, knownFormId: String? = null): Triple<String, Int, Int?>? {
             val nameWithoutExt = fileName.removeSuffix(".xml")
-            
-            // If we know the formId, use it to parse more accurately
+            val parts = nameWithoutExt.split("_")
+
             if (knownFormId != null) {
-                // Find where the formId ends in the filename
-                // Pattern: Section_formId_orderInSection or Section_formId_orderInSection_subIndex
-                val formIdSuffix = "_${knownFormId}_"
-                val formIdIndex = nameWithoutExt.indexOf(formIdSuffix)
-                if (formIdIndex >= 0) {
-                    // Found formId, extract what comes after it
-                    val afterFormId = nameWithoutExt.substring(formIdIndex + formIdSuffix.length)
-                    
-                    // Try pattern with sub-index first: orderInSection_subIndex
-                    val subIndexPattern = Regex("^(\\d+)_(\\d+)$")
-                    val subIndexMatch = subIndexPattern.find(afterFormId)
-                    if (subIndexMatch != null) {
-                        val orderInSection = subIndexMatch.groupValues[1].toIntOrNull() ?: return null
-                        val subIndex = subIndexMatch.groupValues[2].toIntOrNull() ?: return null
-                        return Triple(knownFormId, orderInSection, subIndex)
-                    }
-                    
-                    // Try pattern without sub-index: orderInSection
-                    val orderPattern = Regex("^(\\d+)$")
-                    val orderMatch = orderPattern.find(afterFormId)
-                    if (orderMatch != null) {
-                        val orderInSection = orderMatch.groupValues[1].toIntOrNull() ?: return null
-                        return Triple(knownFormId, orderInSection, null)
-                    }
+                val suffix = "_${knownFormId}_"
+                val idx = nameWithoutExt.indexOf(suffix)
+                if (idx < 0) return null
+                val afterFormId = nameWithoutExt.substring(idx + suffix.length)
+                val afterParts = afterFormId.split("_")
+                return when {
+                    afterParts.size == 1 && afterParts[0].all { it.isDigit() } ->
+                        Triple(knownFormId, afterParts[0].toInt(), null)
+                    afterParts.size == 2 && afterParts[0].all { it.isDigit() } && afterParts[1].all { it.isDigit() } ->
+                        Triple(knownFormId, afterParts[0].toInt(), afterParts[1].toInt())
+                    else -> null
                 }
             }
-            
-            // Fallback to original parsing logic (for backward compatibility or when formId is unknown)
-            // Try pattern with sub-index first: ..._orderInSection_subIndex
-            val subIndexPattern = Regex("_(\\d+)_(\\d+)$")
-            val subIndexMatch = subIndexPattern.find(nameWithoutExt)
-            if (subIndexMatch != null) {
-                val subIndex = subIndexMatch.groupValues[2].toIntOrNull() ?: return null
-                val orderInSection = subIndexMatch.groupValues[1].toIntOrNull() ?: return null
-                
-                // Extract formId by removing the last two parts (orderInSection_subIndex)
-                val beforeSubIndex = nameWithoutExt.take(subIndexMatch.range.first)
-                val lastUnderscoreBeforeOrder = beforeSubIndex.lastIndexOf("_")
-                if (lastUnderscoreBeforeOrder < 0) return null
-                
-                val formId = beforeSubIndex.substring(lastUnderscoreBeforeOrder + 1)
-                return Triple(formId, orderInSection, subIndex)
+
+            if (parts.size < 2) return null
+            val last = parts.last()
+            if (!last.all { it.isDigit() }) return null
+
+            return if (parts.size >= 3 && parts[parts.size - 2].all { it.isDigit() }) {
+                val orderInSection = parts[parts.size - 2].toInt()
+                val subIndex = parts.last().toInt()
+                val formId = parts[parts.size - 3]
+                Triple(formId, orderInSection, subIndex)
+            } else {
+                val orderInSection = parts.last().toInt()
+                val formId = parts[parts.size - 2]
+                Triple(formId, orderInSection, null)
             }
-            
-            // Try pattern without sub-index: ..._orderInSection
-            val orderPattern = Regex("_(\\d+)$")
-            val orderMatch = orderPattern.find(nameWithoutExt)
-            if (orderMatch != null) {
-                val orderInSection = orderMatch.groupValues[1].toIntOrNull() ?: return null
-                
-                // Extract formId by removing the last part (orderInSection)
-                val beforeOrder = nameWithoutExt.take(orderMatch.range.first)
-                val lastUnderscoreBeforeOrder = beforeOrder.lastIndexOf("_")
-                if (lastUnderscoreBeforeOrder < 0) return null
-                
-                val formId = beforeOrder.substring(lastUnderscoreBeforeOrder + 1)
-                return Triple(formId, orderInSection, null)
-            }
-            
-            return null
         }
         
         /**
