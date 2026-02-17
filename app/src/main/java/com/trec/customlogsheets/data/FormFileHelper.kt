@@ -150,16 +150,8 @@ class FormFileHelper(private val context: Context) {
      * @return true if successful, false otherwise
      */
     fun saveFormData(formData: FormData, orderInSection: Int? = null, subIndex: Int? = null): Boolean {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Get the site folder (in ongoing)
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences) ?: return false
-        val siteFolder = ongoingFolder.findFile(formData.siteName) ?: return false
-        
-        if (!siteFolder.exists() || !siteFolder.canWrite()) {
-            return false
-        }
+        val (ongoingSiteFolder, _) = getSiteFolders(formData.siteName)
+        val siteFolder = ongoingSiteFolder?.takeIf { it.exists() && it.canWrite() } ?: return false
         
         // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formData.formId)
@@ -305,6 +297,41 @@ class FormFileHelper(private val context: Context) {
     }
 
     /**
+     * Returns (ongoing site folder, finished site folder) for the given site name. Used to avoid repeating folder lookup in every function.
+     */
+    private fun getSiteFolders(siteName: String): Pair<DocumentFile?, DocumentFile?> {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        val ongoingSiteFolder = folderHelper.getOngoingFolder(settingsPreferences)?.findFile(siteName)
+        val finishedSiteFolder = folderHelper.getFinishedFolder(settingsPreferences)?.findFile(siteName)
+        return Pair(ongoingSiteFolder, finishedSiteFolder)
+    }
+
+    /**
+     * Returns a single site folder for read (ongoing first if present, otherwise finished). Null if neither exists and is readable.
+     */
+    private fun getSiteFolderForRead(siteName: String): DocumentFile? {
+        val (ongoing, finished) = getSiteFolders(siteName)
+        return when {
+            ongoing != null && ongoing.exists() && ongoing.canRead() -> ongoing
+            finished != null && finished.exists() && finished.canRead() -> finished
+            else -> null
+        }
+    }
+
+    /**
+     * Returns a single site folder for write (ongoing first if present and writable, otherwise finished). Null if neither exists and is writable.
+     */
+    private fun getSiteFolderForWrite(siteName: String): DocumentFile? {
+        val (ongoing, finished) = getSiteFolders(siteName)
+        return when {
+            ongoing != null && ongoing.exists() && ongoing.canWrite() -> ongoing
+            finished != null && finished.exists() && finished.canWrite() -> finished
+            else -> null
+        }
+    }
+
+    /**
      * Loads form data from XML file. Single implementation for both draft/submitted filtering and "any" loading.
      * @param siteName The name of the site
      * @param formId The ID of the form
@@ -326,8 +353,6 @@ class FormFileHelper(private val context: Context) {
         acceptAny: Boolean = false,
         cachedFiles: List<DocumentFile>? = null
     ): FormData? {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return null
         val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return null
         val fileName = generateFileName(formConfig.section, formId, actualOrderInSection, subIndex)
@@ -344,10 +369,7 @@ class FormFileHelper(private val context: Context) {
             if (!checkFinished) return null
         }
 
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-        val finishedSiteFolder = finishedFolder?.findFile(siteName)
+        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
 
         // Try the likely folder first: drafts in ongoing, submitted in finished; when acceptAny, try ongoing then finished
         val (firstFolder, secondFolder) = if (loadDraft || acceptAny) {
@@ -449,11 +471,10 @@ class FormFileHelper(private val context: Context) {
      * @param checkFinished If true, also checks the finished folder (for finalized sites)
      */
     fun getAllFormStatusesWithCache(siteName: String, checkFinished: Boolean = true): FormStatusResult {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
         val statusMap = mutableMapOf<String, Pair<Boolean, Boolean>>()
         val allFiles = mutableListOf<DocumentFile>()
-        
+        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
+
         // Helper function to process files in a folder
         fun processFolder(siteFolder: DocumentFile?) {
             if (siteFolder != null && siteFolder.exists() && siteFolder.canRead()) {
@@ -510,19 +531,9 @@ class FormFileHelper(private val context: Context) {
                 }
             }
         }
-        
-        // Check ongoing folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
+
         processFolder(ongoingSiteFolder)
-        
-        // Check finished folder if requested
-        if (checkFinished) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            val finishedSiteFolder = finishedFolder?.findFile(siteName)
-            processFolder(finishedSiteFolder)
-        }
-        
+        if (checkFinished) processFolder(finishedSiteFolder)
         return FormStatusResult(statusMap, allFiles)
     }
     
@@ -535,16 +546,10 @@ class FormFileHelper(private val context: Context) {
      * @return true if the file was deleted or did not exist, false on error
      */
     fun deleteForm(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null): Boolean {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
         val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return false
         val fileName = generateFileName(formConfig.section, formId, actualOrderInSection, subIndex)
-
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-        val finishedSiteFolder = finishedFolder?.findFile(siteName)
+        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
         val siteFolders = listOfNotNull(ongoingSiteFolder, finishedSiteFolder).filter { it.exists() && it.canWrite() }
         if (siteFolders.isEmpty()) {
             AppLogger.w("FormFileHelper", "Site folder not found or not writable: $siteName")
@@ -582,22 +587,10 @@ class FormFileHelper(private val context: Context) {
      * @return true if successful, false otherwise
      */
     fun saveSiteMetadata(siteName: String, metadata: SiteMetadata): Boolean {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Try ongoing folder first, then finished folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        var siteFolder = ongoingFolder?.findFile(siteName)
-        
-        if (siteFolder == null || !siteFolder.exists()) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            siteFolder = finishedFolder?.findFile(siteName)
-        }
-        
-        if (siteFolder == null || !siteFolder.exists() || !siteFolder.canWrite()) {
+        val siteFolder = getSiteFolderForWrite(siteName) ?: run {
             AppLogger.e("FormFileHelper", "Site folder not found or not writable: $siteName")
             return false
-            }
+        }
         
         val fileName = "site_metadata.xml"
         val existingFile = siteFolder.findFile(fileName)
@@ -633,21 +626,7 @@ class FormFileHelper(private val context: Context) {
      * @return SiteMetadata if found, null otherwise
      */
     fun loadSiteMetadata(siteName: String): SiteMetadata? {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Try ongoing folder first, then finished folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        var siteFolder = ongoingFolder?.findFile(siteName)
-        
-        if (siteFolder == null || !siteFolder.exists()) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            siteFolder = finishedFolder?.findFile(siteName)
-        }
-        
-        if (siteFolder == null || !siteFolder.exists() || !siteFolder.canRead()) {
-            return null
-        }
+        val siteFolder = getSiteFolderForRead(siteName) ?: return null
         
         val fileName = "site_metadata.xml"
         val file = siteFolder.findFile(fileName)
@@ -675,18 +654,8 @@ class FormFileHelper(private val context: Context) {
      * @return List of sub-indices that have saved forms (draft or submitted), sorted ascending
      */
     fun getDynamicFormInstances(siteName: String, formId: String, orderInSection: Int): List<Int> {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Get form config to determine section (check if form exists)
         PredefinedForms.getFormConfig(context, formId) ?: return emptyList()
-        
-        // Get site folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-        val finishedSiteFolder = finishedFolder?.findFile(siteName)
-        
+        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
         val instances = mutableSetOf<Int>()
         
         // Check both ongoing and finished folders
@@ -783,18 +752,8 @@ class FormFileHelper(private val context: Context) {
      * @return true if successful, false otherwise
      */
     fun deleteDynamicFormInstance(siteName: String, formId: String, orderInSection: Int, subIndexToDelete: Int): Boolean {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
-        
-        // Get site folder
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-        val finishedSiteFolder = finishedFolder?.findFile(siteName)
-        
+        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
         val siteFolders = listOfNotNull(ongoingSiteFolder, finishedSiteFolder).filter { it.exists() && it.canWrite() }
         if (siteFolders.isEmpty()) {
             AppLogger.e("FormFileHelper", "Site folder not found or not writable: $siteName")
