@@ -768,38 +768,8 @@ class SiteDetailActivity : AppCompatActivity() {
                 result
             }
             
-            // OPTIMIZATION: Use cached status map and instances to calculate canAdd (no XML loading)
-            val canAddCache = mutableMapOf<Pair<String, Int>, Boolean>() // (formId, instanceIndex) -> canAdd
-            dynamicFormInstanceIndices.forEach { (key, instanceIndex) ->
-                val (formId, _) = key
-                val instances = allDynamicInstances[key] ?: emptyList()
-                canAddCache[Pair(formId, instanceIndex)] = formFileHelper.canAddDynamicFormInstanceFromStatus(
-                    allStatuses, formId, instanceIndex, instances
-                )
-            }
-            
-            // Set up canAddDynamicForm callback with cached results
-            // OPTIMIZATION: Pre-compute form to instanceIndex mapping for callback
-            val formToInstanceIndexMap = mutableMapOf<Pair<String, String>, Int>() // (formId, section) -> instanceIndex for callback lookup
-            baseFormsBySection.forEach { (section, forms) ->
-                forms.forEachIndexed { orderInSection, form ->
-                    if (form.isDynamic) {
-                        val instanceIndex = instanceIndexMap[Triple(form.id, section, orderInSection)] ?: 0
-                        formToInstanceIndexMap[Pair(form.id, section)] = instanceIndex
-                    }
-                }
-            }
-            
-            val canAddCallback: (Form) -> Boolean = { form ->
-                if (!form.isDynamic) {
-                    false
-                } else {
-                    // Use pre-computed instance index instead of recalculating
-                    val instanceIndex = formToInstanceIndexMap[Pair(form.id, form.section)] ?: 0
-                    // Use cached result instead of calling canAddDynamicFormInstance
-                    canAddCache[Pair(form.id, instanceIndex)] ?: false
-                }
-            }
+            // canAdd for dynamic forms is always true (instances list only contains sub-indices with saved files)
+            val canAddCallback: (Form) -> Boolean = { form -> form.isDynamic }
             
             // Build sets of form keys for submitted and draft forms using expanded forms
             // OPTIMIZATION: Pre-compute form position to instanceIndex mapping to avoid recalculation
@@ -1097,22 +1067,12 @@ class SiteDetailActivity : AppCompatActivity() {
                                                         AppLogger.d("SiteDetailActivity", "Handler.postDelayed executed, calling updateFormStatus")
                                                         // Update status in place - card remains, just becomes empty
                                                         foundViewHolder.updateFormStatus(form, subIndex, instanceIndex, isCompleted = false, isDraft = false)
-                                                        // Also update the add button state - recalculate canAdd after draft deletion
+                                                        // Update the add button state (canAdd for dynamic forms is always true)
                                                         lifecycleScope.launch {
-                                                            val instances = withContext(Dispatchers.IO) {
-                                                                formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
-                                                            }
-                                                            if (isDestroyed || isFinishing) return@launch
-                                                            val statusMap = withContext(Dispatchers.IO) {
-                                                                formFileHelper.getAllFormStatusesWithCache(site.name).statusMap
-                                                            }
-                                                            val canAdd = formFileHelper.canAddDynamicFormInstanceFromStatus(
-                                                                statusMap, baseForm.id, instanceIndex, instances
-                                                            )
                                                             withContext(Dispatchers.Main) {
                                                                 if (isDestroyed || isFinishing) return@withContext
                                                                 foundViewHolder.updateAddButtonState(baseForm) { f ->
-                                                                    if (f.id == baseForm.id && f.isDynamic) canAdd else false
+                                                                    f.id == baseForm.id && f.isDynamic
                                                                 }
                                                             }
                                                         }

@@ -539,6 +539,8 @@ class FormFileHelper(private val context: Context) {
     
     /**
      * Deletes the form file for this instance (draft or submitted). There is at most one file per (siteName, formId, orderInSection, subIndex).
+     * Assumes the file exists and deletes it; if not found, nothing to delete (returns true).
+     * Only deletes from the ongoing folder; finished sites are protected and forms there are not deleted.
      * @param siteName The name of the site
      * @param formId The ID of the form
      * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
@@ -549,37 +551,27 @@ class FormFileHelper(private val context: Context) {
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
         val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return false
         val fileName = generateFileName(formConfig.section, formId, actualOrderInSection, subIndex)
-        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
-        val siteFolders = listOfNotNull(ongoingSiteFolder, finishedSiteFolder).filter { it.exists() && it.canWrite() }
-        if (siteFolders.isEmpty()) {
-            AppLogger.w("FormFileHelper", "Site folder not found or not writable: $siteName")
+        val (ongoingSiteFolder, _) = getSiteFolders(siteName)
+        val siteFolder = ongoingSiteFolder?.takeIf { it.exists() && it.canWrite() } ?: run {
+            AppLogger.w("FormFileHelper", "Ongoing site folder not found or not writable: $siteName")
             return false
         }
-
-        AppLogger.d("FormFileHelper", "Attempting to delete form: site=$siteName, form=$formId, orderInSection=$actualOrderInSection, subIndex=$subIndex, fileName=$fileName")
-
-        for (siteFolder in siteFolders) {
-            val file = siteFolder.findFile(fileName) ?: continue
-            if (!file.exists()) continue
-            return try {
-                val deleted = file.delete()
-                if (deleted) {
-                    AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, file=$fileName")
-                    true
-                } else {
-                    AppLogger.w("FormFileHelper", "Failed to delete form file (delete() returned false): site=$siteName, form=$formId, file=$fileName")
-                    false
-                }
-            } catch (e: Exception) {
-                AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
-                false
-            }
+        val file = siteFolder.findFile(fileName) ?: run {
+            AppLogger.d("FormFileHelper", "Form file not found (nothing to delete): site=$siteName, file=$fileName")
+            return true
         }
-
-        AppLogger.d("FormFileHelper", "Form file not found (already deleted?): site=$siteName, form=$formId, file=$fileName")
-        return true
+        if (!file.exists()) return true
+        return try {
+            val deleted = file.delete()
+            if (deleted) AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, file=$fileName")
+            else AppLogger.w("FormFileHelper", "Failed to delete form file: site=$siteName, form=$formId, file=$fileName")
+            deleted
+        } catch (e: Exception) {
+            AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
+            false
+        }
     }
-    
+
     /**
      * Saves site metadata to site_metadata.xml in the site folder
      * @param siteName The name of the site
@@ -647,51 +639,14 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
-     * Gets all dynamic instances of a form (by sub-index).
-     * @param siteName The name of the site
-     * @param formId The form ID
-     * @param orderInSection The 0-based index of the form within its section
-     * @return List of sub-indices that have saved forms (draft or submitted), sorted ascending
+     * Parses a list of files and returns the set of dynamic form sub-indices matching (formId, orderInSection).
+     * Shared by getDynamicFormInstances and getDynamicFormInstancesFromCache.
      */
-    fun getDynamicFormInstances(siteName: String, formId: String, orderInSection: Int): List<Int> {
-        PredefinedForms.getFormConfig(context, formId) ?: return emptyList()
-        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
+    private fun parseDynamicInstancesFromFiles(files: List<DocumentFile>, formId: String, orderInSection: Int): Set<Int> {
         val instances = mutableSetOf<Int>()
-        
-        // Check both ongoing and finished folders
-        listOfNotNull(ongoingSiteFolder, finishedSiteFolder).forEach outer@{ siteFolder ->
-            if (siteFolder.exists() && siteFolder.canRead()) {
-                val files = siteFolder.listFiles()
-
-                files.forEach { file ->
-                    val fileName = file.name ?: return@forEach
-                    if (file.isFile && fileName.endsWith(".xml") && fileName != "site_metadata.xml") {
-                        // Use known formId to parse filename more accurately
-                        val extracted = extractFormIdAndOrderAndSubIndex(fileName, formId)
-                        if (extracted != null) {
-                            val (fileFormId, fileOrderInSection, fileSubIndex) = extracted
-                            if (fileFormId == formId && fileOrderInSection == orderInSection && fileSubIndex != null) {
-                                instances.add(fileSubIndex)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return instances.sorted()
-    }
-
-    /**
-     * OPTIMIZATION: Get dynamic form instances from cached file list (avoids listFiles() call)
-     */
-    fun getDynamicFormInstancesFromCache(files: List<DocumentFile>, formId: String, orderInSection: Int): List<Int> {
-        val instances = mutableSetOf<Int>()
-        
         files.forEach { file ->
             val fileName = file.name ?: return@forEach
-            if (fileName.endsWith(".xml") && fileName != "site_metadata.xml") {
-                // Use known formId to parse filename more accurately
+            if (file.isFile && fileName.endsWith(".xml") && fileName != "site_metadata.xml") {
                 val extracted = extractFormIdAndOrderAndSubIndex(fileName, formId)
                 if (extracted != null) {
                     val (fileFormId, fileOrderInSection, fileSubIndex) = extracted
@@ -701,50 +656,48 @@ class FormFileHelper(private val context: Context) {
                 }
             }
         }
-        
-        return instances.sorted()
+        return instances
     }
-    
+
     /**
-     * Checks if all existing dynamic instances of a form are saved (draft or submitted).
-     * This determines if a new instance can be added.
+     * Gets all dynamic instances of a form (by sub-index).
      * @param siteName The name of the site
      * @param formId The form ID
      * @param orderInSection The 0-based index of the form within its section
-     * @return true if all instances are saved, false if any instance is unsaved
+     * @return List of sub-indices that have saved forms (draft or submitted), sorted ascending
+     */
+    fun getDynamicFormInstances(siteName: String, formId: String, orderInSection: Int): List<Int> {
+        PredefinedForms.getFormConfig(context, formId) ?: return emptyList()
+        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
+        val allFiles = mutableListOf<DocumentFile>()
+        listOfNotNull(ongoingSiteFolder, finishedSiteFolder).forEach { siteFolder ->
+            if (siteFolder.exists() && siteFolder.canRead()) {
+                siteFolder.listFiles().filter { it.isFile }.let { allFiles.addAll(it) }
+            }
+        }
+        return parseDynamicInstancesFromFiles(allFiles, formId, orderInSection).sorted()
+    }
+
+    /**
+     * OPTIMIZATION: Get dynamic form instances from cached file list (avoids listFiles() call)
+     */
+    fun getDynamicFormInstancesFromCache(files: List<DocumentFile>, formId: String, orderInSection: Int): List<Int> {
+        return parseDynamicInstancesFromFiles(files, formId, orderInSection).sorted()
+    }
+    
+    /**
+     * Checks if a new dynamic form instance can be added. If there are existing instances, they were
+     * discovered from saved files (draft or submitted), so one of those exists per instance; no need to re-check.
+     * @return true (can always add when this is used after listing instances)
      */
     fun canAddDynamicFormInstance(siteName: String, formId: String, orderInSection: Int): Boolean {
-        val instances = getDynamicFormInstances(siteName, formId, orderInSection)
-        if (instances.isEmpty()) {
-            return true // No instances yet, can add first one
-        }
-        
-        // Check if all instances have at least a draft or submitted form
-        return instances.all { subIndex ->
-            val draft = loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = true, checkFinished = true)
-            val submitted = loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false, checkFinished = true)
-            draft != null || submitted != null
-        }
+        getDynamicFormInstances(siteName, formId, orderInSection)
+        return true // Instances list only contains sub-indices that have a saved file; no need to re-check draft/submitted
     }
-    
-    /**
-     * OPTIMIZATION: Check if can add dynamic form instance using cached status map (avoids loading XML files)
-     */
-    fun canAddDynamicFormInstanceFromStatus(statusMap: Map<String, Pair<Boolean, Boolean>>, formId: String, orderInSection: Int, instances: List<Int>): Boolean {
-        if (instances.isEmpty()) {
-            return true // No instances yet, can add first one
-        }
-        
-        // Check if all instances have at least a draft or submitted form using status map
-        return instances.all { subIndex ->
-            val key = "${formId}_${orderInSection}_${subIndex}"
-            val status = statusMap[key]
-            status != null && (status.first || status.second) // isSubmitted || hasDraft
-        }
-    }
-    
+
     /**
      * Deletes a dynamic form instance and reindexes all remaining instances.
+     * Only operates on the ongoing folder; finished sites are protected and forms there are not deleted.
      * @param siteName The name of the site
      * @param formId The form ID
      * @param orderInSection The 0-based index of the form within its section
@@ -753,83 +706,57 @@ class FormFileHelper(private val context: Context) {
      */
     fun deleteDynamicFormInstance(siteName: String, formId: String, orderInSection: Int, subIndexToDelete: Int): Boolean {
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
-        val (ongoingSiteFolder, finishedSiteFolder) = getSiteFolders(siteName)
-        val siteFolders = listOfNotNull(ongoingSiteFolder, finishedSiteFolder).filter { it.exists() && it.canWrite() }
-        if (siteFolders.isEmpty()) {
-            AppLogger.e("FormFileHelper", "Site folder not found or not writable: $siteName")
+        val (ongoingSiteFolder, _) = getSiteFolders(siteName)
+        val siteFolder = ongoingSiteFolder?.takeIf { it.exists() && it.canWrite() } ?: run {
+            AppLogger.e("FormFileHelper", "Ongoing site folder not found or not writable: $siteName")
             return false
         }
-        
-        // Get all instances
         val allInstances = getDynamicFormInstances(siteName, formId, orderInSection)
         if (!allInstances.contains(subIndexToDelete)) {
             AppLogger.w("FormFileHelper", "Sub-index $subIndexToDelete not found for form $formId")
             return false
         }
-        
-        // Delete the file(s) for this sub-index (both draft and submitted if they exist)
-        var deleted = false
-        siteFolders.forEach { siteFolder ->
-            val fileNameToDelete = generateFileName(formConfig.section, formId, orderInSection, subIndexToDelete)
-            val fileToDelete = siteFolder.findFile(fileNameToDelete)
-            if (fileToDelete != null && fileToDelete.exists()) {
-                try {
-                    if (fileToDelete.delete()) {
-                        deleted = true
-                        AppLogger.d("FormFileHelper", "Deleted file: $fileNameToDelete")
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e("FormFileHelper", "Error deleting file $fileNameToDelete: ${e.message}", e)
-                }
-            }
-        }
-        
-        if (!deleted) {
+        val fileNameToDelete = generateFileName(formConfig.section, formId, orderInSection, subIndexToDelete)
+        val fileToDelete = siteFolder.findFile(fileNameToDelete)
+        if (fileToDelete == null || !fileToDelete.exists()) {
             AppLogger.w("FormFileHelper", "No file found to delete for sub-index $subIndexToDelete")
             return false
         }
-        
-        // Reindex remaining instances
-        val remainingInstances = allInstances.filter { it != subIndexToDelete && it > subIndexToDelete }
+        try {
+            if (!fileToDelete.delete()) {
+                AppLogger.w("FormFileHelper", "Failed to delete file: $fileNameToDelete")
+                return false
+            }
+            AppLogger.d("FormFileHelper", "Deleted file: $fileNameToDelete")
+        } catch (e: Exception) {
+            AppLogger.e("FormFileHelper", "Error deleting file $fileNameToDelete: ${e.message}", e)
+            return false
+        }
+        val remainingInstances = allInstances.filter { it > subIndexToDelete }
         if (remainingInstances.isEmpty()) {
             return true // No reindexing needed
         }
-        
-        // Rename files in descending order to avoid conflicts
-        remainingInstances.sortedDescending().forEach { oldSubIndex ->
-            val newSubIndex = oldSubIndex - 1
+        // Move each higher index down by one, in ascending order (2→1, then 3→2). The target slot
+        // is always free (freed by the delete or by the previous move), so we never overwrite a file.
+        remainingInstances.sorted().forEachIndexed { i, oldSubIndex ->
+            val newSubIndex = subIndexToDelete + i
             val oldFileName = generateFileName(formConfig.section, formId, orderInSection, oldSubIndex)
             val newFileName = generateFileName(formConfig.section, formId, orderInSection, newSubIndex)
-            
-            siteFolders.forEach { siteFolder ->
-                val oldFile = siteFolder.findFile(oldFileName)
-                if (oldFile != null && oldFile.exists()) {
-                    try {
-                        // Read the content
-                        val inputStream = context.contentResolver.openInputStream(oldFile.uri)
-                        val content = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                        inputStream?.close()
-                        
-                        if (content.isNotEmpty()) {
-                            // Create new file with new name
-                            val newFile = siteFolder.createFile("text/xml", newFileName)
-                            if (newFile != null) {
-                                val outputStream = context.contentResolver.openOutputStream(newFile.uri)
-                                outputStream?.use { it.write(content.toByteArray()) }
-                                outputStream?.close()
-                                
-                                // Delete old file
-                                oldFile.delete()
-                                AppLogger.d("FormFileHelper", "Reindexed: $oldFileName -> $newFileName")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e("FormFileHelper", "Error reindexing file $oldFileName: ${e.message}", e)
-                    }
+            val oldFile = siteFolder.findFile(oldFileName) ?: return@forEachIndexed
+            if (!oldFile.exists()) return@forEachIndexed
+            try {
+                val content = context.contentResolver.openInputStream(oldFile.uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                if (content.isEmpty()) return@forEachIndexed
+                val newFile = siteFolder.createFile("text/xml", newFileName)
+                if (newFile != null) {
+                    context.contentResolver.openOutputStream(newFile.uri)?.use { it.write(content.toByteArray()) }
+                    oldFile.delete()
+                    AppLogger.d("FormFileHelper", "Reindexed: $oldFileName -> $newFileName")
                 }
+            } catch (e: Exception) {
+                AppLogger.e("FormFileHelper", "Error reindexing file $oldFileName: ${e.message}", e)
             }
         }
-        
         return true
     }
 }
