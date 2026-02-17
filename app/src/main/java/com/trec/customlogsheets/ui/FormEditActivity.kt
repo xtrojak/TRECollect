@@ -524,26 +524,22 @@ class FormEditActivity : AppCompatActivity() {
     private fun clearForm() {
         lifecycleScope.launch {
             try {
-                // Delete both draft and submitted versions
-                // Pass orderInSection and subIndex to ensure correct file is deleted
-                val draftDeleted = withContext(Dispatchers.IO) {
-                    formFileHelper.deleteForm(siteName, formId, orderInSection, subIndex, isDraft = true)
+                // There is at most one saved file per form instance (draft or submitted)
+                val deleted = withContext(Dispatchers.IO) {
+                    formFileHelper.deleteForm(siteName, formId, orderInSection, subIndex)
                 }
-                val submittedDeleted = withContext(Dispatchers.IO) {
-                    formFileHelper.deleteForm(siteName, formId, orderInSection, subIndex, isDraft = false)
-                }
-                
-                AppLogger.d("FormEditActivity", "Clear form result: draftDeleted=$draftDeleted, submittedDeleted=$submittedDeleted, site=$siteName, form=$formId, orderInSection=$orderInSection, subIndex=$subIndex")
-                
+
+                AppLogger.d("FormEditActivity", "Clear form result: deleted=$deleted, site=$siteName, form=$formId, orderInSection=$orderInSection, subIndex=$subIndex")
+
                 // Clear all field values
                 fieldValues.clear()
                 initialFieldValues.clear()
-                
+
                 // Re-render fields to show empty state
                 renderFields()
-                
+
                 withContext(Dispatchers.Main) {
-                    if (draftDeleted || submittedDeleted) {
+                    if (deleted) {
                 Toast.makeText(this@FormEditActivity, "Form cleared", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this@FormEditActivity, "Form cleared (no files found to delete)", Toast.LENGTH_SHORT).show()

@@ -377,21 +377,22 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
-     * Checks if a form has been submitted (not just saved as draft)
+     * Checks if a form has been submitted (not just saved as draft). Uses a single load and [submittedAt];
+     * see [hasDraft] for the inverse when a file exists (mutually exclusive).
      * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
      */
     fun isFormSubmitted(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null): Boolean {
-        val formData = loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false)
-        return formData != null && formData.submittedAt != null
+        return loadFormDataAny(siteName, formId, orderInSection, subIndex)?.submittedAt != null
     }
-    
+
     /**
-     * Checks if a form has a draft version
+     * Checks if a form has a draft version (saved but not submitted). When a file exists it is either draft or submitted;
+     * this and [isFormSubmitted] are mutually exclusive and both false when no file exists.
      * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
      * @param subIndex The 0-based sub-index for dynamic forms (null for non-dynamic forms)
      */
     fun hasDraft(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null): Boolean {
-        val formData = loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = true)
+        val formData = loadFormDataAny(siteName, formId, orderInSection, subIndex)
         return formData != null && formData.submittedAt == null
     }
     
@@ -526,101 +527,51 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
-     * Deletes a form file (draft or submitted)
+     * Deletes the form file for this instance (draft or submitted). There is at most one file per (siteName, formId, orderInSection, subIndex).
      * @param siteName The name of the site
      * @param formId The ID of the form
      * @param orderInSection The 0-based index of this specific form instance in its section (optional, will be calculated if not provided)
-     * @param isDraft If true, deletes draft version, if false, deletes submitted version
-     * @return true if successful, false otherwise
+     * @param subIndex The 0-based sub-index for dynamic forms (null for non-dynamic forms)
+     * @return true if the file was deleted or did not exist, false on error
      */
-    fun deleteForm(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null, isDraft: Boolean): Boolean {
+    fun deleteForm(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null): Boolean {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
-        
-        // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return false
-        
-        // Get order in section (0-based)
-        // If provided, use it; otherwise calculate it (for backward compatibility)
         val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return false
-        
-        // Generate expected filename (include subIndex for dynamic forms)
         val fileName = generateFileName(formConfig.section, formId, actualOrderInSection, subIndex)
-        
-        // Check both ongoing and finished folders
+
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
         val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
         val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
         val finishedSiteFolder = finishedFolder?.findFile(siteName)
-        
         val siteFolders = listOfNotNull(ongoingSiteFolder, finishedSiteFolder).filter { it.exists() && it.canWrite() }
         if (siteFolders.isEmpty()) {
             AppLogger.w("FormFileHelper", "Site folder not found or not writable: $siteName")
             return false
         }
-        
-        AppLogger.d("FormFileHelper", "Attempting to delete form: site=$siteName, form=$formId, orderInSection=$actualOrderInSection, subIndex=$subIndex, isDraft=$isDraft, fileName=$fileName")
-        
-        // Try to delete from any folder that has the file
+
+        AppLogger.d("FormFileHelper", "Attempting to delete form: site=$siteName, form=$formId, orderInSection=$actualOrderInSection, subIndex=$subIndex, fileName=$fileName")
+
         for (siteFolder in siteFolders) {
-            val file = siteFolder.findFile(fileName)
-            if (file != null && file.exists()) {
-                AppLogger.d("FormFileHelper", "Found file to delete: ${file.uri}, exists=${file.exists()}, canWrite=${file.canWrite()}")
-                try {
-                    // Verify it's the correct form before deleting
-                    val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                    val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                    inputStream?.close()
-                    val formData = FormData.fromXml(xmlContent)
-                    
-                    if (formData != null && formData.formId == formId) {
-                        val isDraftFile = formData.submittedAt == null
-                        if ((isDraft && isDraftFile) || (!isDraft && !isDraftFile)) {
+            val file = siteFolder.findFile(fileName) ?: continue
+            if (!file.exists()) continue
+            return try {
                 val deleted = file.delete()
                 if (deleted) {
-                    AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, isDraft=$isDraft, file=$fileName")
-                                return true
-                            } else {
-                                AppLogger.w("FormFileHelper", "Failed to delete form file (delete() returned false): site=$siteName, form=$formId, file=$fileName, uri=${file.uri}")
-                            }
-                        } else {
-                            AppLogger.w("FormFileHelper", "Form file type mismatch: expected isDraft=$isDraft but file isDraft=$isDraftFile, site=$siteName, form=$formId, file=$fileName")
-                            // Still try to delete if the file type doesn't match (might be wrong version)
-                            val deleted = file.delete()
-                            if (deleted) {
-                                AppLogger.i("FormFileHelper", "Deleted form file despite type mismatch: site=$siteName, form=$formId, file=$fileName")
-                                return true
-                            }
-                        }
-                    } else {
-                        AppLogger.w("FormFileHelper", "Form ID mismatch or null in file: expected=$formId, found=${formData?.formId}, site=$siteName, file=$fileName")
-                        // If we can't verify the form ID, still try to delete (file might be corrupted or wrong)
-                        // But only if the filename matches what we expect
-                        val deleted = file.delete()
-                        if (deleted) {
-                            AppLogger.i("FormFileHelper", "Deleted form file despite ID mismatch/null: site=$siteName, form=$formId, file=$fileName")
-                            return true
+                    AppLogger.i("FormFileHelper", "Deleted form: site=$siteName, form=$formId, file=$fileName")
+                    true
                 } else {
-                            AppLogger.w("FormFileHelper", "Failed to delete file with ID mismatch: site=$siteName, form=$formId, file=$fileName")
+                    AppLogger.w("FormFileHelper", "Failed to delete form file (delete() returned false): site=$siteName, form=$formId, file=$fileName")
+                    false
                 }
-                    }
             } catch (e: Exception) {
-                    AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName, error=${e.message}", e)
-                    // Try to delete anyway if we can't verify (might be corrupted file)
-                    try {
-                        if (file.delete()) {
-                            AppLogger.w("FormFileHelper", "Deleted form file despite verification error: site=$siteName, form=$formId, file=$fileName")
-                            return true
-                        }
-                    } catch (deleteException: Exception) {
-                        AppLogger.e("FormFileHelper", "Failed to delete file even after verification error: ${deleteException.message}", deleteException)
-                    }
-                }
+                AppLogger.e("FormFileHelper", "Error deleting form: site=$siteName, form=$formId, file=$fileName", e)
+                false
             }
         }
-        
-        // File doesn't exist, consider it already deleted
-        AppLogger.d("FormFileHelper", "Form file not found (already deleted?): site=$siteName, form=$formId, file=$fileName, orderInSection=$actualOrderInSection, subIndex=$subIndex")
+
+        AppLogger.d("FormFileHelper", "Form file not found (already deleted?): site=$siteName, form=$formId, file=$fileName")
         return true
     }
     

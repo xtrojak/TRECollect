@@ -1055,7 +1055,7 @@ class SiteDetailActivity : AppCompatActivity() {
                                 AppLogger.d("SiteDetailActivity", "User confirmed clearing draft")
                                 lifecycleScope.launch {
                                     val success = withContext(Dispatchers.IO) {
-                                        formFileHelper.deleteForm(site.name, baseForm.id, instanceIndex, subIndex, isDraft = true)
+                                        formFileHelper.deleteForm(site.name, baseForm.id, instanceIndex, subIndex)
                                     }
                                     if (success) {
                                         AppLogger.d("SiteDetailActivity", "Draft deleted successfully, updating UI in place")
@@ -1151,7 +1151,7 @@ class SiteDetailActivity : AppCompatActivity() {
                             .setPositiveButton("Delete") { _, _ ->
                                 lifecycleScope.launch {
                                     val success = withContext(Dispatchers.IO) {
-                                        formFileHelper.deleteForm(site.name, baseForm.id, instanceIndex, subIndex, isDraft = false)
+                                        formFileHelper.deleteForm(site.name, baseForm.id, instanceIndex, subIndex)
                                     }
                                     if (success) {
                                         Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
