@@ -191,7 +191,9 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
-        // If updating an existing file, verify the version matches (don't allow version changes)
+        // If updating an existing file, verify logsheetVersion matches so saved data stays in sync
+        // with form definitions. A mismatch should not occur in normal flow; it may indicate a bug
+        // or a legacy file from an older app version. We reject the save to avoid corrupting data.
         if (!isNewFile) {
             existingFile?.let { file ->
                 try {
@@ -272,201 +274,106 @@ class FormFileHelper(private val context: Context) {
     }
     
     /**
-     * Loads form data from XML file
+     * Loads form data from a single file. Returns null if formId doesn't match or filter doesn't match.
+     * @param filterDraft true = only draft, false = only submitted, null = accept any
+     */
+    private fun loadFormDataFromFile(file: DocumentFile, formId: String, filterDraft: Boolean?): FormData? {
+        if (!file.exists() || !file.canRead()) return null
+        return try {
+            val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
+            val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+            val formData = FormData.fromXml(xmlContent)
+            if (formData == null || formData.formId != formId) return null
+            when (filterDraft) {
+                null -> formData
+                true -> if (formData.submittedAt == null) formData else null
+                false -> if (formData.submittedAt != null) formData else null
+            }
+        } catch (e: Exception) {
+            AppLogger.e("FormFileHelper", "Error loading form from file: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Loads form data from a site folder (ongoing or finished). Tries findFile(fileName) and parses if found.
+     */
+    private fun loadFormDataFromSiteFolder(siteFolder: DocumentFile?, fileName: String, formId: String, filterDraft: Boolean?): FormData? {
+        if (siteFolder == null || !siteFolder.exists() || !siteFolder.canRead()) return null
+        val file = siteFolder.findFile(fileName) ?: return null
+        return loadFormDataFromFile(file, formId, filterDraft)
+    }
+
+    /**
+     * Loads form data from XML file. Single implementation for both draft/submitted filtering and "any" loading.
      * @param siteName The name of the site
      * @param formId The ID of the form
      * @param orderInSection The 0-based index of this specific form instance in its section (required when same formId appears multiple times)
      * @param subIndex The 0-based sub-index for dynamic forms (null for non-dynamic forms)
-     * @param loadDraft If true, loads only if it's a draft (submittedAt is null), if false, loads only if submitted (submittedAt is set)
+     * @param loadDraft If true, loads only draft; if false, loads only submitted. Ignored when acceptAny is true.
      * @param checkFinished If true, also checks the finished folder (for finalized sites)
+     * @param acceptAny If true, returns the first form found (draft or submitted) without filtering
+     * @param cachedFiles If non-null, look up file in this list first (avoids findFile() when listing was already done)
      * @return FormData if found, null otherwise
      */
-    fun loadFormData(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null, loadDraft: Boolean = false, checkFinished: Boolean = true): FormData? {
+    fun loadFormData(
+        siteName: String,
+        formId: String,
+        orderInSection: Int? = null,
+        subIndex: Int? = null,
+        loadDraft: Boolean = false,
+        checkFinished: Boolean = true,
+        acceptAny: Boolean = false,
+        cachedFiles: List<DocumentFile>? = null
+    ): FormData? {
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
-        
-        // Get form config to determine section
         val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return null
-        
-        // Get order in section (0-based)
-        // If provided, use it; otherwise calculate it (for backward compatibility)
         val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return null
-        
-        // Generate expected filename (with sub-index for dynamic forms)
         val fileName = generateFileName(formConfig.section, formId, actualOrderInSection, subIndex)
-        
-        AppLogger.d("FormFileHelper", "Loading form: site=$siteName, formId=$formId, orderInSection=$actualOrderInSection, subIndex=$subIndex, fileName=$fileName, loadDraft=$loadDraft")
-        
-        // Try ongoing folder first
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
-            val file = ongoingSiteFolder.findFile(fileName)
-            if (file != null && file.exists() && file.canRead()) {
-                return try {
-                    val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                    val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                    inputStream?.close()
-                    val formData = FormData.fromXml(xmlContent)
-                    // Verify it's the correct formId (safety check)
-                    if (formData != null && formData.formId == formId) {
-                        val isDraft = formData.submittedAt == null
-                        if ((loadDraft && isDraft) || (!loadDraft && !isDraft)) {
-                            formData
-                        } else {
-                            null
-                        }
-                    } else {
-                        null
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("FormFileHelper", "Error loading form from ongoing: ${e.message}", e)
-                    null
-                }
-            }
-        }
-        
-        // If not found in ongoing and checkFinished is true, try finished folder
-        if (checkFinished) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            val finishedSiteFolder = finishedFolder?.findFile(siteName)
-            if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
-                val file = finishedSiteFolder.findFile(fileName)
-                if (file != null && file.exists() && file.canRead()) {
-                    return try {
-                        val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                        val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                        inputStream?.close()
-                        val formData = FormData.fromXml(xmlContent)
-                        // Verify it's the correct formId (safety check)
-                        if (formData != null && formData.formId == formId) {
-                            val isDraft = formData.submittedAt == null
-                            if ((loadDraft && isDraft) || (!loadDraft && !isDraft)) {
-                                formData
-                            } else {
-                                null
-                            }
-                        } else {
-                            null
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("FormFileHelper", "Error loading form from finished: ${e.message}", e)
-                        null
-                    }
-                }
-            }
-        }
-        
-        return null
-    }
-    
-    /**
-     * OPTIMIZATION: Loads form data without filtering by draft/submitted status
-     * Returns the first form found (draft or submitted), useful when you want to check status after loading
-     * This avoids loading the file twice when checking both draft and submitted
-     */
-    fun loadFormDataAny(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null, checkFinished: Boolean = true): FormData? {
-        return loadFormDataAny(siteName, formId, orderInSection, subIndex, checkFinished, null)
-    }
-    
-    /**
-     * OPTIMIZATION: Overload that accepts cached file list to avoid slow findFile() calls
-     */
-    fun loadFormDataAny(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null, checkFinished: Boolean = true, cachedFiles: List<DocumentFile>? = null): FormData? {
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Get form config to determine section
-        val formConfig = PredefinedForms.getFormConfig(context, formId) ?: return null
-        
-        // Get order in section (0-based)
-        val actualOrderInSection = orderInSection ?: getOrderInSection(context, formId) ?: return null
-        
-        // Generate expected filename (with sub-index for dynamic forms)
-        val fileName = generateFileName(formConfig.section, formId, actualOrderInSection, subIndex)
-        
-        // OPTIMIZATION: If we have cached files, use them instead of findFile()
+        val filterDraft: Boolean? = if (acceptAny) null else loadDraft
+
+        AppLogger.d("FormFileHelper", "Loading form: site=$siteName, formId=$formId, orderInSection=$actualOrderInSection, subIndex=$subIndex, fileName=$fileName, loadDraft=$loadDraft, acceptAny=$acceptAny")
+
+        // If cached file list provided, try there first
         if (cachedFiles != null) {
             val file = cachedFiles.firstOrNull { it.name == fileName }
-            
-            if (file != null && file.exists() && file.canRead()) {
-                return try {
-                    val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                    val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                    val formData = FormData.fromXml(xmlContent)
-                    
-                    // Verify it's the correct formId (safety check)
-                    if (formData != null && formData.formId == formId) {
-                        formData
-                    } else {
-                        null
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e("FormFileHelper", "Error loading form from cache: ${e.message}", e)
-                    null
-                }
+            if (file != null) {
+                loadFormDataFromFile(file, formId, filterDraft)?.let { return it }
             }
-            // If not found in cache and checkFinished is false, return null
-            if (!checkFinished) {
-                return null
-            }
+            if (!checkFinished) return null
         }
-        
-        // Fallback to findFile() if no cache available
+
         val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
         val ongoingSiteFolder = ongoingFolder?.findFile(siteName)
-        
-        if (ongoingSiteFolder != null && ongoingSiteFolder.exists() && ongoingSiteFolder.canRead()) {
-            val file = ongoingSiteFolder.findFile(fileName)
-            
-            if (file != null && file.exists() && file.canRead()) {
-                return try {
-                    val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                    val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                    val formData = FormData.fromXml(xmlContent)
-                    
-                    // Verify it's the correct formId (safety check)
-                    if (formData != null && formData.formId == formId) {
-                        formData
-                    } else {
-                        null
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e("FormFileHelper", "Error loading form from ongoing: ${e.message}", e)
-                    null
-                }
-            }
+        val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+        val finishedSiteFolder = finishedFolder?.findFile(siteName)
+
+        // Try the likely folder first: drafts in ongoing, submitted in finished; when acceptAny, try ongoing then finished
+        val (firstFolder, secondFolder) = if (loadDraft || acceptAny) {
+            Pair(ongoingSiteFolder, if (checkFinished) finishedSiteFolder else null)
+        } else {
+            Pair(if (checkFinished) finishedSiteFolder else null, ongoingSiteFolder)
         }
-        
-        // If not found in ongoing and checkFinished is true, try finished folder
-        if (checkFinished) {
-            val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
-            val finishedSiteFolder = finishedFolder?.findFile(siteName)
-            
-            if (finishedSiteFolder != null && finishedSiteFolder.exists() && finishedSiteFolder.canRead()) {
-                val file = finishedSiteFolder.findFile(fileName)
-                
-                if (file != null && file.exists() && file.canRead()) {
-                    return try {
-                        val inputStream: InputStream? = context.contentResolver.openInputStream(file.uri)
-                        val xmlContent = inputStream?.bufferedReader().use { it?.readText() ?: "" }
-                        val formData = FormData.fromXml(xmlContent)
-                        
-                        // Verify it's the correct formId (safety check)
-                        if (formData != null && formData.formId == formId) {
-                            formData
-                        } else {
-                            null
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e("FormFileHelper", "Error loading form from finished: ${e.message}", e)
-                        null
-                    }
-                }
-            }
-        }
-        
+
+        loadFormDataFromSiteFolder(firstFolder, fileName, formId, filterDraft)?.let { return it }
+        loadFormDataFromSiteFolder(secondFolder, fileName, formId, filterDraft)?.let { return it }
         return null
+    }
+
+    /**
+     * Loads form data without filtering by draft/submitted status. Returns the first form found (draft or submitted).
+     * Convenience for callers that will check status after loading; avoids loading the file twice.
+     */
+    fun loadFormDataAny(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null, checkFinished: Boolean = true): FormData? {
+        return loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false, checkFinished = checkFinished, acceptAny = true)
+    }
+
+    /**
+     * Overload that accepts cached file list to avoid slow findFile() calls.
+     */
+    fun loadFormDataAny(siteName: String, formId: String, orderInSection: Int? = null, subIndex: Int? = null, checkFinished: Boolean = true, cachedFiles: List<DocumentFile>? = null): FormData? {
+        return loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false, checkFinished = checkFinished, acceptAny = true, cachedFiles = cachedFiles)
     }
     
     /**
