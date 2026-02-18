@@ -13,7 +13,6 @@ import okhttp3.*
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -43,8 +42,23 @@ class LogsheetDownloader(private val context: Context) {
         private const val TAG = "LogsheetDownloader"
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
+
+        /**
+         * Compares two version strings (e.g. "1.0.0", "2.1.3"). Returns negative if v1 < v2, zero if equal, positive if v1 > v2.
+         */
+        private fun compareVersionStrings(v1: String, v2: String): Int {
+            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
+            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
+            for (i in 0 until maxOf(parts1.size, parts2.size)) {
+                val part1 = parts1.getOrNull(i) ?: 0
+                val part2 = parts2.getOrNull(i) ?: 0
+                val c = part1.compareTo(part2)
+                if (c != 0) return c
+            }
+            return 0
+        }
     }
-    
+
     /**
      * Storage directories in app's internal storage
      */
@@ -78,8 +92,6 @@ class LogsheetDownloader(private val context: Context) {
      * Returns true if successful, false otherwise
      */
     suspend fun downloadAll(progressCallback: DownloadProgressCallback? = null): Boolean = withContext(Dispatchers.IO) {
-        val startTime = System.currentTimeMillis()
-        
         if (!isNetworkAvailable()) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "No network connection available", Toast.LENGTH_LONG).show()
@@ -88,7 +100,7 @@ class LogsheetDownloader(private val context: Context) {
         }
         
         try {
-            // Ensure directories exist
+            // Create dirs only if they don't exist (mkdirs behaviour)
             logsheetsDir.mkdirs()
             teamsDir.mkdirs()
             imagesDir.mkdirs()
@@ -157,14 +169,8 @@ class LogsheetDownloader(private val context: Context) {
                 success = false
             }
             
-            // Calculate total time
-            val endTime = System.currentTimeMillis()
-            val totalTimeMs = endTime - startTime
-            val totalTimeSeconds = totalTimeMs / 1000.0
-            
             // Print summary
             AppLogger.i(TAG, "=== Download Summary ===")
-            AppLogger.i(TAG, "Total time: ${String.format(Locale.getDefault(), "%.2f", totalTimeSeconds)} seconds")
             if (downloadedFiles.isNotEmpty()) {
                 AppLogger.i(TAG, "Downloaded ${downloadedFiles.size} file(s):")
                 downloadedFiles.forEach { file ->
@@ -236,17 +242,7 @@ class LogsheetDownloader(private val context: Context) {
                         if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
                     }
                     if (versions.isNotEmpty()) {
-                        val latestVersion = versions.maxWithOrNull(Comparator { v1, v2 ->
-                            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-                            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-                            for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                                val part1 = parts1.getOrNull(i) ?: 0
-                                val part2 = parts2.getOrNull(i) ?: 0
-                                val comparison = part1.compareTo(part2)
-                                if (comparison != 0) return@Comparator comparison
-                            }
-                            0
-                        })
+                        val latestVersion = versions.maxWithOrNull(Comparator { a, b -> compareVersionStrings(a, b) })
                         if (latestVersion != null) {
                             val localFile = File(File(logsheetsDir, folderName), "$latestVersion.json")
                             if (!localFile.exists()) {
@@ -325,17 +321,7 @@ class LogsheetDownloader(private val context: Context) {
                         if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
                     }
                     if (versions.isNotEmpty()) {
-                        val latestVersion = versions.maxWithOrNull(Comparator { v1, v2 ->
-                            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-                            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-                            for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                                val part1 = parts1.getOrNull(i) ?: 0
-                                val part2 = parts2.getOrNull(i) ?: 0
-                                val comparison = part1.compareTo(part2)
-                                if (comparison != 0) return@Comparator comparison
-                            }
-                            0
-                        })
+                        val latestVersion = versions.maxWithOrNull(Comparator { a, b -> compareVersionStrings(a, b) })
                         if (latestVersion != null) {
                             val localFile = File(File(teamsDir, folderName), "$latestVersion.json")
                             if (!localFile.exists()) {
@@ -735,17 +721,7 @@ class LogsheetDownloader(private val context: Context) {
         
         // Get the latest version by comparing version numbers
         val latestFile = versionFiles.maxWithOrNull(Comparator { f1, f2 ->
-            val v1 = f1.name.removeSuffix(".json")
-            val v2 = f2.name.removeSuffix(".json")
-            val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-            val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-            for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                val part1 = parts1.getOrNull(i) ?: 0
-                val part2 = parts2.getOrNull(i) ?: 0
-                val comparison = part1.compareTo(part2)
-                if (comparison != 0) return@Comparator comparison
-            }
-            0
+            compareVersionStrings(f1.name.removeSuffix(".json"), f2.name.removeSuffix(".json"))
         })
         
         return latestFile
@@ -820,17 +796,7 @@ class LogsheetDownloader(private val context: Context) {
             if (versionFiles.isEmpty()) continue
             
             val latestFile = versionFiles.maxWithOrNull(Comparator { f1, f2 ->
-                val v1 = f1.name.removeSuffix(".json")
-                val v2 = f2.name.removeSuffix(".json")
-                val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-                val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-                for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                    val part1 = parts1.getOrNull(i) ?: 0
-                    val part2 = parts2.getOrNull(i) ?: 0
-                    val comparison = part1.compareTo(part2)
-                    if (comparison != 0) return@Comparator comparison
-                }
-                0
+                compareVersionStrings(f1.name.removeSuffix(".json"), f2.name.removeSuffix(".json"))
             }) ?: continue
             
             // Read the config file and check if it matches
@@ -896,17 +862,7 @@ class LogsheetDownloader(private val context: Context) {
             if (versionFiles.isEmpty()) continue
             
             val latestFile = versionFiles.maxWithOrNull(Comparator { f1, f2 ->
-                val v1 = f1.name.removeSuffix(".json")
-                val v2 = f2.name.removeSuffix(".json")
-                val parts1 = v1.split(".").mapNotNull { it.toIntOrNull() }
-                val parts2 = v2.split(".").mapNotNull { it.toIntOrNull() }
-                for (i in 0 until maxOf(parts1.size, parts2.size)) {
-                    val part1 = parts1.getOrNull(i) ?: 0
-                    val part2 = parts2.getOrNull(i) ?: 0
-                    val comparison = part1.compareTo(part2)
-                    if (comparison != 0) return@Comparator comparison
-                }
-                0
+                compareVersionStrings(f1.name.removeSuffix(".json"), f2.name.removeSuffix(".json"))
             }) ?: continue
             
             // Read the config file and check if it matches the team
