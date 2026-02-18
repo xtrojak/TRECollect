@@ -119,7 +119,11 @@ class FormSectionAdapter(
             
             // Update status in adapter - this updates the status sets
             // IMPORTANT: Do this FIRST before checking other instances
-            formAdapter.updateFormStatus(formKey, isCompleted, isDraft)
+            when {
+                isCompleted -> formAdapter.changeStatusToCompleted(formKey)
+                isDraft -> formAdapter.changeStatusToDraft(formKey)
+                else -> formAdapter.clearFormStatus(formKey)
+            }
             
             // Find and notify all items in this dynamic group to rebind
             // Each item will recalculate its own form key and check the updated status sets
@@ -173,7 +177,7 @@ class FormSectionAdapter(
                                 // This is an empty instance - explicitly ensure it's not in the draft set
                                 if (currentDraft.contains(instanceFormKey)) {
                                     AppLogger.w("FormSectionAdapter", "Found empty instance incorrectly marked as draft: $instanceFormKey, removing from draft set")
-                                    formAdapter.updateFormStatus(instanceFormKey, isCompleted = false, isDraft = false)
+                                    formAdapter.clearFormStatus(instanceFormKey)
                                 } else {
                                     AppLogger.d("FormSectionAdapter", "Empty instance $instanceFormKey is correctly not in draft set")
                                 }

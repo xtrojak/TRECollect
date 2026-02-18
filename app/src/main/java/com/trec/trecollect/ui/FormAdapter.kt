@@ -55,34 +55,55 @@ class FormAdapter(
     }
 
     /**
-     * Updates the status of a specific form instance without full refresh
-     * Note: This only updates the status sets. The caller should call notifyItemChanged/notifyItemRangeChanged
-     * to trigger a rebind with the updated status.
+     * Marks the form instance as completed. Removes it from draft set.
+     * Caller should call notifyItemChanged/notifyItemRangeChanged to trigger rebind.
      */
-    fun updateFormStatus(formKey: String, isCompleted: Boolean, isDraft: Boolean) {
-        val currentCompleted = _completedFormIds.toMutableSet()
-        val currentDraft = _draftFormIds.toMutableSet()
-        
-        AppLogger.d("FormAdapter", "updateFormStatus: formKey=$formKey, isCompleted=$isCompleted, isDraft=$isDraft")
-        AppLogger.d("FormAdapter", "Before update - Completed: $currentCompleted, Draft: $currentDraft")
-        
-        if (isCompleted) {
-            currentCompleted.add(formKey)
-            currentDraft.remove(formKey)
-        } else if (isDraft) {
-            currentDraft.add(formKey)
-            currentCompleted.remove(formKey)
-        } else {
-            // Neither completed nor draft - remove from both sets (empty state)
-            currentCompleted.remove(formKey)
-            currentDraft.remove(formKey)
+    fun changeStatusToCompleted(formKey: String) {
+        _completedFormIds = _completedFormIds + formKey
+        _draftFormIds = _draftFormIds - formKey
+        AppLogger.d("FormAdapter", "changeStatusToCompleted: formKey=$formKey")
+    }
+
+    /**
+     * Marks the form instance as draft. Removes it from completed set.
+     * Caller should call notifyItemChanged/notifyItemRangeChanged to trigger rebind.
+     */
+    fun changeStatusToDraft(formKey: String) {
+        _draftFormIds = _draftFormIds + formKey
+        _completedFormIds = _completedFormIds - formKey
+        AppLogger.d("FormAdapter", "changeStatusToDraft: formKey=$formKey")
+    }
+
+    /**
+     * Clears status for the form instance (empty state: neither completed nor draft).
+     * Caller should call notifyItemChanged/notifyItemRangeChanged to trigger rebind.
+     */
+    fun clearFormStatus(formKey: String) {
+        _completedFormIds = _completedFormIds - formKey
+        _draftFormIds = _draftFormIds - formKey
+        AppLogger.d("FormAdapter", "clearFormStatus: formKey=$formKey")
+    }
+
+    /**
+     * Returns formKeys for all dynamic instances of [baseForm] in [currentList].
+     * Key format matches bindForm: "${form.id}_${instanceIndex}_${subIndex}".
+     */
+    private fun getFormKeysForBaseForm(baseForm: Form): List<String> {
+        val baseFormName = baseForm.name
+        val baseForms = _baseFormsList
+        return currentList.mapNotNull { item ->
+            if (item !is FormListItem.FormItem) return@mapNotNull null
+            val form = item.form
+            if (!form.isDynamic || form.id != baseForm.id || !form.name.contains(" #")) return@mapNotNull null
+            if (form.name.substringBefore(" #") != baseFormName) return@mapNotNull null
+            val subIndex = Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1) ?: return@mapNotNull null
+            val baseFormPosition = baseForms.indexOfFirst { it.id == form.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
+            var instanceIdx = 0
+            for (i in 0 until baseFormPosition) {
+                if (baseForms[i].id == form.id) instanceIdx++
+            }
+            "${form.id}_${instanceIdx}_${subIndex}"
         }
-        
-        _completedFormIds = currentCompleted
-        _draftFormIds = currentDraft
-        
-        AppLogger.d("FormAdapter", "After update - Completed: $_completedFormIds, Draft: $_draftFormIds")
-        // Don't call notifyDataSetChanged() here - let the caller decide what to notify
     }
 
     override fun getItemViewType(position: Int): Int {
@@ -292,67 +313,18 @@ class FormAdapter(
         fun bind(baseForm: Form) {
             button.text = baseForm.dynamicButtonName ?: "Add Form"
             
-            // Check if we can add (all instances must be saved)
             val canAddFromCallback = canAddDynamicForm?.invoke(baseForm) ?: false
-            
-            // Check if any instance of this dynamic form group is empty
-            val currentList = this@FormAdapter.currentList
-            val baseFormName = baseForm.name
-            val baseForms = this@FormAdapter.baseFormsList
+            val formKeysInList = getFormKeysForBaseForm(baseForm)
             val completedFormIds = this@FormAdapter.completedFormIds
             val draftFormIds = this@FormAdapter.draftFormIds
-            
-            val hasEmptyInstance = currentList.any { item ->
-                when (item) {
-                    is FormListItem.FormItem -> {
-                        val form = item.form
-                        if (form.isDynamic && form.id == baseForm.id && form.name.contains(" #")) {
-                            val formBaseName = form.name.substringBefore(" #")
-                            // Match by base name (without # suffix)
-                            if (formBaseName == baseFormName) {
-                                val fSubIndex = Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
-                                if (fSubIndex != null) {
-                                    val baseFormPosition = baseForms.indexOfFirst { it.id == form.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
-                                    var instanceIdx = 0
-                                    for (i in 0 until baseFormPosition) {
-                                        if (baseForms[i].id == form.id) instanceIdx++
-                                    }
-                                    val formKey = "${form.id}_${instanceIdx}_${fSubIndex}"
-                                    val isEmpty = !completedFormIds.contains(formKey) && !draftFormIds.contains(formKey)
-                                    if (isEmpty) {
-                                        AppLogger.d("FormAdapter", "Found empty instance: $formKey for form ${form.name}")
-                                    }
-                                    isEmpty
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    }
-                    is FormListItem.AddButtonItem -> false
-                    is FormListItem.DividerItem -> false
-                }
-            }
-            
+            // Can add only if every instance is either completed or draft (none empty)
+            val hasEmptyInstance = formKeysInList.any { key -> key !in completedFormIds && key !in draftFormIds }
             val canAdd = canAddFromCallback && !hasEmptyInstance
             
-            // Log for debugging
             AppLogger.d("FormAdapter", "Add button for ${baseForm.name}: canAddFromCallback=$canAddFromCallback, hasEmptyInstance=$hasEmptyInstance, canAdd=$canAdd")
-            AppLogger.d("FormAdapter", "Completed: $completedFormIds, Draft: $draftFormIds")
             
-            // Ensure button is disabled if there are empty instances
             button.isEnabled = canAdd
-            
-            // Visual feedback - make button appear disabled even if enabled state doesn't work
-            if (!canAdd) {
-                button.alpha = 0.5f
-            } else {
-                button.alpha = 1.0f
-            }
+            button.alpha = if (canAdd) 1.0f else 0.5f
             
             button.setOnClickListener {
                 if (canAdd && onAddDynamicForm != null) {
