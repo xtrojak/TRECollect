@@ -297,87 +297,68 @@ class FormEditActivity : AppCompatActivity() {
             return
         }
         
-        // Get the order in section (0-based index of this specific form instance)
-        // If not provided, calculate it (for backward compatibility)
+        // orderInSection is required (0-based index of this form instance in its section)
         orderInSection = intent.getIntExtra("orderInSection", -1)
         subIndex = intent.getIntExtra("subIndex", -1).takeIf { it >= 0 }
-        
         if (orderInSection < 0) {
-            // Calculate it from the form list for this specific site
-            val forms = PredefinedForms.getFormsForSite(this, siteName)
-            val formConfig = forms.firstOrNull { it.id == formId }
-            if (formConfig != null) {
-                val formsInSection = PredefinedForms.getFormsBySectionForSite(this, siteName, formConfig.section)
-                val positionInSection = formsInSection.indexOfFirst { it.id == formId }
-                if (positionInSection >= 0) {
-                    // Count how many forms with this ID appear before this position
-                    var instanceIndex = 0
-                    for (i in 0 until positionInSection) {
-                        if (formsInSection[i].id == formId) {
-                            instanceIndex++
-                        }
-                    }
-                    orderInSection = instanceIndex
-                } else {
-                    orderInSection = 0
-                }
-            } else {
-                orderInSection = 0
-            }
+            AppLogger.e("FormEditActivity", "FormEditActivity started without orderInSection for formId: $formId")
+            finish()
+            return
         }
         
         isReadOnly = intent.getBooleanExtra("isReadOnly", false)
         
         formFileHelper = FormFileHelper(this)
         
-        // Load form configuration - we'll reload it after loading existing data if it has a version
-        // Use orderInSection to get the correct instance (since same formId can appear multiple times with different titles)
-        try {
-            formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId, orderInSection) ?: run {
-                android.util.Log.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
-                android.util.Log.d("FormEditActivity", "Available forms: ${PredefinedForms.getFormsForSite(this, siteName).map { it.id }}")
-                Toast.makeText(this, "Form configuration not found for: $formId", Toast.LENGTH_LONG).show()
+        // Load existing data first so we can load the correct config (versioned if existing, else latest)
+        loadExistingData()
+        
+        // Load form config: versioned if existing data has logsheetVersion, else latest for new form
+        if (existingFormData != null) {
+            val data = existingFormData!!
+            if (data.logsheetVersion.isEmpty()) {
+                AppLogger.e("FormEditActivity", "Existing form data missing logsheetVersion for formId: $formId")
+                Toast.makeText(this, "Error: Form data missing version information", Toast.LENGTH_LONG).show()
                 finish()
                 return
             }
-        } catch (e: Exception) {
-            android.util.Log.e("FormEditActivity", "Error loading form config: ${e.message}", e)
-            Toast.makeText(this, "Error loading form: ${e.message}", Toast.LENGTH_LONG).show()
-            finish()
-            return
-        }
-        
-        setupToolbar()
-        setupViews()
-        loadExistingData()
-        
-        // After loading existing data, reload form config with the version from XML
-        existingFormData?.let { data ->
             if (data.logsheetVersion.isNotEmpty()) {
                 try {
                     val versionedConfig = FormConfigLoader.loadFormConfigForVersion(this, formId, data.logsheetVersion, siteName, orderInSection)
                     if (versionedConfig != null) {
                         formConfig = versionedConfig
-                        android.util.Log.d("FormEditActivity", "Loaded form config version ${data.logsheetVersion} for formId: $formId")
+                        AppLogger.d("FormEditActivity", "Loaded form config version ${data.logsheetVersion} for formId: $formId")
                     } else {
-                        android.util.Log.e("FormEditActivity", "Could not load form config version ${data.logsheetVersion} for formId: $formId")
+                        AppLogger.e("FormEditActivity", "Could not load form config version ${data.logsheetVersion} for formId: $formId")
                         Toast.makeText(this, "Error: Could not load form config version ${data.logsheetVersion}", Toast.LENGTH_LONG).show()
                         finish()
                         return
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("FormEditActivity", "Error loading form config version ${data.logsheetVersion}: ${e.message}", e)
+                    AppLogger.e("FormEditActivity", "Error loading form config version ${data.logsheetVersion}: ${e.message}", e)
                     Toast.makeText(this, "Error loading form config: ${e.message}", Toast.LENGTH_LONG).show()
                     finish()
                     return
                 }
-            } else {
-                android.util.Log.e("FormEditActivity", "Existing form data missing logsheetVersion for formId: $formId")
-                Toast.makeText(this, "Error: Form data missing version information", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            try {
+                formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId, orderInSection) ?: run {
+                    AppLogger.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
+                    Toast.makeText(this, "Form configuration not found for: $formId", Toast.LENGTH_LONG).show()
+                    finish()
+                    return
+                }
+            } catch (e: Exception) {
+                AppLogger.e("FormEditActivity", "Error loading form config: ${e.message}", e)
+                Toast.makeText(this, "Error loading form: ${e.message}", Toast.LENGTH_LONG).show()
                 finish()
                 return
             }
         }
+        
+        setupToolbar()
+        setupViews()
         
         renderFields()
         setupFocusChangeDebounce()
