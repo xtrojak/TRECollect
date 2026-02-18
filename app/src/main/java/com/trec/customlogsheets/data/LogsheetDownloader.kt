@@ -108,66 +108,25 @@ class LogsheetDownloader(private val context: Context) {
             var success = true
             val downloadedFiles = mutableListOf<String>()
             val failedFiles = mutableListOf<String>()
-            
-            // Download logsheets
-            AppLogger.i(TAG, "Downloading logsheets...")
-            withContext(Dispatchers.Main) {
-                progressCallback?.onPhaseStarted("Logsheets")
+
+            suspend fun runPhase(phaseName: String, listingErrorSuffix: String, logLabel: String, block: suspend () -> DownloadResult) {
+                AppLogger.i(TAG, "Downloading $logLabel...")
+                withContext(Dispatchers.Main) { progressCallback?.onPhaseStarted(phaseName) }
+                val result = block()
+                downloadedFiles.addAll(result.downloaded)
+                failedFiles.addAll(result.failed)
+                if (!result.success && result.failed.isEmpty()) failedFiles.add(listingErrorSuffix)
+                withContext(Dispatchers.Main) { progressCallback?.onPhaseCompleted(phaseName, result.downloaded.size, result.failed.size) }
+                if (!result.success || result.failed.isNotEmpty()) {
+                    if (result.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some $logLabel")
+                    else AppLogger.w(TAG, "$phaseName phase failed (e.g. listing/connection error)")
+                    success = false
+                }
             }
-            val logsheetsResult = downloadLogsheets(progressCallback)
-            downloadedFiles.addAll(logsheetsResult.downloaded)
-            failedFiles.addAll(logsheetsResult.failed)
-            if (!logsheetsResult.success && logsheetsResult.failed.isEmpty()) {
-                failedFiles.add("logsheets: (listing/connection error)")
-            }
-            withContext(Dispatchers.Main) {
-                progressCallback?.onPhaseCompleted("Logsheets", logsheetsResult.downloaded.size, logsheetsResult.failed.size)
-            }
-            if (!logsheetsResult.success || logsheetsResult.failed.isNotEmpty()) {
-                if (logsheetsResult.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some logsheets")
-                else AppLogger.w(TAG, "Logsheets phase failed (e.g. listing/connection error)")
-                success = false
-            }
-            
-            // Download team configs
-            AppLogger.i(TAG, "Downloading team configs...")
-            withContext(Dispatchers.Main) {
-                progressCallback?.onPhaseStarted("Team Configs")
-            }
-            val teamsResult = downloadTeamConfigs(progressCallback)
-            downloadedFiles.addAll(teamsResult.downloaded)
-            failedFiles.addAll(teamsResult.failed)
-            if (!teamsResult.success && teamsResult.failed.isEmpty()) {
-                failedFiles.add("team configs: (listing/connection error)")
-            }
-            withContext(Dispatchers.Main) {
-                progressCallback?.onPhaseCompleted("Team Configs", teamsResult.downloaded.size, teamsResult.failed.size)
-            }
-            if (!teamsResult.success || teamsResult.failed.isNotEmpty()) {
-                if (teamsResult.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some team configs")
-                else AppLogger.w(TAG, "Team configs phase failed (e.g. listing/connection error)")
-                success = false
-            }
-            
-            // Download images
-            AppLogger.i(TAG, "Downloading images...")
-            withContext(Dispatchers.Main) {
-                progressCallback?.onPhaseStarted("Images")
-            }
-            val imagesResult = downloadImages(progressCallback)
-            downloadedFiles.addAll(imagesResult.downloaded)
-            failedFiles.addAll(imagesResult.failed)
-            if (!imagesResult.success && imagesResult.failed.isEmpty()) {
-                failedFiles.add("images: (listing/connection error)")
-            }
-            withContext(Dispatchers.Main) {
-                progressCallback?.onPhaseCompleted("Images", imagesResult.downloaded.size, imagesResult.failed.size)
-            }
-            if (!imagesResult.success || imagesResult.failed.isNotEmpty()) {
-                if (imagesResult.failed.isNotEmpty()) AppLogger.w(TAG, "Failed to download some images")
-                else AppLogger.w(TAG, "Images phase failed (e.g. listing/connection error)")
-                success = false
-            }
+
+            runPhase("Logsheets", "logsheets: (listing/connection error)", "logsheets") { downloadLogsheets(progressCallback) }
+            runPhase("Team Configs", "team configs: (listing/connection error)", "team configs") { downloadTeamConfigs(progressCallback) }
+            runPhase("Images", "images: (listing/connection error)", "images") { downloadImages(progressCallback) }
             
             // Print summary
             AppLogger.i(TAG, "=== Download Summary ===")
@@ -214,218 +173,152 @@ class LogsheetDownloader(private val context: Context) {
         val downloaded: List<String>,
         val failed: List<String>
     )
+
+    /**
+     * Parameters for downloading versioned JSON files (logsheets or team configs).
+     * Used to refactor downloadLogsheets and downloadTeamConfigs into one function (#42).
+     */
+    private data class VersionedDownloadParams(
+        val remoteFolder: String,
+        val localDir: File,
+        val itemLabel: String,
+        val emptyFoldersMessage: String,
+        val listingErrorMessage: String
+    )
+
+    /**
+     * Downloads versioned JSON files from a remote folder (logsheets or team configs).
+     * Lists folders, picks latest version per folder, downloads only missing files.
+     */
+    private suspend fun downloadVersionedJsonFiles(params: VersionedDownloadParams, progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
+        try {
+            val folders = listRemoteFolders(params.remoteFolder)
+            if (folders.isEmpty()) {
+                AppLogger.w(TAG, params.emptyFoldersMessage)
+                return@withContext DownloadResult(false, emptyList(), emptyList())
+            }
+            var totalFiles = 0
+            val filesToDownload = mutableListOf<Pair<String, String>>()
+            for (folderName in folders) {
+                try {
+                    val versionFiles = listRemoteFiles("${params.remoteFolder}/$folderName")
+                    val versions = versionFiles.mapNotNull { filename ->
+                        if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
+                    }
+                    if (versions.isNotEmpty()) {
+                        val latestVersion = versions.maxWithOrNull(Comparator { a, b -> compareVersionStrings(a, b) })
+                        if (latestVersion != null) {
+                            val localFile = File(File(params.localDir, folderName), "$latestVersion.json")
+                            if (!localFile.exists()) {
+                                totalFiles++
+                                filesToDownload.add(Pair(folderName, "$latestVersion.json"))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Skip errors during counting
+                }
+            }
+            val items = filesToDownload.map { (folderName, fileName) ->
+                "$folderName/$fileName" to "$folderName/$fileName"
+            }
+            return@withContext downloadFileList(params.remoteFolder, params.localDir, items, params.itemLabel, progressCallback, totalFiles)
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "${params.listingErrorMessage}: ${e.message}", e)
+            return@withContext DownloadResult(false, emptyList(), emptyList())
+        }
+    }
+
+    /**
+     * Downloads a list of files from a remote base path into a local directory.
+     * Reused for logsheets, team configs, and images (#43).
+     * @param items List of (pathSuffix, displayLabel) e.g. ("folder/file.json", "folder/file.json") or ("image.png", "image.png")
+     */
+    private suspend fun downloadFileList(
+        remoteBasePath: String,
+        localDir: File,
+        items: List<Pair<String, String>>,
+        itemLabel: String,
+        progressCallback: DownloadProgressCallback? = null,
+        totalFiles: Int = items.size
+    ): DownloadResult = withContext(Dispatchers.IO) {
+        var successCount = 0
+        var failCount = 0
+        val downloaded = mutableListOf<String>()
+        val failed = mutableListOf<String>()
+        var currentFile = 0
+        for ((pathSuffix, displayLabel) in items) {
+            try {
+                val remotePath = "$remoteBasePath/$pathSuffix"
+                val localFile = File(localDir, pathSuffix)
+                localFile.parentFile?.mkdirs()
+                currentFile++
+                withContext(Dispatchers.Main) {
+                    progressCallback?.onFileProgress(currentFile, totalFiles, displayLabel)
+                }
+                if (downloadFile(remotePath, localFile)) {
+                    downloaded.add("$itemLabel: $displayLabel")
+                    successCount++
+                } else {
+                    failed.add("$itemLabel: $displayLabel")
+                    failCount++
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error downloading $itemLabel $displayLabel: ${e.message}", e)
+                failed.add("$itemLabel: $displayLabel")
+                failCount++
+            }
+        }
+        AppLogger.i(TAG, "Downloaded $successCount $itemLabel(s), $failCount failed")
+        DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
+    }
     
     /**
      * Downloads all logsheets from logsheets/ directory
      */
-    private suspend fun downloadLogsheets(progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
-        try {
-            // List logsheet folders
-            val logsheetFolders = listRemoteFolders("logsheets")
-            if (logsheetFolders.isEmpty()) {
-                AppLogger.w(TAG, "No logsheet folders found")
-                return@withContext DownloadResult(false, emptyList(), emptyList())
-            }
-            
-            var successCount = 0
-            var failCount = 0
-            val downloaded = mutableListOf<String>()
-            val failed = mutableListOf<String>()
-            
-            // Count total files to download for progress tracking
-            var totalFiles = 0
-            val filesToDownload = mutableListOf<Pair<String, String>>() // folderName to fileName
-            for (folderName in logsheetFolders) {
-                try {
-                    val versionFiles = listRemoteFiles("logsheets/$folderName")
-                    val versions = versionFiles.mapNotNull { filename ->
-                        if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
-                    }
-                    if (versions.isNotEmpty()) {
-                        val latestVersion = versions.maxWithOrNull(Comparator { a, b -> compareVersionStrings(a, b) })
-                        if (latestVersion != null) {
-                            val localFile = File(File(logsheetsDir, folderName), "$latestVersion.json")
-                            if (!localFile.exists()) {
-                                totalFiles++
-                                filesToDownload.add(Pair(folderName, "$latestVersion.json"))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Skip errors during counting
-                }
-            }
-            
-            var currentFile = 0
-            for ((folderName, fileName) in filesToDownload) {
-                try {
-                    // Download only the latest version - preserve folder structure and version name
-                    val remotePath = "logsheets/$folderName/$fileName"
-                    val logsheetFolder = File(logsheetsDir, folderName)
-                    logsheetFolder.mkdirs()
-                    val localFile = File(logsheetFolder, fileName)
-                    
-                    // Report progress
-                    currentFile++
-                    withContext(Dispatchers.Main) {
-                        progressCallback?.onFileProgress(currentFile, totalFiles, "$folderName/$fileName")
-                    }
-                    
-                    if (downloadFile(remotePath, localFile)) {
-                        downloaded.add("logsheet: $folderName/$fileName")
-                        successCount++
-                    } else {
-                        failed.add("logsheet: $folderName/$fileName")
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error downloading logsheet $folderName: ${e.message}", e)
-                    failed.add("logsheet: $folderName/$fileName")
-                    failCount++
-                }
-            }
-            
-            AppLogger.i(TAG, "Downloaded $successCount logsheets, $failCount failed")
-            // Success if we downloaded at least one, or if nothing failed (all were skipped)
-            return@withContext DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error listing logsheets: ${e.message}", e)
-            return@withContext DownloadResult(false, emptyList(), emptyList())
-        }
-    }
+    private suspend fun downloadLogsheets(progressCallback: DownloadProgressCallback? = null): DownloadResult =
+        downloadVersionedJsonFiles(
+            VersionedDownloadParams(
+                remoteFolder = "logsheets",
+                localDir = logsheetsDir,
+                itemLabel = "logsheet",
+                emptyFoldersMessage = "No logsheet folders found",
+                listingErrorMessage = "Error listing logsheets"
+            ),
+            progressCallback
+        )
     
     /**
      * Downloads all team configs from teams/ directory
      */
-    private suspend fun downloadTeamConfigs(progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
-        try {
-            // List team folders
-            val teamFolders = listRemoteFolders("teams")
-            if (teamFolders.isEmpty()) {
-                AppLogger.w(TAG, "No team folders found")
-                return@withContext DownloadResult(false, emptyList(), emptyList())
-            }
-            
-            var successCount = 0
-            var failCount = 0
-            val downloaded = mutableListOf<String>()
-            val failed = mutableListOf<String>()
-            
-            // Count total files to download for progress tracking
-            var totalFiles = 0
-            val filesToDownload = mutableListOf<Pair<String, String>>() // folderName to fileName
-            for (folderName in teamFolders) {
-                try {
-                    val versionFiles = listRemoteFiles("teams/$folderName")
-                    val versions = versionFiles.mapNotNull { filename ->
-                        if (filename.endsWith(".json")) filename.removeSuffix(".json") else null
-                    }
-                    if (versions.isNotEmpty()) {
-                        val latestVersion = versions.maxWithOrNull(Comparator { a, b -> compareVersionStrings(a, b) })
-                        if (latestVersion != null) {
-                            val localFile = File(File(teamsDir, folderName), "$latestVersion.json")
-                            if (!localFile.exists()) {
-                                totalFiles++
-                                filesToDownload.add(Pair(folderName, "$latestVersion.json"))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Skip errors during counting
-                }
-            }
-            
-            var currentFile = 0
-            for ((folderName, fileName) in filesToDownload) {
-                try {
-                    // Download only the latest version - preserve folder structure and version name
-                    val remotePath = "teams/$folderName/$fileName"
-                    val teamFolder = File(teamsDir, folderName)
-                    teamFolder.mkdirs()
-                    val localFile = File(teamFolder, fileName)
-                    
-                    // Report progress
-                    currentFile++
-                    withContext(Dispatchers.Main) {
-                        progressCallback?.onFileProgress(currentFile, totalFiles, "$folderName/$fileName")
-                    }
-                    
-                    if (downloadFile(remotePath, localFile)) {
-                        downloaded.add("team config: $folderName/$fileName")
-                        successCount++
-                    } else {
-                        failed.add("team config: $folderName/$fileName")
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error downloading team config $folderName: ${e.message}", e)
-                    failed.add("team config: $folderName")
-                    failCount++
-                }
-            }
-            
-            AppLogger.i(TAG, "Downloaded $successCount team configs, $failCount failed")
-            // Success if we downloaded at least one, or if nothing failed (all were skipped)
-            return@withContext DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error listing team configs: ${e.message}", e)
-            return@withContext DownloadResult(false, emptyList(), emptyList())
-        }
-    }
+    private suspend fun downloadTeamConfigs(progressCallback: DownloadProgressCallback? = null): DownloadResult =
+        downloadVersionedJsonFiles(
+            VersionedDownloadParams(
+                remoteFolder = "teams",
+                localDir = teamsDir,
+                itemLabel = "team config",
+                emptyFoldersMessage = "No team folders found",
+                listingErrorMessage = "Error listing team configs"
+            ),
+            progressCallback
+        )
     
     /**
-     * Downloads all images from images/ directory
+     * Downloads all images from images/ directory.
+     * Reuses downloadFileList for consistency with logsheets and team configs (#43).
      */
     private suspend fun downloadImages(progressCallback: DownloadProgressCallback? = null): DownloadResult = withContext(Dispatchers.IO) {
         try {
-            // List image files
             val imageFiles = listRemoteFiles("images")
             if (imageFiles.isEmpty()) {
                 AppLogger.w(TAG, "No images found")
                 return@withContext DownloadResult(false, emptyList(), emptyList())
             }
-            
-            var successCount = 0
-            var failCount = 0
-            val downloaded = mutableListOf<String>()
-            val failed = mutableListOf<String>()
-            
-            // Count total files to download for progress tracking
             val filesToDownload = imageFiles.filter { imageName ->
-                val localFile = File(imagesDir, imageName)
-                !localFile.exists()
+                !File(imagesDir, imageName).exists()
             }
-            val totalFiles = filesToDownload.size
-            
-            var currentFile = 0
-            for (imageName in filesToDownload) {
-                try {
-                    val remotePath = "images/$imageName"
-                    val localFile = File(imagesDir, imageName)
-                    
-                    // Report progress
-                    currentFile++
-                    withContext(Dispatchers.Main) {
-                        progressCallback?.onFileProgress(currentFile, totalFiles, imageName)
-                    }
-                    
-                    if (downloadFile(remotePath, localFile)) {
-                        downloaded.add("image: $imageName")
-                        successCount++
-                    } else {
-                        failed.add("image: $imageName")
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error downloading image $imageName: ${e.message}", e)
-                    failed.add("image: $imageName")
-                    failCount++
-                }
-            }
-            
-            AppLogger.i(TAG, "Downloaded $successCount images, $failCount failed")
-            // Success if we downloaded at least one, or if nothing failed (all were skipped)
-            return@withContext DownloadResult(successCount > 0 || failCount == 0, downloaded, failed)
+            val items = filesToDownload.map { it to it }
+            return@withContext downloadFileList("images", imagesDir, items, "image", progressCallback, filesToDownload.size)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error listing images: ${e.message}", e)
             return@withContext DownloadResult(false, emptyList(), emptyList())
@@ -449,7 +342,7 @@ class LogsheetDownloader(private val context: Context) {
                 .method("PROPFIND", null)
                 .addHeader("Depth", "1")
                 .addHeader("Authorization", createAuthHeader())
-                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .addHeader("User-Agent", "TRECollect/1.0")
                 .build()
             
             val response = client.newCall(request).execute()
@@ -495,7 +388,7 @@ class LogsheetDownloader(private val context: Context) {
                 .method("PROPFIND", null)
                 .addHeader("Depth", "1")
                 .addHeader("Authorization", createAuthHeader())
-                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .addHeader("User-Agent", "TRECollect/1.0")
                 .build()
             
             val response = client.newCall(request).execute()
@@ -634,7 +527,7 @@ class LogsheetDownloader(private val context: Context) {
                     .url(url)
                     .get() // Use GET method for downloading files
                     .addHeader("Authorization", createAuthHeader())
-                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .addHeader("User-Agent", "TRECollect/1.0")
                     .build()
                 
                 val response = client.newCall(request).execute()
