@@ -128,7 +128,7 @@ object FormConfigLoader {
         val actualSubteam = settingsPreferences.getSamplingSubteam()
         
         // If metadata has team config info, try to load that specific version
-        val configs = if (metadata != null && metadata.teamConfigId != null && metadata.teamConfigVersion != null) {
+        val configs = if (metadata != null && metadata.teamConfigId.isNotEmpty() && metadata.teamConfigVersion.isNotEmpty()) {
             try {
                 loadFromDownloadedWithTeamConfigVersion(context, actualTeam, actualSubteam, metadata.teamConfigId, metadata.teamConfigVersion)
                     ?: loadFromDownloaded(context, actualTeam, actualSubteam)
@@ -456,9 +456,10 @@ object FormConfigLoader {
         return try {
             val formFileHelper = FormFileHelper(context)
             val metadata = formFileHelper.loadSiteMetadata(siteName) ?: return null
-            val teamConfigId = metadata.teamConfigId ?: return null
-            val teamConfigVersion = metadata.teamConfigVersion ?: return null
+            if (metadata.teamConfigId.isEmpty() || metadata.teamConfigVersion.isEmpty()) return null
             val downloader = LogsheetDownloader(context)
+            val teamConfigId = metadata.teamConfigId
+            val teamConfigVersion = metadata.teamConfigVersion
             val teamConfigFile = downloader.getTeamConfigFile(teamConfigId, teamConfigVersion) ?: return null
             teamConfigFile.readText()
         } catch (e: Exception) {

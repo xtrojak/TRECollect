@@ -61,8 +61,6 @@ class SettingsPreferences(context: Context) {
     }
     
     fun isSamplingSubteamSet(): Boolean {
-        // All teams now require subteam selection
-        // Return true only if subteam is set
         return getSamplingSubteam().isNotEmpty()
     }
     

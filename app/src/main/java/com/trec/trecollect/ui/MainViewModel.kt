@@ -408,8 +408,8 @@ class MainViewModel(
         val metadata = SiteMetadata(
             siteName = siteName,
             createdAt = SiteMetadata.getCurrentTimestamp(),
-            teamConfigId = teamConfigId,
-            teamConfigVersion = teamConfigVersion
+            teamConfigId = teamConfigId ?: "",
+            teamConfigVersion = teamConfigVersion ?: ""
         )
         
         val formFileHelper = com.trec.trecollect.data.FormFileHelper(context)

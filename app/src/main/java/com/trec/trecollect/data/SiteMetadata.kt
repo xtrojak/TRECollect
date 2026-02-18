@@ -11,8 +11,8 @@ import java.io.StringWriter
 data class SiteMetadata(
     val siteName: String,
     val createdAt: String, // ISO 8601 UTC timestamp
-    val teamConfigId: String? = null, // Team config folder ID
-    val teamConfigVersion: String? = null, // Team config version (e.g., "1.0.0")
+    val teamConfigId: String = "", // Team config folder ID (should always be set for normal sites)
+    val teamConfigVersion: String = "", // Team config version e.g. "1.0.0" (should always be set for normal sites)
     val submittedAt: String? = null, // ISO 8601 UTC timestamp when submitted
     val deletedAt: String? = null // ISO 8601 UTC timestamp when deleted
 ) {
@@ -43,13 +43,13 @@ data class SiteMetadata(
             serializer.text(metadata.createdAt)
             serializer.endTag(null, "createdAt")
             
-            if (metadata.teamConfigId != null) {
+            if (metadata.teamConfigId.isNotEmpty()) {
                 serializer.startTag(null, "teamConfigId")
                 serializer.text(metadata.teamConfigId)
                 serializer.endTag(null, "teamConfigId")
             }
             
-            if (metadata.teamConfigVersion != null) {
+            if (metadata.teamConfigVersion.isNotEmpty()) {
                 serializer.startTag(null, "teamConfigVersion")
                 serializer.text(metadata.teamConfigVersion)
                 serializer.endTag(null, "teamConfigVersion")
@@ -85,8 +85,8 @@ data class SiteMetadata(
                 var eventType = parser.eventType
                 var siteName = ""
                 var createdAt = ""
-                var teamConfigId: String? = null
-                var teamConfigVersion: String? = null
+                var teamConfigId = ""
+                var teamConfigVersion = ""
                 var submittedAt: String? = null
                 var deletedAt: String? = null
                 var currentTag: String? = null
@@ -98,10 +98,10 @@ data class SiteMetadata(
                         }
                         XmlPullParser.TEXT -> {
                             when (currentTag) {
-                                "siteName" -> siteName = parser.text
-                                "createdAt" -> createdAt = parser.text
-                                "teamConfigId" -> teamConfigId = parser.text
-                                "teamConfigVersion" -> teamConfigVersion = parser.text
+                                "siteName" -> siteName = parser.text ?: ""
+                                "createdAt" -> createdAt = parser.text ?: ""
+                                "teamConfigId" -> teamConfigId = parser.text ?: ""
+                                "teamConfigVersion" -> teamConfigVersion = parser.text ?: ""
                                 "submittedAt" -> submittedAt = parser.text
                                 "deletedAt" -> deletedAt = parser.text
                             }
