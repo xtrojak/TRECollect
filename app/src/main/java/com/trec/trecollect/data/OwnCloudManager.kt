@@ -23,9 +23,9 @@ import java.util.concurrent.TimeUnit
  */
 class OwnCloudManager(private val context: Context) {
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
     // Public ownCloud WebDAV endpoint (from BuildConfig; see local.properties / CI secrets). For public shares, UUID folder is created at this root.
     private val targetFolderUrl: String = BuildConfig.OWNCLOUD_URL.trim().trimEnd('/')
@@ -386,59 +386,23 @@ class OwnCloudManager(private val context: Context) {
         }
         
         val filePath = "$uuidFolder/$subfolder/$fileName"
-        var lastException: Exception? = null
         var delayMs = INITIAL_RETRY_DELAY_MS
         
-        val fileUrl = "$targetFolderUrl/$filePath"
-        
         repeat(retries) { attempt ->
-            try {
-                AppLogger.d(TAG, "Uploading file: $filePath (attempt ${attempt + 1}/$retries)")
-                
-                val requestBody = content.toRequestBody("text/plain".toMediaType())
-                val request = Request.Builder()
-                    .url(fileUrl)
-                    .put(requestBody)
-                    .addHeader("Authorization", createAuthHeader())
-                    .addHeader("User-Agent", "TRECollect/1.0")
-                    .build()
-                
-                val response = client.newCall(request).execute()
-                val responseBody = response.body?.string()
-                val success = response.isSuccessful && (response.code == 201 || response.code == 204)
-                
-                AppLogger.d(TAG, "PUT file response: code=${response.code}, success=$success")
-                AppLogger.d(TAG, "Response headers: ${response.headers}")
-                if (responseBody != null) {
-                    AppLogger.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
-                }
-                response.close()
-                
-                if (success) {
-                    AppLogger.i(TAG, "File uploaded successfully: $filePath")
-                    return@withContext true
-                }
-                
-                AppLogger.w(TAG, "File upload failed. Response code: ${response.code}")
-            } catch (e: SocketTimeoutException) {
-                lastException = e
-                AppLogger.w(TAG, "Timeout uploading file (attempt ${attempt + 1}/$retries): ${e.message}", e)
-            } catch (e: IOException) {
-                lastException = e
-                AppLogger.w(TAG, "Network error uploading file (attempt ${attempt + 1}/$retries): ${e.message}", e)
-            } catch (e: Exception) {
-                lastException = e
-                AppLogger.e(TAG, "Error uploading file (attempt ${attempt + 1}/$retries): ${e.message}", e)
+            AppLogger.d(TAG, "Uploading file: $filePath (attempt ${attempt + 1}/$retries)")
+            val success = uploadTextFileContent(remotePath = filePath, content = content, retries = 1)
+            if (success) {
+                AppLogger.i(TAG, "File uploaded successfully: $filePath")
+                return@withContext true
             }
-            
-            // Wait before retrying (exponential backoff)
+            AppLogger.w(TAG, "File upload failed (attempt ${attempt + 1}/$retries)")
             if (attempt < retries - 1) {
                 delay(delayMs)
                 delayMs = (delayMs * 2).coerceAtMost(MAX_RETRY_DELAY_MS)
             }
         }
         
-        AppLogger.e(TAG, "Failed to upload file after $retries attempts: $filePath", lastException)
+        AppLogger.e(TAG, "Failed to upload file after $retries attempts: $filePath")
         false
     }
     
