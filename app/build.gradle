@@ -20,11 +20,11 @@ static def escapeBuildConfigString(String s) {
 }
 
 android {
-    namespace = 'com.trec.customlogsheets'
+    namespace = 'com.trec.trecollect'
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.trec.customlogsheets"
+        applicationId = "com.trec.trecollect"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

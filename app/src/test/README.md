@@ -11,7 +11,7 @@ This directory contains unit tests for the TRECollect app. These tests run on th
 
 ### Run specific test class
 ```bash
-./gradlew test --tests "com.trec.customlogsheets.data.ConvertersTest"
+./gradlew test --tests "com.trec.trecollect.data.ConvertersTest"
 ```
 
 ### Run tests with coverage

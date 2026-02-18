@@ -126,20 +126,20 @@ This script:
 ./gradlew connectedAndroidTest
 
 # Run specific test class
-./scripts/run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
+./scripts/run-instrumented-tests.sh "com.trec.trecollect.database.SamplingSiteDaoTest"
 ```
 
 ### Running Specific Tests
 
 ```bash
 # Run specific unit test class
-./gradlew test --tests "com.trec.customlogsheets.data.ConvertersTest"
+./gradlew test --tests "com.trec.trecollect.data.ConvertersTest"
 
 # Run specific unit test method
-./gradlew test --tests "com.trec.customlogsheets.data.ConvertersTest.toSiteStatus_roundTrip"
+./gradlew test --tests "com.trec.trecollect.data.ConvertersTest.toSiteStatus_roundTrip"
 
 # Run specific instrumented test class
-./gradlew connectedAndroidTest --tests "com.trec.customlogsheets.database.AppDatabaseTest"
+./gradlew connectedAndroidTest --tests "com.trec.trecollect.database.AppDatabaseTest"
 ```
 
 ## Viewing Test Results

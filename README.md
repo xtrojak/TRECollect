@@ -140,7 +140,7 @@ Instrumented tests require an Android device or emulator to be connected.
 ./gradlew connectedAndroidTest
 
 # Run specific test class
-./scripts/run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
+./scripts/run-instrumented-tests.sh "com.trec.trecollect.database.SamplingSiteDaoTest"
 ```
 
 ### Test Coverage
@@ -162,7 +162,7 @@ See the [test summary](actions) for the latest test results.
 app/
 ├── src/
 │   ├── main/
-│   │   ├── java/com/trec/customlogsheets/
+│   │   ├── java/com/trec/trecollect/
 │   │   │   ├── data/          # Data models, database, file management
 │   │   │   ├── ui/             # Activities, ViewModels, adapters
 │   │   │   └── util/           # Utilities (logging, etc.)

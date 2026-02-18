@@ -63,7 +63,7 @@ Runs instrumented tests with device check.
 ./scripts/run-instrumented-tests.sh
 
 # Run specific test class
-./scripts/run-instrumented-tests.sh "com.trec.customlogsheets.database.SamplingSiteDaoTest"
+./scripts/run-instrumented-tests.sh "com.trec.trecollect.database.SamplingSiteDaoTest"
 ```
 
 **What it does:**

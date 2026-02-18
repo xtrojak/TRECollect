@@ -20,7 +20,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.TRECCustomLogsheets"
+        android:theme="@style/Theme.TRECollect"
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
@@ -47,7 +47,7 @@
             android:parentActivityName=".ui.FormEditActivity"
             android:label="Camera"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.TRECCustomLogsheets"
+            android:theme="@style/Theme.TRECollect"
             tools:ignore="LockedOrientationActivity" />
            <activity
                android:name=".ui.GPSPickerActivity"
