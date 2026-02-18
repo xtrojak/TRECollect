@@ -124,7 +124,6 @@ class CameraActivity : AppCompatActivity() {
                 )
             } catch (exc: Exception) {
                 Toast.makeText(this, "Error starting camera: ${exc.message}", Toast.LENGTH_LONG).show()
-                android.util.Log.e("CameraActivity", "Use case binding failed", exc)
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -149,7 +148,6 @@ class CameraActivity : AppCompatActivity() {
                         if (isDestroyed || isFinishing) return@runOnUiThread
                         Toast.makeText(this@CameraActivity, "Error capturing photo: ${exception.message}", Toast.LENGTH_LONG).show()
                     }
-                    android.util.Log.e("CameraActivity", "Photo capture failed", exception)
                 }
                 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {

@@ -3,7 +3,11 @@
 package com.trec.trecollect.ui
 
 import android.app.ProgressDialog
+import android.content.pm.PackageManager
 import android.os.Bundle
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -13,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.trec.trecollect.R
+import android.Manifest
 import com.trec.trecollect.data.OfflineMapRegion
 import com.trec.trecollect.data.OfflineMapsManager
 import com.trec.trecollect.util.AppLogger
@@ -34,8 +39,13 @@ import java.util.Locale
  * Users can pan and zoom the map, and the bounding box is determined by the visible map area.
  */
 class DownloadRegionActivity : AppCompatActivity() {
+
+    /** Default map center (central Europe) when current location is not available. */
+    private val defaultMapCenter = GeoPoint(50.0, 10.0)
+
     private lateinit var mapsManager: OfflineMapsManager
     private lateinit var mapView: MapView
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var editTextName: EditText
     private lateinit var textMinLat: TextView
     private lateinit var textMaxLat: TextView
@@ -58,6 +68,7 @@ class DownloadRegionActivity : AppCompatActivity() {
         Configuration.getInstance().osmdroidTileCache = cacheDir
         
         mapsManager = OfflineMapsManager(this)
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         
         setupToolbar()
         setupViews()
@@ -93,12 +104,13 @@ class DownloadRegionActivity : AppCompatActivity() {
         editTextMaxZoom = findViewById(R.id.editTextMaxZoom)
         buttonDownload = findViewById(R.id.buttonDownload)
         
-        // Configure map
+        // Configure map: start at default center (current location applied below if available)
         mapView.setTileSource(TileSourceFactory.MAPNIK)
         mapView.setMultiTouchControls(true)
         mapController = mapView.controller
         mapController?.setZoom(10.0)
-        mapController?.setCenter(GeoPoint(0.0, 0.0))
+        mapController?.setCenter(defaultMapCenter)
+        trySetMapCenterToCurrentLocation()
         
         // Set default zoom levels
         editTextMinZoom.setText(getString(R.string.default_zoom_min))
@@ -124,6 +136,22 @@ class DownloadRegionActivity : AppCompatActivity() {
         
         buttonDownload.setOnClickListener {
             downloadRegion()
+        }
+    }
+
+    /**
+     * If location permission is granted, tries to move the map center to the device's last known
+     * location; otherwise the map stays at [defaultMapCenter] (central Europe).
+     */
+    private fun trySetMapCenterToCurrentLocation() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (isDestroyed || isFinishing) return@addOnSuccessListener
+            location?.let {
+                mapController?.setCenter(GeoPoint(it.latitude, it.longitude))
+            }
         }
     }
     
