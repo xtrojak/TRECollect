@@ -3,7 +3,6 @@ package com.trec.trecollect.data
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.trec.trecollect.BuildConfig
 import com.trec.trecollect.util.AppLogger
@@ -28,13 +27,9 @@ class OwnCloudManager(private val context: Context) {
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
-    // Use the public ownCloud WebDAV endpoint (from BuildConfig; see local.properties / CI secrets)
-    private val baseWebDavUrl: String = BuildConfig.OWNCLOUD_URL.trim().trimEnd('/')
+    // Public ownCloud WebDAV endpoint (from BuildConfig; see local.properties / CI secrets). For public shares, UUID folder is created at this root.
+    private val targetFolderUrl: String = BuildConfig.OWNCLOUD_URL.trim().trimEnd('/')
     private val accessToken: String = BuildConfig.OWNCLOUD_ACCESS_TOKEN
-    
-    // For public shares, create UUID folder directly at the root
-    // No need for target folder path - create UUID folder directly in the public share
-    private val targetFolderUrl: String = baseWebDavUrl
     
     /**
      * Creates Basic Authentication header for public share
@@ -69,7 +64,7 @@ class OwnCloudManager(private val context: Context) {
      */
     suspend fun folderExists(folderName: String, retries: Int = MAX_RETRIES): Boolean = withContext(Dispatchers.IO) {
         if (!isNetworkAvailable()) {
-            Log.w(TAG, "No network connectivity, cannot check folder existence")
+            AppLogger.w(TAG, "No network connectivity, cannot check folder existence")
             return@withContext false
         }
         
@@ -79,7 +74,6 @@ class OwnCloudManager(private val context: Context) {
         repeat(retries) { attempt ->
             try {
                 val url = "$targetFolderUrl/$folderName"
-                Log.d(TAG, "Checking folder existence: $url (attempt ${attempt + 1}/$retries)")
                 AppLogger.d(TAG, "Checking folder existence: $url (attempt ${attempt + 1}/$retries)")
                 
                 val request = Request.Builder()
@@ -87,7 +81,7 @@ class OwnCloudManager(private val context: Context) {
                     .method("PROPFIND", null)
                     .addHeader("Depth", "0")
                     .addHeader("Authorization", createAuthHeader())
-                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .addHeader("User-Agent", "TRECollect/1.0")
                     .build()
                 
                 val response = client.newCall(request).execute()
@@ -98,11 +92,6 @@ class OwnCloudManager(private val context: Context) {
                 if (responseBody != null) {
                     AppLogger.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
                 }
-                Log.d(TAG, "PROPFIND response: code=${response.code}, exists=$exists")
-                Log.d(TAG, "Response headers: ${response.headers}")
-                if (responseBody != null) {
-                    Log.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
-                }
                 response.close()
                 
                 if (exists || response.code == 404) {
@@ -110,19 +99,15 @@ class OwnCloudManager(private val context: Context) {
                 }
                 
                 AppLogger.w(TAG, "Unexpected response code when checking folder: ${response.code}")
-                Log.w(TAG, "Unexpected response code when checking folder: ${response.code}")
             } catch (e: SocketTimeoutException) {
                 lastException = e
                 AppLogger.w(TAG, "Timeout checking folder existence (attempt ${attempt + 1}/$retries): ${e.message}", e)
-                Log.w(TAG, "Timeout checking folder existence (attempt ${attempt + 1}/$retries): ${e.message}")
             } catch (e: IOException) {
                 lastException = e
                 AppLogger.w(TAG, "Network error checking folder existence (attempt ${attempt + 1}/$retries): ${e.message}", e)
-                Log.w(TAG, "Network error checking folder existence (attempt ${attempt + 1}/$retries): ${e.message}")
             } catch (e: Exception) {
                 lastException = e
                 AppLogger.e(TAG, "Error checking folder existence (attempt ${attempt + 1}/$retries): ${e.message}", e)
-                Log.e(TAG, "Error checking folder existence (attempt ${attempt + 1}/$retries): ${e.message}", e)
             }
             
             // Wait before retrying (exponential backoff)
@@ -133,7 +118,6 @@ class OwnCloudManager(private val context: Context) {
         }
         
         AppLogger.e(TAG, "Failed to check folder existence after $retries attempts", lastException)
-        Log.e(TAG, "Failed to check folder existence after $retries attempts", lastException)
         false
     }
     
@@ -143,7 +127,7 @@ class OwnCloudManager(private val context: Context) {
      */
     suspend fun createFolder(folderName: String, retries: Int = MAX_RETRIES): Boolean = withContext(Dispatchers.IO) {
         if (!isNetworkAvailable()) {
-            Log.w(TAG, "No network connectivity, cannot create folder")
+            AppLogger.w(TAG, "No network connectivity, cannot create folder")
             return@withContext false
         }
         
@@ -154,7 +138,6 @@ class OwnCloudManager(private val context: Context) {
             try {
                 // Try MKCOL first (standard WebDAV method)
                 val url = "$targetFolderUrl/$folderName"
-                Log.d(TAG, "Creating folder: $url (attempt ${attempt + 1}/$retries)")
                 AppLogger.d(TAG, "Creating folder: $url (attempt ${attempt + 1}/$retries)")
                 
                 // Method 1: Try MKCOL
@@ -162,7 +145,7 @@ class OwnCloudManager(private val context: Context) {
                     .url(url)
                     .method("MKCOL", null)
                     .addHeader("Authorization", createAuthHeader())
-                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .addHeader("User-Agent", "TRECollect/1.0")
                     .build()
                 
                 var response = client.newCall(request).execute()
@@ -174,30 +157,23 @@ class OwnCloudManager(private val context: Context) {
                 if (responseBody != null) {
                     AppLogger.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
                 }
-                Log.d(TAG, "MKCOL response: code=$responseCode, created=$created")
-                Log.d(TAG, "Response headers: ${response.headers}")
-                if (responseBody != null) {
-                    Log.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
-                }
                 response.close()
                 
                 if (created) {
                     AppLogger.i(TAG, "Folder created successfully with MKCOL: $folderName")
-                    Log.d(TAG, "Folder created successfully with MKCOL: $folderName")
                     return@withContext true
                 }
                 
                 // Method 2: If MKCOL fails, try creating a .folder marker file (some ownCloud setups require this)
                 if (responseCode == 405 || responseCode == 403 || responseCode == 501) {
                     AppLogger.d(TAG, "MKCOL not supported, trying PUT with .folder marker")
-                    Log.d(TAG, "MKCOL not supported, trying PUT with .folder marker")
                     val markerUrl = "$url/.folder"
                     val markerContent = "".toRequestBody("text/plain".toMediaType())
                     request = Request.Builder()
                         .url(markerUrl)
                         .put(markerContent)
                         .addHeader("Authorization", createAuthHeader())
-                        .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                        .addHeader("User-Agent", "TRECollect/1.0")
                         .build()
                     
                     response = client.newCall(request).execute()
@@ -209,34 +185,24 @@ class OwnCloudManager(private val context: Context) {
                     if (responseBody != null) {
                         AppLogger.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
                     }
-                    Log.d(TAG, "PUT .folder marker response: code=$responseCode, created=$created")
-                    Log.d(TAG, "Response headers: ${response.headers}")
-                    if (responseBody != null) {
-                        Log.d(TAG, "Response body (first 500 chars): ${responseBody.take(500)}")
-                    }
                     response.close()
                     
                     if (created) {
                         AppLogger.i(TAG, "Folder marker created successfully: $folderName")
-                        Log.d(TAG, "Folder marker created successfully: $folderName")
                         return@withContext true
                     }
                 }
                 
                 AppLogger.w(TAG, "Failed to create folder. Last response code: $responseCode")
-                Log.w(TAG, "Failed to create folder. Last response code: $responseCode")
             } catch (e: SocketTimeoutException) {
                 lastException = e
                 AppLogger.w(TAG, "Timeout creating folder (attempt ${attempt + 1}/$retries): ${e.message}", e)
-                Log.w(TAG, "Timeout creating folder (attempt ${attempt + 1}/$retries): ${e.message}")
             } catch (e: IOException) {
                 lastException = e
                 AppLogger.w(TAG, "Network error creating folder (attempt ${attempt + 1}/$retries): ${e.message}", e)
-                Log.w(TAG, "Network error creating folder (attempt ${attempt + 1}/$retries): ${e.message}")
             } catch (e: Exception) {
                 lastException = e
                 AppLogger.e(TAG, "Error creating folder (attempt ${attempt + 1}/$retries): ${e.message}", e)
-                Log.e(TAG, "Error creating folder (attempt ${attempt + 1}/$retries): ${e.message}", e)
             }
             
             // Wait before retrying (exponential backoff)
@@ -247,17 +213,7 @@ class OwnCloudManager(private val context: Context) {
         }
         
         AppLogger.e(TAG, "Failed to create folder after $retries attempts", lastException)
-        Log.e(TAG, "Failed to create folder after $retries attempts", lastException)
         false
-    }
-    
-    /**
-     * Ensures the target folder path exists (creates parent directories if needed)
-     * For public shares, we create the UUID folder directly at the root
-     */
-    private fun ensureTargetFolderPath(): Boolean {
-        // For public shares, no parent folders needed - create UUID folder directly
-        return true
     }
     
     /**
@@ -274,7 +230,7 @@ class OwnCloudManager(private val context: Context) {
                 .method("PROPFIND", null)
                 .addHeader("Depth", "0")
                 .addHeader("Authorization", createAuthHeader())
-                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .addHeader("User-Agent", "TRECollect/1.0")
                 .build()
             
             val response = client.newCall(request).execute()
@@ -282,7 +238,7 @@ class OwnCloudManager(private val context: Context) {
             response.close()
             return@withContext exists
         } catch (e: Exception) {
-            Log.d(TAG, "Path check failed: $fullPath - ${e.message}")
+            AppLogger.d(TAG, "Path check failed: $fullPath - ${e.message}")
             return@withContext false
         }
     }
@@ -300,7 +256,7 @@ class OwnCloudManager(private val context: Context) {
                 .url(fullPath)
                 .method("MKCOL", null)
                 .addHeader("Authorization", createAuthHeader())
-                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .addHeader("User-Agent", "TRECollect/1.0")
                 .build()
             
             val response = client.newCall(request).execute()
@@ -308,11 +264,10 @@ class OwnCloudManager(private val context: Context) {
             response.close()
             if (created) {
                 AppLogger.d(TAG, "Created parent folder: $fullPath")
-                Log.d(TAG, "Created parent folder: $fullPath")
             }
             return@withContext created
         } catch (e: Exception) {
-            Log.d(TAG, "Path creation failed: $fullPath - ${e.message}")
+            AppLogger.d(TAG, "Path creation failed: $fullPath - ${e.message}")
             return@withContext false
         }
     }
@@ -323,9 +278,6 @@ class OwnCloudManager(private val context: Context) {
      * All teams use the same structure with team and subteam folders
      */
     suspend fun ensureFolderExists(folderName: String, retries: Int = MAX_RETRIES): Boolean {
-        // First ensure the target folder path exists
-        ensureTargetFolderPath()
-        
         // Get team and subteam from settings
         val settingsPreferences = SettingsPreferences(context)
         val team = settingsPreferences.getSamplingTeam()
@@ -448,7 +400,7 @@ class OwnCloudManager(private val context: Context) {
                     .url(fileUrl)
                     .put(requestBody)
                     .addHeader("Authorization", createAuthHeader())
-                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .addHeader("User-Agent", "TRECollect/1.0")
                     .build()
                 
                 val response = client.newCall(request).execute()
@@ -644,7 +596,7 @@ class OwnCloudManager(private val context: Context) {
                     .url(fileUrl)
                     .put(requestBody)
                     .addHeader("Authorization", createAuthHeader())
-                    .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                    .addHeader("User-Agent", "TRECollect/1.0")
                     .build()
                 
                 val response = client.newCall(request).execute()
@@ -677,7 +629,7 @@ class OwnCloudManager(private val context: Context) {
                 .method("PROPFIND", null)
                 .addHeader("Depth", "1")
                 .addHeader("Authorization", createAuthHeader())
-                .addHeader("User-Agent", "TREC-Custom-Logsheets/1.0")
+                .addHeader("User-Agent", "TRECollect/1.0")
                 .build()
             
             val response = client.newCall(request).execute()
