@@ -1225,7 +1225,7 @@ class SiteDetailActivity : AppCompatActivity() {
             null
         }
         
-        android.util.Log.d("SiteDetailActivity", "Form clicked: id=${form.id}, name=${form.name}, position=$positionInSection, instanceIndex=$instanceIndex, subIndex=$subIndex")
+        android.util.Log.w("SiteDetailActivity", "Form clicked: id=${form.id}, name=${form.name}, position=$positionInSection, instanceIndex=$instanceIndex, subIndex=$subIndex")
         
         // Open form editing activity
         val intent = Intent(this, FormEditActivity::class.java).apply {
@@ -1237,6 +1237,7 @@ class SiteDetailActivity : AppCompatActivity() {
             }
             putExtra("isReadOnly", site.status == com.trec.trecollect.data.SiteStatus.FINISHED)
         }
+        android.util.Log.w("SiteDetailActivity", "Starting FormEditActivity with orderInSection=$instanceIndex")
         startActivity(intent)
     }
     

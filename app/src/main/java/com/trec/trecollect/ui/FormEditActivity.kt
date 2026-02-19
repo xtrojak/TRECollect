@@ -297,68 +297,87 @@ class FormEditActivity : AppCompatActivity() {
             return
         }
         
-        // orderInSection is required (0-based index of this form instance in its section)
+        // Get the order in section (0-based index of this specific form instance)
+        // If not provided, calculate it (for backward compatibility)
         orderInSection = intent.getIntExtra("orderInSection", -1)
         subIndex = intent.getIntExtra("subIndex", -1).takeIf { it >= 0 }
+        
         if (orderInSection < 0) {
-            AppLogger.e("FormEditActivity", "FormEditActivity started without orderInSection for formId: $formId")
-            finish()
-            return
+            // Calculate it from the form list for this specific site
+            val forms = PredefinedForms.getFormsForSite(this, siteName)
+            val formConfig = forms.firstOrNull { it.id == formId }
+            if (formConfig != null) {
+                val formsInSection = PredefinedForms.getFormsBySectionForSite(this, siteName, formConfig.section)
+                val positionInSection = formsInSection.indexOfFirst { it.id == formId }
+                if (positionInSection >= 0) {
+                    // Count how many forms with this ID appear before this position
+                    var instanceIndex = 0
+                    for (i in 0 until positionInSection) {
+                        if (formsInSection[i].id == formId) {
+                            instanceIndex++
+                        }
+                    }
+                    orderInSection = instanceIndex
+                } else {
+                    orderInSection = 0
+                }
+            } else {
+                orderInSection = 0
+            }
         }
         
         isReadOnly = intent.getBooleanExtra("isReadOnly", false)
         
         formFileHelper = FormFileHelper(this)
         
-        // Load existing data first so we can load the correct config (versioned if existing, else latest)
-        loadExistingData()
-        
-        // Load form config: versioned if existing data has logsheetVersion, else latest for new form
-        if (existingFormData != null) {
-            val data = existingFormData!!
-            if (data.logsheetVersion.isEmpty()) {
-                AppLogger.e("FormEditActivity", "Existing form data missing logsheetVersion for formId: $formId")
-                Toast.makeText(this, "Error: Form data missing version information", Toast.LENGTH_LONG).show()
+        // Load form configuration - we'll reload it after loading existing data if it has a version
+        // Use orderInSection to get the correct instance (since same formId can appear multiple times with different titles)
+        try {
+            formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId, orderInSection) ?: run {
+                android.util.Log.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
+                android.util.Log.d("FormEditActivity", "Available forms: ${PredefinedForms.getFormsForSite(this, siteName).map { it.id }}")
+                Toast.makeText(this, "Form configuration not found for: $formId", Toast.LENGTH_LONG).show()
                 finish()
                 return
             }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error loading form config: ${e.message}", e)
+            Toast.makeText(this, "Error loading form: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        
+        setupToolbar()
+        setupViews()
+        loadExistingData()
+        
+        // After loading existing data, reload form config with the version from XML
+        existingFormData?.let { data ->
             if (data.logsheetVersion.isNotEmpty()) {
                 try {
                     val versionedConfig = FormConfigLoader.loadFormConfigForVersion(this, formId, data.logsheetVersion, siteName, orderInSection)
                     if (versionedConfig != null) {
                         formConfig = versionedConfig
-                        AppLogger.d("FormEditActivity", "Loaded form config version ${data.logsheetVersion} for formId: $formId")
+                        android.util.Log.d("FormEditActivity", "Loaded form config version ${data.logsheetVersion} for formId: $formId")
                     } else {
-                        AppLogger.e("FormEditActivity", "Could not load form config version ${data.logsheetVersion} for formId: $formId")
+                        android.util.Log.e("FormEditActivity", "Could not load form config version ${data.logsheetVersion} for formId: $formId")
                         Toast.makeText(this, "Error: Could not load form config version ${data.logsheetVersion}", Toast.LENGTH_LONG).show()
                         finish()
                         return
                     }
                 } catch (e: Exception) {
-                    AppLogger.e("FormEditActivity", "Error loading form config version ${data.logsheetVersion}: ${e.message}", e)
+                    android.util.Log.e("FormEditActivity", "Error loading form config version ${data.logsheetVersion}: ${e.message}", e)
                     Toast.makeText(this, "Error loading form config: ${e.message}", Toast.LENGTH_LONG).show()
                     finish()
                     return
                 }
-            }
-        } else {
-            try {
-                formConfig = PredefinedForms.getFormConfigForSite(this, siteName, formId, orderInSection) ?: run {
-                    AppLogger.e("FormEditActivity", "Form config not found for formId: $formId in site: $siteName")
-                    Toast.makeText(this, "Form configuration not found for: $formId", Toast.LENGTH_LONG).show()
-                    finish()
-                    return
-                }
-            } catch (e: Exception) {
-                AppLogger.e("FormEditActivity", "Error loading form config: ${e.message}", e)
-                Toast.makeText(this, "Error loading form: ${e.message}", Toast.LENGTH_LONG).show()
+            } else {
+                android.util.Log.e("FormEditActivity", "Existing form data missing logsheetVersion for formId: $formId")
+                Toast.makeText(this, "Error: Form data missing version information", Toast.LENGTH_LONG).show()
                 finish()
                 return
             }
         }
-        
-        setupToolbar()
-        setupViews()
         
         renderFields()
         setupFocusChangeDebounce()
@@ -858,7 +877,7 @@ class FormEditActivity : AppCompatActivity() {
                 if (imageFile != null && imageFile.exists()) {
                     // Load from downloaded file
                     val bitmap = android.graphics.BitmapFactory.decodeFile(imageFile.absolutePath)
-                imageView.setImageBitmap(bitmap)
+                    imageView.setImageBitmap(bitmap)
                 } else {
                     android.util.Log.w("FormEditActivity", "Image not found: $imagePath")
                     // Set a placeholder or error icon
@@ -904,14 +923,6 @@ class FormEditActivity : AppCompatActivity() {
         
         // Check if this is a calculated field (target of logic rule)
         val isCalculated = isCalculatedField(fieldConfig.id)
-        
-        // Debug: Log all logic rules to help identify issues
-        if (formConfig.logic.isNotEmpty()) {
-            android.util.Log.d("FormEditActivity", "Checking if field '${fieldConfig.id}' is calculated. Available logic rules:")
-            for (rule in formConfig.logic) {
-                android.util.Log.d("FormEditActivity", "  Rule: ${rule.type} -> target '${rule.targetId}', sources: ${rule.sourceIds.joinToString()}")
-            }
-        }
         
         if (fieldConfig.required) {
             textInputLayout.hint = "${fieldConfig.label} *"
@@ -972,14 +983,10 @@ class FormEditActivity : AppCompatActivity() {
         // Store field ID in tag for retrieval
         textInputLayout.tag = fieldConfig.id
         
-        // Disable editing if read-only
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         } else {
             // Update fieldValues as user types
             var previousValue = editText.text?.toString() ?: ""
@@ -1049,14 +1056,10 @@ class FormEditActivity : AppCompatActivity() {
         editText.minLines = 3
         editText.maxLines = 5
         
-        // Make read-only if needed
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         
         if (fieldConfig.required) {
@@ -1107,14 +1110,10 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = fieldConfig.id
         
-        // Disable editing if read-only
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         } else {
             editText.isFocusable = false
             editText.isClickable = true
@@ -1145,14 +1144,10 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = fieldConfig.id
         
-        // Disable editing if read-only
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         } else {
             editText.isFocusable = false
             editText.isClickable = true
@@ -1183,14 +1178,10 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = fieldConfig.id
         
-        // Disable editing if read-only
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         } else {
             editText.isFocusable = false
             editText.isClickable = true
@@ -1227,14 +1218,10 @@ class FormEditActivity : AppCompatActivity() {
             editText.setText(existingValue.values.joinToString(", "))
         }
         
-        // Disable editing if read-only
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         } else {
             editText.isFocusable = false
             editText.isClickable = true
@@ -1453,12 +1440,10 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         if (isReadOnly) {
-            editTextLatitude.isEnabled = false
-            editTextLatitude.isFocusable = false
-            editTextLatitude.isFocusableInTouchMode = false
-            editTextLongitude.isEnabled = false
-            editTextLongitude.isFocusable = false
-            editTextLongitude.isFocusableInTouchMode = false
+            editTextLatitude.setKeyListener(null)
+            editTextLatitude.setTextIsSelectable(true)
+            editTextLongitude.setKeyListener(null)
+            editTextLongitude.setTextIsSelectable(true)
             buttonGetLocation.isEnabled = false
         } else {
             // Update fieldValues as user types
@@ -1700,14 +1685,10 @@ class FormEditActivity : AppCompatActivity() {
             editText.setText(existingValue.value)
         }
         
-        // Make read-only if needed
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
             buttonScan.isEnabled = false
         } else {
             // Update fieldValues as user types
@@ -2296,13 +2277,10 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = uniqueFieldId
         
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         // Note: TextWatcher will be added in addSubFieldChangeListener
         
@@ -2360,13 +2338,10 @@ class FormEditActivity : AppCompatActivity() {
         
         textInputLayout.tag = uniqueFieldId
         
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         // Note: TextWatcher will be added in addSubFieldChangeListener
         
@@ -2399,9 +2374,8 @@ class FormEditActivity : AppCompatActivity() {
                 showDatePickerForSubField(uniqueFieldId, editText)
             }
         } else {
-            editText.isEnabled = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         
         return textInputLayout
@@ -2433,9 +2407,8 @@ class FormEditActivity : AppCompatActivity() {
                 showTimePickerForSubField(uniqueFieldId, editText)
             }
         } else {
-            editText.isEnabled = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         
         return textInputLayout
@@ -2467,9 +2440,8 @@ class FormEditActivity : AppCompatActivity() {
                 showSelectDialogForSubField(fieldConfig, editText, uniqueFieldId)
             }
         } else {
-            editText.isEnabled = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         
         return textInputLayout
@@ -2507,9 +2479,8 @@ class FormEditActivity : AppCompatActivity() {
                 showMultiSelectDialogForSubField(fieldConfig, editText, uniqueFieldId)
             }
         } else {
-            editText.isEnabled = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
         }
         
         return textInputLayout
@@ -2549,12 +2520,10 @@ class FormEditActivity : AppCompatActivity() {
         }
         
         if (isReadOnly) {
-            editTextLatitude.isEnabled = false
-            editTextLatitude.isFocusable = false
-            editTextLatitude.isFocusableInTouchMode = false
-            editTextLongitude.isEnabled = false
-            editTextLongitude.isFocusable = false
-            editTextLongitude.isFocusableInTouchMode = false
+            editTextLatitude.setKeyListener(null)
+            editTextLatitude.setTextIsSelectable(true)
+            editTextLongitude.setKeyListener(null)
+            editTextLongitude.setTextIsSelectable(true)
             buttonGetLocation.isEnabled = false
         } else {
             buttonGetLocation.setOnClickListener {
@@ -2638,13 +2607,10 @@ class FormEditActivity : AppCompatActivity() {
         
         container.tag = uniqueFieldId
         
+        // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
-            editText.isEnabled = false
-            editText.isFocusable = false
-            editText.isFocusableInTouchMode = false
-            editText.isClickable = false
-            textInputLayout.isEnabled = false
-            textInputLayout.isClickable = false
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
             buttonScan.isEnabled = false
         } else {
             buttonScan.setOnClickListener {
