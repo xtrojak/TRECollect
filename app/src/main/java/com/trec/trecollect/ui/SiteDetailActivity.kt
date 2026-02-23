@@ -46,7 +46,7 @@ class SiteDetailActivity : AppCompatActivity() {
     private var canFinalize: Boolean = false
     private var savedScrollPosition: Int = 0 // Save scroll position when refreshing
     
-    // Cache for forms data to avoid reloading in other methods
+    // Cache for this site's base forms by section; cleared on reload so size is bounded by app form config.
     private var cachedBaseFormsBySection: Map<String, List<Form>>? = null
     private var cachedSections: List<String>? = null
     
@@ -134,7 +134,8 @@ class SiteDetailActivity : AppCompatActivity() {
             setupFormsList()
         }
         
-        // Reload site data to get updated upload status (only if site has valid ID and not finished)
+        // Reload site and refresh upload status so the user sees the latest state when returning
+        // (e.g. after background upload or from main list where status is also shown).
         if (site.id > 0 && site.status != com.trec.trecollect.data.SiteStatus.FINISHED) {
             lifecycleScope.launch {
                 try {
