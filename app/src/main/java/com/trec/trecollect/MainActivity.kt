@@ -119,10 +119,10 @@ class MainActivity : AppCompatActivity() {
         
         val missingItems = mutableListOf<String>()
         if (folderUri.isEmpty()) {
-            missingItems.add("output folder")
+            missingItems.add("Output folder")
         }
         if (team.isEmpty()) {
-            missingItems.add("sampling team")
+            missingItems.add("Sampling team")
         } else if (!subteamSet) {
             val teamDisplayName = "$team subteam"
             missingItems.add(teamDisplayName)
