@@ -193,22 +193,7 @@ class OfflineMapsActivity : AppCompatActivity() {
         
         settingsPreferences.setMapExpiryDays(days)
         Toast.makeText(this, getString(R.string.expiry_settings_saved), Toast.LENGTH_SHORT).show()
-        
-        // Update existing regions with new expiry
-        lifecycleScope.launch {
-            val regions = mapsManager.getAllRegions()
-            for (region in regions) {
-                val expiresAt = if (days > 0) {
-                    region.downloadedAt + (days * 24 * 60 * 60 * 1000)
-                } else {
-                    null
-                }
-                val updatedRegion = region.copy(expiresAt = expiresAt)
-                // Re-save with new expiry
-                mapsManager.saveRegion(updatedRegion)
-            }
-            loadRegions()
-        }
+        // Expiry applies only to newly downloaded regions; existing saved regions keep their current expiry.
     }
     
     private fun enableSelectionMode() {
