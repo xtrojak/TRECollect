@@ -2783,20 +2783,22 @@ class FormEditActivity : AppCompatActivity() {
                 }
                 if (isDestroyed || isFinishing) return@launch
                 if (barcodes != null && barcodes.isNotEmpty()) {
-                    val barcode = barcodes[0]
-                    val barcodeValue = when {
-                        barcode.rawValue != null -> barcode.rawValue!!
-                        barcode.displayValue != null -> barcode.displayValue!!
-                        else -> "Unknown"
+                    // Use all detected barcodes as comma-separated values (Review #81)
+                    val barcodeValues = barcodes.map { barcode ->
+                        when {
+                            barcode.rawValue != null -> barcode.rawValue!!
+                            barcode.displayValue != null -> barcode.displayValue!!
+                            else -> "Unknown"
+                        }
                     }
-                    
+                    val barcodeValue = barcodeValues.joinToString(",")
                     if (currentBarcodeFieldId != null) {
-                    fieldValues[currentBarcodeFieldId!!] = FormFieldValue(
-                        currentBarcodeFieldId!!,
-                        value = barcodeValue
-                    )
-                    updateBarcodeFieldView(currentBarcodeFieldId!!, barcodeValue)
-                    markFormChanged()
+                        fieldValues[currentBarcodeFieldId!!] = FormFieldValue(
+                            currentBarcodeFieldId!!,
+                            value = barcodeValue
+                        )
+                        updateBarcodeFieldView(currentBarcodeFieldId!!, barcodeValue)
+                        markFormChanged()
                         Toast.makeText(this@FormEditActivity, "Barcode scanned: $barcodeValue", Toast.LENGTH_SHORT).show()
                     }
                 } else {
@@ -2825,120 +2827,64 @@ class FormEditActivity : AppCompatActivity() {
         editText?.setSelection(barcodeValue.length)
     }
     
-    private fun showDatePickerForSubField(fieldId: String, editText: TextInputEditText) {
+    /**
+     * Shared date picker logic for top-level and subfield (Reviews #82, #83).
+     * [onAfterValueSet] is invoked after setting value and markFormChanged(); use for updateAddButtonForDynamicField in subfield case.
+     */
+    private fun showDatePickerInternal(fieldId: String, editText: TextInputEditText, onAfterValueSet: (() -> Unit)?) {
         val calendar = Calendar.getInstance()
-        // If there's an existing value, parse it
         val existingValue = fieldValues[fieldId]?.value
         if (existingValue != null) {
             try {
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                 val date = dateFormat.parse(existingValue)
-                if (date != null) {
-                    calendar.time = date
-                }
+                if (date != null) calendar.time = date
             } catch (e: Exception) {
                 // Ignore parsing errors
             }
         }
-        
         DatePickerDialog(
             this,
             { _, year, month, dayOfMonth ->
-                val selectedDate = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth)
-                }
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val dateString = dateFormat.format(selectedDate.time)
+                val selectedDate = Calendar.getInstance().apply { set(year, month, dayOfMonth) }
+                val dateString = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(selectedDate.time)
                 editText.setText(dateString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = dateString)
                 markFormChanged()
-                dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
+                onAfterValueSet?.invoke()
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
             calendar.get(Calendar.DAY_OF_MONTH)
         ).show()
     }
-    
-    private fun showTimePickerForSubField(fieldId: String, editText: TextInputEditText) {
-        val calendar = Calendar.getInstance()
-        val existingValue = fieldValues[fieldId]?.value
-        if (existingValue != null) {
-            try {
-                val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-                val time = timeFormat.parse(existingValue)
-                if (time != null) {
-                    calendar.time = time
-                }
-            } catch (e: Exception) {
-                // Ignore parsing errors
-            }
-        }
-        
-        TimePickerDialog(
-            this,
-            { _, hourOfDay, minute ->
-                val timeString = String.format(Locale.getDefault(), "%02d:%02d", hourOfDay, minute)
-                editText.setText(timeString)
-                fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
-                markFormChanged()
-                dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
-            },
-            calendar.get(Calendar.HOUR_OF_DAY),
-            calendar.get(Calendar.MINUTE),
-            true // 24-hour format
-        ).show()
-    }
-    
+
     private fun showDatePicker(fieldId: String, editText: TextInputEditText) {
-        val calendar = Calendar.getInstance()
-        // If there's an existing value, parse it
-        val existingValue = fieldValues[fieldId]?.value
-        if (existingValue != null) {
-            try {
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val date = dateFormat.parse(existingValue)
-                if (date != null) {
-                    calendar.time = date
-                }
-            } catch (e: Exception) {
-                // Ignore parsing errors
-            }
-        }
-        
-        DatePickerDialog(
-            this,
-            { _, year, month, dayOfMonth ->
-                val selectedDate = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth)
-                }
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val dateString = dateFormat.format(selectedDate.time)
-                editText.setText(dateString)
-                fieldValues[fieldId] = FormFieldValue(fieldId, value = dateString)
-                markFormChanged()
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        showDatePickerInternal(fieldId, editText, null)
     }
-    
-    private fun showTimePicker(fieldId: String, editText: TextInputEditText) {
+
+    private fun showDatePickerForSubField(fieldId: String, editText: TextInputEditText) {
+        showDatePickerInternal(fieldId, editText) {
+            dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
+        }
+    }
+
+    /**
+     * Shared time picker logic for top-level and subfield (Reviews #82, #83).
+     * [onAfterValueSet] is invoked after setting value and markFormChanged(); use for updateAddButtonForDynamicField in subfield case.
+     */
+    private fun showTimePickerInternal(fieldId: String, editText: TextInputEditText, onAfterValueSet: (() -> Unit)?) {
         val calendar = Calendar.getInstance()
         val existingValue = fieldValues[fieldId]?.value
         if (existingValue != null) {
             try {
                 val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
                 val time = timeFormat.parse(existingValue)
-                if (time != null) {
-                    calendar.time = time
-                }
+                if (time != null) calendar.time = time
             } catch (e: Exception) {
                 // Ignore parsing errors
             }
         }
-        
         TimePickerDialog(
             this,
             { _, hourOfDay, minute ->
@@ -2946,11 +2892,22 @@ class FormEditActivity : AppCompatActivity() {
                 editText.setText(timeString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
                 markFormChanged()
+                onAfterValueSet?.invoke()
             },
             calendar.get(Calendar.HOUR_OF_DAY),
             calendar.get(Calendar.MINUTE),
             true // 24-hour format
         ).show()
+    }
+
+    private fun showTimePicker(fieldId: String, editText: TextInputEditText) {
+        showTimePickerInternal(fieldId, editText, null)
+    }
+
+    private fun showTimePickerForSubField(fieldId: String, editText: TextInputEditText) {
+        showTimePickerInternal(fieldId, editText) {
+            dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
+        }
     }
     
     private fun showSelectDialog(fieldConfig: FormFieldConfig, editText: TextInputEditText) {
@@ -3044,7 +3001,7 @@ class FormEditActivity : AppCompatActivity() {
         
         val valueParts = value.split(':')
         val normalizedParts = mutableListOf<String>()
-        
+        // Indices remapping (section index -> value part) is correct but non-trivial; leave as-is (Review #80).
         for (i in sectionLengths.indices) {
             val sectionLength = sectionLengths[i]
             val valuePart = valueParts.getOrNull(i) ?: ""
