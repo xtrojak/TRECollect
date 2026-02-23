@@ -842,7 +842,7 @@ class FormEditActivity : AppCompatActivity() {
     /**
      * Common setup for fields that use [R.layout.field_text_input]: inflate into [parent], set label/hint and [tag].
      * Returns the [TextInputLayout] and its [TextInputEditText] for the caller to add type-specific behaviour.
-     * Used by both top-level field creation and ForSubField (Review #78).
+     * Used by both top-level field creation and ForSubField.
      */
     private fun inflateTextInputFieldInto(fieldConfig: FormFieldConfig, parent: ViewGroup, tag: String): Pair<TextInputLayout, TextInputEditText> {
         val inflater = LayoutInflater.from(this)
@@ -867,7 +867,7 @@ class FormEditActivity : AppCompatActivity() {
     
     /**
      * Common setup for checkbox fields: inflate into [parent], set label and [tag].
-     * Used by both top-level and ForSubField (Review #78).
+     * Used by both top-level and ForSubField.
      */
     private fun inflateCheckboxFieldInto(fieldConfig: FormFieldConfig, parent: ViewGroup, tag: String): Pair<LinearLayout, CheckBox> {
         val inflater = LayoutInflater.from(this)
@@ -1464,7 +1464,7 @@ class FormEditActivity : AppCompatActivity() {
     
     /**
      * Builds the form key for a dynamic sub-field. Format: "${dynamicFieldId}_instance${instanceIndex}_${subFieldId}".
-     * Used when building or parsing uniqueFieldId (Review #79).
+     * Used when building or parsing uniqueFieldId.
      */
     private fun formKeyForDynamicSubField(dynamicFieldId: String, instanceIndex: Int, subFieldId: String): String =
         "${dynamicFieldId}_instance${instanceIndex}_${subFieldId}"
@@ -1726,7 +1726,7 @@ class FormEditActivity : AppCompatActivity() {
         val existingValue = fieldValues[fieldConfig.id]
         val existingTableData = existingValue?.tableData ?: emptyMap()
         
-        // Table cell styling: padding, row height, and grid line. Defined inline here; could be moved to styles/themes in a follow-up (Review #76).
+        // Table cell styling: padding, row height, and grid line. Defined inline here; could be moved to styles/themes in a follow-up.
         // Light grid line (mutate per cell so drawable state not shared)
         fun gridLine() = ContextCompat.getDrawable(this, R.drawable.table_cell_grid_line)?.mutate()
         val cellPadding = (8 * resources.displayMetrics.density).toInt() // 8dp
@@ -2188,7 +2188,7 @@ class FormEditActivity : AppCompatActivity() {
         return subFieldView
     }
     
-    // Helper methods to create sub-fields for dynamic widgets (shared setup with top-level via inflateTextInputFieldInto; Review #78)
+    // Helper methods to create sub-fields for dynamic widgets (shared setup with top-level via inflateTextInputFieldInto)
     private fun createTextFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
@@ -2783,7 +2783,7 @@ class FormEditActivity : AppCompatActivity() {
                 }
                 if (isDestroyed || isFinishing) return@launch
                 if (barcodes != null && barcodes.isNotEmpty()) {
-                    // Use all detected barcodes as comma-separated values (Review #81)
+                    // Use all detected barcodes as comma-separated values
                     val barcodeValues = barcodes.map { barcode ->
                         when {
                             barcode.rawValue != null -> barcode.rawValue!!
@@ -2828,7 +2828,7 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     /**
-     * Shared date picker logic for top-level and subfield (Reviews #82, #83).
+     * Shared date picker logic for top-level and subfield.
      * [onAfterValueSet] is invoked after setting value and markFormChanged(); use for updateAddButtonForDynamicField in subfield case.
      */
     private fun showDatePickerInternal(fieldId: String, editText: TextInputEditText, onAfterValueSet: (() -> Unit)?) {
@@ -2870,7 +2870,7 @@ class FormEditActivity : AppCompatActivity() {
     }
 
     /**
-     * Shared time picker logic for top-level and subfield (Reviews #82, #83).
+     * Shared time picker logic for top-level and subfield.
      * [onAfterValueSet] is invoked after setting value and markFormChanged(); use for updateAddButtonForDynamicField in subfield case.
      */
     private fun showTimePickerInternal(fieldId: String, editText: TextInputEditText, onAfterValueSet: (() -> Unit)?) {
@@ -3001,7 +3001,7 @@ class FormEditActivity : AppCompatActivity() {
         
         val valueParts = value.split(':')
         val normalizedParts = mutableListOf<String>()
-        // Indices remapping (section index -> value part) is correct but non-trivial; leave as-is (Review #80).
+        // Indices remapping (section index -> value part) is correct but non-trivial.
         for (i in sectionLengths.indices) {
             val sectionLength = sectionLengths[i]
             val valuePart = valueParts.getOrNull(i) ?: ""
@@ -3596,197 +3596,132 @@ class FormEditActivity : AppCompatActivity() {
         return values
     }
     
-    private fun validateForm(): Boolean {
-        // Handle display-only fields before the loop: validate only fields that accept input
+    /**
+     * Returns the first required-field validation error message, or null if all required fields are valid.
+     * Caller shows the toast (same message pattern; dynamic fields use a different message).
+     */
+    private fun getFirstRequiredFieldError(): String? {
         val fieldsToValidate = formConfig.fields.filter {
             it.type != FormFieldConfig.FieldType.SECTION && it.type != FormFieldConfig.FieldType.IMAGE_DISPLAY
         }
         for (fieldConfig in fieldsToValidate) {
-            if (fieldConfig.required) {
-                val fieldValue = fieldValues[fieldConfig.id]
-                
-                when (fieldConfig.type) {
-                    FormFieldConfig.FieldType.TEXT,
-                    FormFieldConfig.FieldType.TEXTAREA,
-                    FormFieldConfig.FieldType.DATE,
-                    FormFieldConfig.FieldType.TIME,
-                    FormFieldConfig.FieldType.SELECT,
-                    FormFieldConfig.FieldType.SELECT_IMAGE,
-                    FormFieldConfig.FieldType.BARCODE -> {
-                        val value = fieldValue?.value?.trim()
-                        if (value.isNullOrEmpty()) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} is required",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                    }
-                    FormFieldConfig.FieldType.CHECKBOX -> {
-                        // For required checkbox, it must be checked (value == "true")
-                        val isChecked = fieldValue?.value?.lowercase() == "true"
-                        if (!isChecked) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} is required",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                    }
-                    FormFieldConfig.FieldType.MULTISELECT,
-                    FormFieldConfig.FieldType.MULTISELECT_IMAGE -> {
-                        val values = fieldValue?.values
-                        if (values.isNullOrEmpty()) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} is required",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                    }
-                    FormFieldConfig.FieldType.GPS -> {
-                        // Read GPS values from text fields
-                        val fieldView = fieldViews[fieldConfig.id] ?: return false
-                        val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
-                        val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
-                        val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
-                        val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
-                        val latitude = latStr.toDoubleOrNull()
-                        val longitude = lonStr.toDoubleOrNull()
-                        if (latitude == null || longitude == null) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} is required",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                    }
-                    FormFieldConfig.FieldType.PHOTO -> {
-                        if (fieldValue?.photoFileName.isNullOrEmpty()) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} is required",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                    }
-                    FormFieldConfig.FieldType.TABLE -> {
-                        // For tables, check if at least one cell has a value if required
-                        val tableData = fieldValue?.tableData
-                        if (tableData == null || tableData.isEmpty() || 
-                            tableData.values.all { rowData -> rowData.isEmpty() }) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} is required",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                    }
-                    FormFieldConfig.FieldType.DYNAMIC -> {
-                        // Dynamic widget data lives in sub-field keys (fieldId_instance0_subFieldId), not in fieldValues[fieldConfig.id].
-                        // Collect current instances from the UI (same as collectFieldValues) so we validate what's on screen.
-                        val fieldView = fieldViews[fieldConfig.id] ?: run {
-                            Toast.makeText(this, "${fieldConfig.label} requires at least one instance", Toast.LENGTH_SHORT).show()
-                            return false
-                        }
-                        val containerInstances = fieldView.findViewById<LinearLayout>(R.id.containerInstances)
-                        val dynamicData = mutableListOf<Map<String, FormFieldValue>>()
-                        for (i in 0 until containerInstances.childCount) {
-                            val instanceView = containerInstances.getChildAt(i)
-                            val containerSubFields = instanceView.findViewById<LinearLayout>(R.id.containerSubFields)
-                            if (containerSubFields != null) {
-                                val instanceData = mutableMapOf<String, FormFieldValue>()
-                                val subFields = fieldConfig.subFields ?: emptyList()
-                                for (subFieldConfig in subFields) {
-                                    val uniqueFieldId = formKeyForDynamicSubField(fieldConfig.id, i, subFieldConfig.id)
-                                    val subFieldView = fieldViews[uniqueFieldId]
-                                    val subFieldValue = when (subFieldConfig.type) {
-                                        FormFieldConfig.FieldType.GPS -> {
-                                            val editTextLatitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLatitude)
-                                            val editTextLongitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLongitude)
-                                            val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
-                                            val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
-                                            val latitude = latStr.toDoubleOrNull()
-                                            val longitude = lonStr.toDoubleOrNull()
-                                            if (latitude != null && longitude != null) {
-                                                FormFieldValue(uniqueFieldId, gpsLatitude = latitude, gpsLongitude = longitude)
-                                            } else null
-                                        }
-                                        else -> fieldValues[uniqueFieldId]
-                                    }
-                                    if (subFieldValue != null) {
-                                        instanceData[subFieldConfig.id] = subFieldValue.copy(fieldId = subFieldConfig.id)
-                                    }
-                                }
-                                if (instanceData.isNotEmpty()) {
-                                    dynamicData.add(instanceData)
-                                }
-                            }
-                        }
-                        if (dynamicData.isEmpty()) {
-                            Toast.makeText(
-                                this,
-                                "${fieldConfig.label} requires at least one instance",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return false
-                        }
-                        // Check mandatory sub-fields in each instance
-                        val subFields = fieldConfig.subFields ?: emptyList()
-                        for ((instanceIndex, instanceData) in dynamicData.withIndex()) {
-                            for (subFieldConfig in subFields) {
-                                if (subFieldConfig.required) {
-                                    val subFieldValue = instanceData[subFieldConfig.id]
-                                    val isEmpty = when (subFieldConfig.type) {
-                                        FormFieldConfig.FieldType.TEXT,
-                                        FormFieldConfig.FieldType.TEXTAREA,
-                                        FormFieldConfig.FieldType.DATE,
-                                        FormFieldConfig.FieldType.TIME,
-                                        FormFieldConfig.FieldType.SELECT,
-                                        FormFieldConfig.FieldType.BARCODE -> {
-                                            subFieldValue?.value?.trim()?.isEmpty() ?: true
-                                        }
-                                        FormFieldConfig.FieldType.CHECKBOX -> {
-                                            subFieldValue?.value?.lowercase() != "true"
-                                        }
-                                        FormFieldConfig.FieldType.GPS -> {
-                                            subFieldValue?.gpsLatitude == null || subFieldValue.gpsLongitude == null
-                                        }
-                                        FormFieldConfig.FieldType.MULTISELECT -> {
-                                            subFieldValue?.values.isNullOrEmpty()
-                                        }
-                                        FormFieldConfig.FieldType.PHOTO -> {
-                                            subFieldValue?.photoFileName.isNullOrEmpty()
-                                        }
-                                        else -> false
-                                    }
-                                    if (isEmpty) {
-                                        val instanceName = fieldConfig.instanceName ?: "Instance"
-                                        Toast.makeText(
-                                            this,
-                                            "${fieldConfig.label} - $instanceName ${instanceIndex + 1}: ${subFieldConfig.label} is required",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        return false
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    FormFieldConfig.FieldType.SECTION,
-                    FormFieldConfig.FieldType.IMAGE_DISPLAY -> {
-                        // Section headers and image displays are display-only and don't need validation
-                        // This case should never be reached due to the continue statement above,
-                        // but included for exhaustiveness
+            if (!fieldConfig.required) continue
+            val fieldValue = fieldValues[fieldConfig.id]
+            when (fieldConfig.type) {
+                FormFieldConfig.FieldType.TEXT,
+                FormFieldConfig.FieldType.TEXTAREA,
+                FormFieldConfig.FieldType.DATE,
+                FormFieldConfig.FieldType.TIME,
+                FormFieldConfig.FieldType.SELECT,
+                FormFieldConfig.FieldType.SELECT_IMAGE,
+                FormFieldConfig.FieldType.BARCODE -> {
+                    val value = fieldValue?.value?.trim()
+                    if (value.isNullOrEmpty()) return "${fieldConfig.label} is required"
+                }
+                FormFieldConfig.FieldType.CHECKBOX -> {
+                    val isChecked = fieldValue?.value?.lowercase() == "true"
+                    if (!isChecked) return "${fieldConfig.label} is required"
+                }
+                FormFieldConfig.FieldType.MULTISELECT,
+                FormFieldConfig.FieldType.MULTISELECT_IMAGE -> {
+                    if (fieldValue?.values.isNullOrEmpty()) return "${fieldConfig.label} is required"
+                }
+                FormFieldConfig.FieldType.GPS -> {
+                    val fieldView = fieldViews[fieldConfig.id] ?: return "${fieldConfig.label} is required"
+                    val editTextLatitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                    val editTextLongitude = fieldView.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                    val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                    val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                    if (latStr.isEmpty() || lonStr.isEmpty() || latStr.toDoubleOrNull() == null || lonStr.toDoubleOrNull() == null) {
+                        return "${fieldConfig.label} is required"
                     }
                 }
+                FormFieldConfig.FieldType.PHOTO -> {
+                    if (fieldValue?.photoFileName.isNullOrEmpty()) return "${fieldConfig.label} is required"
+                }
+                FormFieldConfig.FieldType.TABLE -> {
+                    val tableData = fieldValue?.tableData
+                    if (tableData == null || tableData.isEmpty() || tableData.values.all { it.isEmpty() }) {
+                        return "${fieldConfig.label} is required"
+                    }
+                }
+                FormFieldConfig.FieldType.DYNAMIC -> {
+                    val fieldView = fieldViews[fieldConfig.id] ?: return "${fieldConfig.label} requires at least one instance"
+                    val containerInstances = fieldView.findViewById<LinearLayout>(R.id.containerInstances)
+                    val dynamicData = mutableListOf<Map<String, FormFieldValue>>()
+                    for (i in 0 until containerInstances.childCount) {
+                        val instanceView = containerInstances.getChildAt(i)
+                        val containerSubFields = instanceView.findViewById<LinearLayout>(R.id.containerSubFields)
+                        if (containerSubFields != null) {
+                            val instanceData = mutableMapOf<String, FormFieldValue>()
+                            val subFields = fieldConfig.subFields ?: emptyList()
+                            for (subFieldConfig in subFields) {
+                                val uniqueFieldId = formKeyForDynamicSubField(fieldConfig.id, i, subFieldConfig.id)
+                                val subFieldView = fieldViews[uniqueFieldId]
+                                val subFieldValue = when (subFieldConfig.type) {
+                                    FormFieldConfig.FieldType.GPS -> {
+                                        val editTextLatitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLatitude)
+                                        val editTextLongitude = subFieldView?.findViewById<TextInputEditText>(R.id.editTextLongitude)
+                                        val latStr = editTextLatitude?.text?.toString()?.trim() ?: ""
+                                        val lonStr = editTextLongitude?.text?.toString()?.trim() ?: ""
+                                        val latitude = latStr.toDoubleOrNull()
+                                        val longitude = lonStr.toDoubleOrNull()
+                                        if (latitude != null && longitude != null) {
+                                            FormFieldValue(uniqueFieldId, gpsLatitude = latitude, gpsLongitude = longitude)
+                                        } else null
+                                    }
+                                    else -> fieldValues[uniqueFieldId]
+                                }
+                                if (subFieldValue != null) {
+                                    instanceData[subFieldConfig.id] = subFieldValue.copy(fieldId = subFieldConfig.id)
+                                }
+                            }
+                            if (instanceData.isNotEmpty()) dynamicData.add(instanceData)
+                        }
+                    }
+                    if (dynamicData.isEmpty()) return "${fieldConfig.label} requires at least one instance"
+                    val subFields = fieldConfig.subFields ?: emptyList()
+                    val instanceName = fieldConfig.instanceName ?: "Instance"
+                    for ((instanceIndex, instanceData) in dynamicData.withIndex()) {
+                        for (subFieldConfig in subFields) {
+                            if (!subFieldConfig.required) continue
+                            val subFieldValue = instanceData[subFieldConfig.id]
+                            val isEmpty = when (subFieldConfig.type) {
+                                FormFieldConfig.FieldType.TEXT,
+                                FormFieldConfig.FieldType.TEXTAREA,
+                                FormFieldConfig.FieldType.DATE,
+                                FormFieldConfig.FieldType.TIME,
+                                FormFieldConfig.FieldType.SELECT,
+                                FormFieldConfig.FieldType.BARCODE ->
+                                    subFieldValue?.value?.trim()?.isEmpty() ?: true
+                                FormFieldConfig.FieldType.CHECKBOX ->
+                                    subFieldValue?.value?.lowercase() != "true"
+                                FormFieldConfig.FieldType.GPS ->
+                                    subFieldValue?.gpsLatitude == null || subFieldValue.gpsLongitude == null
+                                FormFieldConfig.FieldType.MULTISELECT ->
+                                    subFieldValue?.values.isNullOrEmpty()
+                                FormFieldConfig.FieldType.PHOTO ->
+                                    subFieldValue?.photoFileName.isNullOrEmpty()
+                                else -> false
+                            }
+                            if (isEmpty) {
+                                return "${fieldConfig.label} - $instanceName ${instanceIndex + 1}: ${subFieldConfig.label} is required"
+                            }
+                        }
+                    }
+                }
+                FormFieldConfig.FieldType.SECTION,
+                FormFieldConfig.FieldType.IMAGE_DISPLAY -> { /* display-only, no validation */ }
             }
+        }
+        return null
+    }
+
+    private fun validateForm(): Boolean {
+        val error = getFirstRequiredFieldError()
+        if (error != null) {
+            Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+            return false
         }
         return true
     }
@@ -3794,7 +3729,7 @@ class FormEditActivity : AppCompatActivity() {
     private fun showSubmitConfirmation() {
         AlertDialog.Builder(this)
             .setTitle("Submit Form")
-            .setMessage("Are you sure you want to submit this form? You won't be able to edit it after submission.")
+            .setMessage("Are you sure you want to submit this form?")
             .setPositiveButton("Submit") { _, _ ->
                 saveForm(isDraft = false)
             }
@@ -3836,35 +3771,21 @@ class FormEditActivity : AppCompatActivity() {
                 }
             }
             
-            // Preserve createdAt from existing data, or set to current time if new form
-            // Check both draft and submitted versions to find the earliest createdAt
-            // Always check both draft and submitted versions to find the best createdAt
-            val existingDraft = formFileHelper.loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = true)
-            val existingSubmitted = formFileHelper.loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false)
-            
-            // Priority: submitted version's createdAt > draft's createdAt > new timestamp
-            // (submitted version's createdAt is the original creation time if it exists)
-            val createdAt = existingSubmitted?.createdAt
-                ?: existingDraft?.createdAt
-                ?: FormData.getCurrentTimestamp()
-            
-            // Get logsheet version from existing data, or get latest for new submissions
-            // Note: saveFormData will also set the version, but we need it here for FormData constructor
-            val logsheetVersion: String? = existingSubmitted?.logsheetVersion
-                ?: existingDraft?.logsheetVersion
-                ?: run {
-                    val downloader = LogsheetDownloader(this@FormEditActivity)
-                    downloader.getLatestLogsheetVersion(formId)
-                }
-            
-            if (logsheetVersion == null || logsheetVersion.isEmpty()) {
+            // There is at most one saved version (draft or submitted), not both.
+            val existing = formFileHelper.loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = false)
+                ?: formFileHelper.loadFormData(siteName, formId, orderInSection, subIndex, loadDraft = true)
+            val createdAt = existing?.createdAt ?: FormData.getCurrentTimestamp()
+            // logsheetVersion must be present; enforce and fail early if missing.
+            val logsheetVersion: String = existing?.logsheetVersion?.takeIf { it.isNotEmpty() }
+                ?: withContext(Dispatchers.IO) {
+                    LogsheetDownloader(this@FormEditActivity).getLatestLogsheetVersion(formId)
+                } ?: ""
+            if (logsheetVersion.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@FormEditActivity, "Error: Could not determine logsheet version", Toast.LENGTH_LONG).show()
                 }
                 return@launch
             }
-            
-            val finalLogsheetVersion = logsheetVersion
             
             val formData = FormData(
                 formId = formId,
@@ -3872,7 +3793,7 @@ class FormEditActivity : AppCompatActivity() {
                 isSubmitted = !isDraft,
                 createdAt = createdAt,
                 submittedAt = if (!isDraft) FormData.getCurrentTimestamp() else null,
-                logsheetVersion = finalLogsheetVersion,
+                logsheetVersion = logsheetVersion,
                 fieldValues = allValues.values.toList()
             )
             
