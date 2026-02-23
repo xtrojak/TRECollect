@@ -886,14 +886,6 @@ class SiteDetailActivity : AppCompatActivity() {
         
         // OPTIMIZATION: Batch file operations
         lifecycleScope.launch(Dispatchers.IO) {
-            val canAdd = formFileHelper.canAddDynamicFormInstance(site.name, baseForm.id, instanceIndex)
-            if (!canAdd) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@SiteDetailActivity, getString(R.string.please_save_instances_before_add), Toast.LENGTH_LONG).show()
-                }
-                return@launch
-            }
-            
             // Get the next sub-index (from existing saved instances)
             val instances = formFileHelper.getDynamicFormInstances(site.name, baseForm.id, instanceIndex)
             val nextSubIndex = if (instances.isEmpty()) 0 else instances.maxOrNull()!! + 1
@@ -1136,44 +1128,10 @@ class SiteDetailActivity : AppCompatActivity() {
                             }
                             if (success) {
                                 Toast.makeText(this@SiteDetailActivity, "Form instance deleted", Toast.LENGTH_SHORT).show()
-                                
-                                // Find the section adapter and form adapter to delete the instance directly
-                                val recyclerView = findViewById<RecyclerView>(R.id.recyclerViewFormSections)
-                                val sectionPosition = formSectionAdapter?.sectionsList?.indexOf(baseForm.section) ?: -1
-                                
-                                if (sectionPosition >= 0) {
-                                    // Try to find the viewholder for this section
-                                    var viewHolder: FormSectionAdapter.SectionViewHolder? = recyclerView.findViewHolderForAdapterPosition(sectionPosition) as? FormSectionAdapter.SectionViewHolder
-                                    
-                                    // Fallback: iterate through visible children
-                                    if (viewHolder == null) {
-                                        for (i in 0 until recyclerView.childCount) {
-                                            val child = recyclerView.getChildAt(i)
-                                            val vh = recyclerView.getChildViewHolder(child)
-                                            if (vh is FormSectionAdapter.SectionViewHolder && vh.bindingAdapterPosition == sectionPosition) {
-                                                viewHolder = vh
-                                                break
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Use a local val copy to allow smart cast
-                                    val foundViewHolder = viewHolder
-                                    if (foundViewHolder != null) {
-                                        // Delete the instance directly from the adapter (live update)
-                                        foundViewHolder.deleteDynamicFormInstance(form, subIndex)
-                                    } else {
-                                        // Fallback: refresh the entire list
-                                        saveScrollPosition()
-                                        setupFormsList()
-                                        loadFormCompletions()
-                                    }
-                                } else {
-                                    // Fallback: refresh the entire list
-                                    saveScrollPosition()
-                                    setupFormsList()
-                                    loadFormCompletions()
-                                }
+                                // Always refresh from disk so list stays in sync with reindexed files
+                                saveScrollPosition()
+                                setupFormsList()
+                                loadFormCompletions()
                             } else {
                                 Toast.makeText(this@SiteDetailActivity, "Failed to delete form instance", Toast.LENGTH_LONG).show()
                             }

@@ -699,16 +699,6 @@ class FormFileHelper(private val context: Context) {
     fun getDynamicFormInstancesFromCache(files: List<DocumentFile>, formId: String, orderInSection: Int): List<Int> {
         return parseDynamicInstancesFromFiles(files, formId, orderInSection).sorted()
     }
-    
-    /**
-     * Checks if a new dynamic form instance can be added. If there are existing instances, they were
-     * discovered from saved files (draft or submitted), so one of those exists per instance; no need to re-check.
-     * @return true (can always add when this is used after listing instances)
-     */
-    fun canAddDynamicFormInstance(siteName: String, formId: String, orderInSection: Int): Boolean {
-        getDynamicFormInstances(siteName, formId, orderInSection)
-        return true // Instances list only contains sub-indices that have a saved file; no need to re-check draft/submitted
-    }
 
     /**
      * Deletes a dynamic form instance and reindexes all remaining instances.
