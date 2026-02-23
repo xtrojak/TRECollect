@@ -1462,6 +1462,45 @@ class FormEditActivity : AppCompatActivity() {
         private const val FOCUS_CHANGE_DEBOUNCE_MS = 120L
     }
     
+    /**
+     * Builds the form key for a dynamic sub-field. Format: "${dynamicFieldId}_instance${instanceIndex}_${subFieldId}".
+     * Used when building or parsing uniqueFieldId (Review #79).
+     */
+    private fun formKeyForDynamicSubField(dynamicFieldId: String, instanceIndex: Int, subFieldId: String): String =
+        "${dynamicFieldId}_instance${instanceIndex}_${subFieldId}"
+    
+    /**
+     * Extracts the dynamic field ID from a dynamic sub-field form key, or null if not in that format.
+     */
+    private fun dynamicFieldIdFromFormKey(formKey: String): String? =
+        formKey.substringBefore("_instance").takeIf { it != formKey }
+    
+    /**
+     * Extracts the instance prefix (e.g. "dynamicFieldId_instance0_") from a form key for logic-rule matching.
+     */
+    private fun instancePrefixFromFormKey(formKey: String): String? {
+        if (!formKey.contains("_instance")) return null
+        val lastUnderscore = formKey.lastIndexOf("_")
+        if (lastUnderscore <= 0) return null
+        return formKey.take(lastUnderscore + 1)
+    }
+    
+    /**
+     * Parses a dynamic sub-field form key into (dynamicFieldId, instanceIndex, subFieldId), or null if invalid.
+     */
+    private fun parseDynamicSubFieldFormKey(formKey: String): Triple<String, Int, String>? {
+        if (!formKey.contains("_instance")) return null
+        val parts = formKey.split("_instance", limit = 2)
+        if (parts.size != 2) return null
+        val dynamicFieldId = parts[0]
+        val rest = parts[1]
+        val subParts = rest.split("_", limit = 2)
+        if (subParts.size != 2) return null
+        val instanceIndex = subParts[0].toIntOrNull() ?: return null
+        val subFieldId = subParts[1]
+        return Triple(dynamicFieldId, instanceIndex, subFieldId)
+    }
+    
     private fun createPhotoField(fieldConfig: FormFieldConfig): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
@@ -2092,7 +2131,7 @@ class FormEditActivity : AppCompatActivity() {
         parent: ViewGroup
     ): View {
         // Create a unique field ID for this sub-field in this instance
-        val uniqueFieldId = "${dynamicFieldId}_instance${instanceIndex}_${subFieldConfig.id}"
+        val uniqueFieldId = formKeyForDynamicSubField(dynamicFieldId, instanceIndex, subFieldConfig.id)
         
         // Temporarily store the existing value with the unique ID
         if (existingValue != null) {
@@ -2487,18 +2526,7 @@ class FormEditActivity : AppCompatActivity() {
                                 rule.sourceIds.contains(subFieldConfig.id) || rule.targetId == subFieldConfig.id
                             }
                             if (isInLogicRule) {
-                                // Extract instance prefix from uniqueFieldId
-                                // Format: "dynamicFieldId_instanceX_subFieldId"
-                                val instancePrefix = if (uniqueFieldId.contains("_instance")) {
-                                    val lastUnderscore = uniqueFieldId.lastIndexOf("_")
-                                    if (lastUnderscore > 0) {
-                                        uniqueFieldId.take(lastUnderscore + 1)
-                                    } else {
-                                        null
-                                    }
-                                } else {
-                                    null
-                                }
+                                val instancePrefix = instancePrefixFromFormKey(uniqueFieldId)
                                 // Apply logic using the base field ID and instance prefix
                                 applyLogicRules(subFieldConfig.id, instancePrefix)
                             }
@@ -2589,7 +2617,7 @@ class FormEditActivity : AppCompatActivity() {
         
         var hasNonEmptyField = false
         for (subFieldConfig in subFields) {
-            val uniqueFieldId = "${containerInstances.tag}_instance${lastInstanceIndex}_${subFieldConfig.id}"
+            val uniqueFieldId = formKeyForDynamicSubField(containerInstances.tag as String, lastInstanceIndex, subFieldConfig.id)
             val subFieldView = fieldViews[uniqueFieldId]
             if (subFieldView != null && isSubFieldNonEmpty(subFieldView, subFieldConfig)) {
                 hasNonEmptyField = true
@@ -2667,17 +2695,11 @@ class FormEditActivity : AppCompatActivity() {
                     val subFieldView = containerSubFields.getChildAt(j)
                     val oldUniqueFieldId = subFieldView.tag as? String
                     if (oldUniqueFieldId != null) {
-                        // Parse the uniqueFieldId to extract dynamicFieldId and subFieldId
-                        // Format: "${dynamicFieldId}_instance${oldInstanceIndex}_${subFieldId}"
-                        val parts = oldUniqueFieldId.split("_instance")
-                        if (parts.size == 2) {
-                            val parsedDynamicFieldId = parts[0]
-                            val rest = parts[1]
-                            val subFieldParts = rest.split("_", limit = 2)
-                            if (subFieldParts.size == 2) {
-                                val subFieldId = subFieldParts[1]
-                                val newUniqueFieldId = "${parsedDynamicFieldId}_instance${i}_${subFieldId}"
-                                if (oldUniqueFieldId != newUniqueFieldId) {
+                        val parsed = parseDynamicSubFieldFormKey(oldUniqueFieldId)
+                        if (parsed != null) {
+                            val (parsedDynamicFieldId, _, subFieldId) = parsed
+                            val newUniqueFieldId = formKeyForDynamicSubField(parsedDynamicFieldId, i, subFieldId)
+                            if (oldUniqueFieldId != newUniqueFieldId) {
                                     // Update fieldViews mapping
                                     fieldViews.remove(oldUniqueFieldId)
                                     fieldViews[newUniqueFieldId] = subFieldView
@@ -2690,7 +2712,6 @@ class FormEditActivity : AppCompatActivity() {
                                     }
                                 }
                             }
-                        }
                     }
                 }
             }
@@ -2831,7 +2852,7 @@ class FormEditActivity : AppCompatActivity() {
                 editText.setText(dateString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = dateString)
                 markFormChanged()
-                updateAddButtonForDynamicField(fieldId.substringBefore("_instance"))
+                dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
             },
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
@@ -2861,7 +2882,7 @@ class FormEditActivity : AppCompatActivity() {
                 editText.setText(timeString)
                 fieldValues[fieldId] = FormFieldValue(fieldId, value = timeString)
                 markFormChanged()
-                updateAddButtonForDynamicField(fieldId.substringBefore("_instance"))
+                dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
             },
             calendar.get(Calendar.HOUR_OF_DAY),
             calendar.get(Calendar.MINUTE),
@@ -2956,7 +2977,7 @@ class FormEditActivity : AppCompatActivity() {
                 editText.setText(selectedValue)
                 fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = selectedValue)
                 markFormChanged()
-                updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
+                dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
             }
             .show()
     }
@@ -2985,12 +3006,12 @@ class FormEditActivity : AppCompatActivity() {
                     editText.setText(currentValues.joinToString(", "))
                     fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, values = currentValues.toList())
                     markFormChanged()
-                    updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
+                    dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
                 } else {
                     editText.setText("")
                     fieldValues.remove(uniqueFieldId)
                     markFormChanged()
-                    updateAddButtonForDynamicField(uniqueFieldId.substringBefore("_instance"))
+                    dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -3568,7 +3589,7 @@ class FormEditActivity : AppCompatActivity() {
                         val subFields = dynamicFieldConfig?.subFields ?: emptyList()
                         
                         for (subFieldConfig in subFields) {
-                            val uniqueFieldId = "${fieldId}_instance${i}_${subFieldConfig.id}"
+                            val uniqueFieldId = formKeyForDynamicSubField(fieldId, i, subFieldConfig.id)
                             val subFieldView = fieldViews[uniqueFieldId]
                             
                             val subFieldValue = when (subFieldConfig.type) {
@@ -3726,7 +3747,7 @@ class FormEditActivity : AppCompatActivity() {
                                 val instanceData = mutableMapOf<String, FormFieldValue>()
                                 val subFields = fieldConfig.subFields ?: emptyList()
                                 for (subFieldConfig in subFields) {
-                                    val uniqueFieldId = "${fieldConfig.id}_instance${i}_${subFieldConfig.id}"
+                                    val uniqueFieldId = formKeyForDynamicSubField(fieldConfig.id, i, subFieldConfig.id)
                                     val subFieldView = fieldViews[uniqueFieldId]
                                     val subFieldValue = when (subFieldConfig.type) {
                                         FormFieldConfig.FieldType.GPS -> {
