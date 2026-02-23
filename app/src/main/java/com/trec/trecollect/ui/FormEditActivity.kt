@@ -1681,10 +1681,15 @@ class FormEditActivity : AppCompatActivity() {
         val existingValue = fieldValues[fieldConfig.id]
         val existingTableData = existingValue?.tableData ?: emptyMap()
         
+        // Table cell styling: padding, row height, and grid line. Defined inline here; could be moved to styles/themes in a follow-up (Review #76).
         // Light grid line (mutate per cell so drawable state not shared)
         fun gridLine() = ContextCompat.getDrawable(this, R.drawable.table_cell_grid_line)?.mutate()
         val cellPadding = (8 * resources.displayMetrics.density).toInt() // 8dp
         val minRowHeight = (40 * resources.displayMetrics.density).toInt() // 40dp
+        // Layout params for table cells (width 0 + weight 1f): compute once before loops
+        val tableCellLpWidth = 0
+        val tableCellLpHeight = TableRow.LayoutParams.MATCH_PARENT
+        val tableCellLpWeight = 1f
         
         // Create header row
         val headerRow = TableRow(this).apply {
@@ -1700,11 +1705,7 @@ class FormEditActivity : AppCompatActivity() {
             setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
             setBackgroundColor(0xFFE0E0E0.toInt())
             minimumHeight = minRowHeight
-            layoutParams = TableRow.LayoutParams(
-                0,
-                TableRow.LayoutParams.MATCH_PARENT,
-                1f
-            )
+            layoutParams = TableRow.LayoutParams(tableCellLpWidth, tableCellLpHeight, tableCellLpWeight)
             gridLine()?.let { foreground = it }
         }
         headerRow.addView(emptyHeader)
@@ -1718,11 +1719,7 @@ class FormEditActivity : AppCompatActivity() {
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER
                 minimumHeight = minRowHeight
-                layoutParams = TableRow.LayoutParams(
-                    0,
-                    TableRow.LayoutParams.MATCH_PARENT,
-                    1f
-                )
+                layoutParams = TableRow.LayoutParams(tableCellLpWidth, tableCellLpHeight, tableCellLpWeight)
                 gridLine()?.let { foreground = it }
             }
             headerRow.addView(columnHeader)
@@ -1745,11 +1742,7 @@ class FormEditActivity : AppCompatActivity() {
                 setBackgroundColor(0xFFF5F5F5.toInt())
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                layoutParams = TableRow.LayoutParams(
-                    0,
-                    TableRow.LayoutParams.MATCH_PARENT,
-                    1f
-                )
+                layoutParams = TableRow.LayoutParams(tableCellLpWidth, tableCellLpHeight, tableCellLpWeight)
                 gridLine()?.let { foreground = it }
             }
             dataRow.addView(rowHeader)
@@ -1763,11 +1756,7 @@ class FormEditActivity : AppCompatActivity() {
                     val checkboxContainer = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = android.view.Gravity.CENTER
-                        layoutParams = TableRow.LayoutParams(
-                            0,
-                            TableRow.LayoutParams.MATCH_PARENT,
-                            1f
-                        )
+                        layoutParams = TableRow.LayoutParams(tableCellLpWidth, tableCellLpHeight, tableCellLpWeight)
                         setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
                         gridLine()?.let { foreground = it }
                     }
@@ -1805,11 +1794,7 @@ class FormEditActivity : AppCompatActivity() {
                     setText(cellValue)
                     setPadding(cellPadding, cellPadding, cellPadding, cellPadding)
                     setBackgroundColor(android.graphics.Color.WHITE)
-                    layoutParams = TableRow.LayoutParams(
-                        0,
-                        TableRow.LayoutParams.MATCH_PARENT,
-                        1f
-                    )
+                    layoutParams = TableRow.LayoutParams(tableCellLpWidth, tableCellLpHeight, tableCellLpWeight)
                     gridLine()?.let { foreground = it }
                     
                     // Set input type
@@ -3740,12 +3725,11 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun validateForm(): Boolean {
-        for (fieldConfig in formConfig.fields) {
-            // Skip section headers and image displays in validation (display-only fields)
-            if (fieldConfig.type == FormFieldConfig.FieldType.SECTION || fieldConfig.type == FormFieldConfig.FieldType.IMAGE_DISPLAY) {
-                continue
-            }
-            
+        // Handle display-only fields before the loop: validate only fields that accept input
+        val fieldsToValidate = formConfig.fields.filter {
+            it.type != FormFieldConfig.FieldType.SECTION && it.type != FormFieldConfig.FieldType.IMAGE_DISPLAY
+        }
+        for (fieldConfig in fieldsToValidate) {
             if (fieldConfig.required) {
                 val fieldValue = fieldValues[fieldConfig.id]
                 
