@@ -839,6 +839,27 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * Common setup for fields that use [R.layout.field_text_input]: inflate, set label/hint and tag.
+     * Returns the [TextInputLayout] and its [TextInputEditText] for the caller to add type-specific behaviour.
+     */
+    private fun inflateTextInputField(fieldConfig: FormFieldConfig): Pair<TextInputLayout, TextInputEditText> {
+        val inflater = LayoutInflater.from(this)
+        val textInputLayout = inflater.inflate(
+            R.layout.field_text_input,
+            containerFields,
+            false
+        ) as TextInputLayout
+        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        if (fieldConfig.required) {
+            textInputLayout.hint = "${fieldConfig.label} *"
+        } else {
+            textInputLayout.hint = fieldConfig.label
+        }
+        textInputLayout.tag = fieldConfig.id
+        return Pair(textInputLayout, editText)
+    }
+    
     private fun createSectionHeader(fieldConfig: FormFieldConfig): View {
         val inflater = LayoutInflater.from(this)
         val container = inflater.inflate(
@@ -908,14 +929,7 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createTextField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            containerFields,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         if (fieldConfig.inputType == "number") {
             editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -923,12 +937,6 @@ class FormEditActivity : AppCompatActivity() {
         
         // Check if this is a calculated field (target of logic rule)
         val isCalculated = isCalculatedField(fieldConfig.id)
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
         
         // Add visual indication for calculated fields
         if (isCalculated) {
@@ -979,9 +987,6 @@ class FormEditActivity : AppCompatActivity() {
                 }
             }
         }
-        
-        // Store field ID in tag for retrieval
-        textInputLayout.tag = fieldConfig.id
         
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
@@ -1044,14 +1049,7 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createTextAreaField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            containerFields,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         editText.minLines = 3
         editText.maxLines = 5
@@ -1061,14 +1059,6 @@ class FormEditActivity : AppCompatActivity() {
             editText.setKeyListener(null)
             editText.setTextIsSelectable(true)
         }
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = fieldConfig.id
         
         // Update fieldValues as user types (only if not read-only)
         if (!isReadOnly) {
@@ -1092,23 +1082,8 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createDateField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            containerFields,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = fieldConfig.id
         
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
@@ -1126,23 +1101,8 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createTimeField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            containerFields,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = fieldConfig.id
         
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
@@ -1160,23 +1120,8 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createSelectField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            containerFields,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = fieldConfig.id
         
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
@@ -1194,23 +1139,8 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createMultiSelectField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            containerFields,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = fieldConfig.id
         
         // Load existing values
         val existingValue = fieldValues[fieldConfig.id]
