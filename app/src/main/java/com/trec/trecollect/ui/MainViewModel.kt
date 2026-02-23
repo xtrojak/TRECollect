@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
+import androidx.documentfile.provider.DocumentFile
 
 class MainViewModel(
     private val database: AppDatabase,
@@ -282,32 +283,54 @@ class MainViewModel(
         // Continue with the verified TREC_logsheets folder
         return createSiteInFolder(trimmedName, trecFolder)
     }
+
+    /**
+     * Returns the ongoing folder ready for write, or (null, errorMessage). Reused to avoid duplication.
+     */
+    private fun getOngoingFolderForWrite(): Pair<DocumentFile?, String?> {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
+            return Pair(null, "Could not create folder structure for current team/subteam. Please check storage permissions.")
+        }
+        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
+        if (ongoingFolder == null || !ongoingFolder.exists()) {
+            return Pair(null, "Ongoing folder not found. Please reconfigure storage.")
+        }
+        if (!ongoingFolder.canRead() || !ongoingFolder.canWrite()) {
+            return Pair(null, "Cannot access ongoing folder. Please check permissions.")
+        }
+        return Pair(ongoingFolder, null)
+    }
+
+    /**
+     * Returns the finished folder ready for write, or (null, errorMessage). Used by finalizeSite.
+     */
+    private fun getFinishedFolderForWrite(): Pair<DocumentFile?, String?> {
+        val settingsPreferences = SettingsPreferences(context)
+        val folderHelper = FolderStructureHelper(context)
+        if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
+            return Pair(null, "Could not create folder structure for current team/subteam. Please check storage permissions.")
+        }
+        val finishedFolder = folderHelper.getFinishedFolder(settingsPreferences)
+        if (finishedFolder == null || !finishedFolder.exists()) {
+            return Pair(null, "Finished folder not found. Please reconfigure storage.")
+        }
+        if (!finishedFolder.canRead() || !finishedFolder.canWrite()) {
+            return Pair(null, "Cannot access finished folder. Please check permissions.")
+        }
+        return Pair(finishedFolder, null)
+    }
     
-    private suspend fun createSiteInFolder(siteName: String, trecFolder: androidx.documentfile.provider.DocumentFile): CreateSiteResult {
-        // Check if TREC_logsheets folder exists and is accessible (name already verified by createSite() caller; Review #97)
+    private suspend fun createSiteInFolder(siteName: String, trecFolder: DocumentFile): CreateSiteResult {
+        // Check if TREC_logsheets folder exists and is accessible (name already verified by createSite() caller)
         if (!trecFolder.canRead() || !trecFolder.canWrite()) {
             return CreateSiteResult.Error("Cannot access TREC_logsheets folder. Please check permissions in Settings.")
         }
 
-        // Use FolderStructureHelper to get the ongoing folder (which handles team/subteam structure)
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Ensure all subfolders exist for current team/subteam
-        if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
-            return CreateSiteResult.Error("Could not create folder structure for current team/subteam. Please check storage permissions.")
-        }
-        
-        // Get the ongoing subfolder for current team/subteam
-        val ongoingFolder = folderHelper.getOngoingFolder(settingsPreferences)
-        
-        if (ongoingFolder == null || !ongoingFolder.exists()) {
-            return CreateSiteResult.Error("Ongoing folder not found. Please reconfigure storage.")
-        }
-        
-        if (!ongoingFolder.canRead() || !ongoingFolder.canWrite()) {
-            return CreateSiteResult.Error("Cannot access ongoing folder. Please check permissions.")
-        }
+        val (ongoingFolder, folderError) = getOngoingFolderForWrite()
+        if (folderError != null) return CreateSiteResult.Error(folderError)
+        if (ongoingFolder == null) return CreateSiteResult.Error("Ongoing folder not found. Please reconfigure storage.")
         
         // Check if folder for this site already exists (use both findFile and listFiles for reliability)
         var siteFolder = ongoingFolder.findFile(siteName)
@@ -333,33 +356,22 @@ class MainViewModel(
             return CreateSiteResult.Error("Could not create site folder in TREC_logsheets/ongoing/")
         }
         
-        // Verify the created folder has the correct name (not a duplicate like "Site (1)")
+        // If created folder name differs from requested, treat as error and remove wrong folder
         if (createdFolder.name != siteName) {
-            AppLogger.w("MainViewModel", "Created folder has unexpected name: '${createdFolder.name}' instead of '$siteName'. This indicates a duplicate was created.")
-            // Try to find the correct folder that might have existed
+            AppLogger.w("MainViewModel", "Created folder has unexpected name: '${createdFolder.name}' instead of '$siteName'")
             try {
-                val files = ongoingFolder.listFiles()
-                val correctFolder = files.firstOrNull { it.name == siteName && it.isDirectory && it.exists() }
-                if (correctFolder != null) {
-                    AppLogger.i("MainViewModel", "Found existing folder with correct name '$siteName'. Deleting duplicate '${createdFolder.name}'.")
-                    // Delete the duplicate folder we just created
-                    try {
-                        createdFolder.delete()
-                    } catch (e: Exception) {
-                        android.util.Log.w("MainViewModel", "Could not delete duplicate folder: ${e.message}")
-                    }
-                    return CreateSiteResult.Error("A folder for this site already exists.")
-                }
+                createdFolder.delete()
             } catch (e: Exception) {
-                android.util.Log.w("MainViewModel", "Error listing files after folder creation: ${e.message}")
+                android.util.Log.w("MainViewModel", "Could not delete wrongly named folder: ${e.message}")
             }
-            // If we can't find the correct folder, something went wrong
-            AppLogger.e("MainViewModel", "Created folder with wrong name and could not find correct folder. Created: '${createdFolder.name}', expected: '$siteName'")
-            return CreateSiteResult.Error("Could not create site folder with correct name. Created folder: '${createdFolder.name}'")
+            return CreateSiteResult.Error(
+                "Could not create site folder with the requested name (created '${createdFolder.name}' instead)."
+            )
         }
         
         AppLogger.i("MainViewModel", "Site created successfully: name='$siteName'")
         
+        val settingsPreferences = SettingsPreferences(context)
         // Get team config info for metadata
         val team = settingsPreferences.getSamplingTeam()
         val subteam = settingsPreferences.getSamplingSubteam()
@@ -432,48 +444,20 @@ class MainViewModel(
         if (trimmedName == site.name) {
             return RenameSiteResult.Error("New name is the same as the current name")
         }
-        
-        // Get storage settings
-        val settingsPreferences = SettingsPreferences(context)
-        val folderHelper = FolderStructureHelper(context)
-        val folderUriString = settingsPreferences.getFolderUri()
-        
-        if (folderUriString.isEmpty()) {
-            return RenameSiteResult.Error("Storage folder not configured. Please select a folder in Settings.")
-        }
-        
-        // Check ongoing folder
-        val ongoingFolder = try {
-            folderHelper.getOngoingFolder(settingsPreferences)
-        } catch (e: Exception) {
-            return RenameSiteResult.Error("Error accessing storage folder: ${e.message}")
-        }
-        
-        if (ongoingFolder == null || !ongoingFolder.exists()) {
-            return RenameSiteResult.Error("Ongoing folder not found. Please reconfigure storage in Settings.")
-        }
-        
-        if (!ongoingFolder.canRead() || !ongoingFolder.canWrite()) {
-            return RenameSiteResult.Error("Cannot access ongoing folder. Please check permissions.")
-        }
-        
-        // Check if a folder with the new name already exists
+
+        // Reuse folder lookup util
+        val (ongoingFolder, folderError) = getOngoingFolderForWrite()
+        if (folderError != null) return RenameSiteResult.Error(folderError)
+        if (ongoingFolder == null) return RenameSiteResult.Error("Ongoing folder not found. Please reconfigure storage in Settings.")
+
         val newSiteFolder = ongoingFolder.findFile(trimmedName)
         if (newSiteFolder != null && newSiteFolder.exists() && newSiteFolder.name != site.name) {
             return RenameSiteResult.Error("A site with this name already exists")
         }
-        
-        // Check finished folder
-        val finishedFolder = try {
-            folderHelper.getFinishedFolder(settingsPreferences)
-        } catch (e: Exception) {
-            // Continue with ongoing folder check
-            null
-        }
-        
-        if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
-            val existingFolder = finishedFolder.findFile(trimmedName)
-            if (existingFolder != null && existingFolder.exists()) {
+        val (finishedFolder, _) = getFinishedFolderForWrite()
+        if (finishedFolder != null) {
+            val existingInFinished = finishedFolder.findFile(trimmedName)
+            if (existingInFinished != null && existingInFinished.exists()) {
                 return RenameSiteResult.Error("A site with this name already exists")
             }
         }
@@ -504,73 +488,36 @@ class MainViewModel(
     
     suspend fun finalizeSite(site: SamplingSite): FinalizeSiteResult {
         AppLogger.i("MainViewModel", "Finalizing site: name='${site.name}', id=${site.id}")
-        // Get storage settings
         val settingsPreferences = SettingsPreferences(context)
-        val folderUriString = settingsPreferences.getFolderUri()
-        
-        if (folderUriString.isEmpty()) {
+        if (settingsPreferences.getFolderUri().isEmpty()) {
             AppLogger.w("MainViewModel", "Site finalization failed: storage not configured, site='${site.name}'")
             return FinalizeSiteResult.Error("Storage not configured. Please configure storage in settings.")
         }
+
+        // Reuse folder lookup utils)
+        val (ongoingFolder, ongoingError) = getOngoingFolderForWrite()
+        if (ongoingError != null) return FinalizeSiteResult.Error(ongoingError)
+        if (ongoingFolder == null) return FinalizeSiteResult.Error("Ongoing folder not accessible")
+        val (finishedFolder, finishedError) = getFinishedFolderForWrite()
+        if (finishedError != null) return FinalizeSiteResult.Error(finishedError)
+        if (finishedFolder == null) return FinalizeSiteResult.Error("Finished folder not accessible")
         
-        val folderHelper = FolderStructureHelper(context)
-        
-        // Get the ongoing and finished folders
-        val ongoingFolder = try {
-            folderHelper.getOngoingFolder(settingsPreferences)
-        } catch (e: Exception) {
-            AppLogger.e("MainViewModel", "Error accessing ongoing folder: ${e.message}", e)
-            return FinalizeSiteResult.Error("Error accessing ongoing folder: ${e.message}")
-        }
-        
-        val finishedFolder = try {
-            folderHelper.getFinishedFolder(settingsPreferences)
-        } catch (e: Exception) {
-            AppLogger.e("MainViewModel", "Error accessing finished folder: ${e.message}", e)
-            return FinalizeSiteResult.Error("Error accessing finished folder: ${e.message}")
-        }
-        
-        if (ongoingFolder == null || !ongoingFolder.exists() || !ongoingFolder.canRead()) {
-            return FinalizeSiteResult.Error("Ongoing folder not accessible")
-        }
-        
-        if (finishedFolder == null || !finishedFolder.exists() || !finishedFolder.canWrite()) {
-            return FinalizeSiteResult.Error("Finished folder not accessible")
-        }
-        
-        // Find the site folder in ongoing
         val siteFolder = ongoingFolder.findFile(site.name)
         if (siteFolder == null || !siteFolder.exists()) {
             return FinalizeSiteResult.Error("Site folder '${site.name}' not found in ongoing folder")
         }
         
-        // Check if a folder with the same name already exists in finished
         val existingFinishedFolder = finishedFolder.findFile(site.name)
         if (existingFinishedFolder != null && existingFinishedFolder.exists()) {
-            // If it exists, rename the source folder with a timestamp to avoid conflicts
-            val timestamp = System.currentTimeMillis()
-            val newName = "${site.name}_${timestamp}"
-            val renameSuccess = siteFolder.renameTo(newName)
-            if (renameSuccess) {
-                val renamedFolder = ongoingFolder.findFile(newName)
-                if (renamedFolder != null && renamedFolder.exists()) {
-                    // Now try to move it
-                    val moveSuccess = moveFolder(renamedFolder, finishedFolder)
-                    if (!moveSuccess) {
-                        return FinalizeSiteResult.Error("Could not move folder to finished")
-                    }
-                } else {
-                    return FinalizeSiteResult.Error("Could not find renamed folder")
-                }
-            } else {
-                return FinalizeSiteResult.Error("Could not rename folder before moving")
-            }
-        } else {
-            // Move the folder to finished
-            val moveSuccess = moveFolder(siteFolder, finishedFolder)
-            if (!moveSuccess) {
-                return FinalizeSiteResult.Error("Could not move folder to finished")
-            }
+            // Do not auto-rename; ask user to rename manually
+            return FinalizeSiteResult.Error(
+                "A site with this name already exists in the finished sites. Please rename the site first."
+            )
+        }
+        
+        val moveSuccess = moveFolder(siteFolder, finishedFolder)
+        if (!moveSuccess) {
+            return FinalizeSiteResult.Error("Could not move folder to finished")
         }
         
         // Update site metadata with submission timestamp (before moving folder)
