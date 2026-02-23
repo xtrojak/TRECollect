@@ -104,6 +104,16 @@ class FormSectionAdapter(
             
             // Store section name for debugging
             this.sectionName = section
+
+            // Update cache of max instance number per dynamic form (Review #92)
+            cachedMaxInstanceByFormId.clear()
+            for (item in formListItems) {
+                if (item is FormListItem.FormItem && item.form.isDynamic && item.form.name.contains(" #")) {
+                    val n = Regex("#(\\d+)$").find(item.form.name)?.groupValues?.get(1)?.toIntOrNull() ?: continue
+                    val id = item.form.id
+                    cachedMaxInstanceByFormId[id] = maxOf(cachedMaxInstanceByFormId[id] ?: 0, n)
+                }
+            }
         }
         
         /**
@@ -160,15 +170,8 @@ class FormSectionAdapter(
                     if (item !is FormListItem.FormItem) continue
                     val instanceForm = item.form
                     if (instanceForm.isDynamic && instanceForm.id == form.id && instanceForm.name.contains(" #")) {
-                        val instanceSubIndex = Regex("#(\\d+)$").find(instanceForm.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
-                        if (instanceSubIndex != null) {
-                            val baseFormPosition = baseForms.indexOfFirst { it.id == instanceForm.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
-                            var instanceIdx = 0
-                            for (j in 0 until baseFormPosition) {
-                                if (baseForms[j].id == instanceForm.id) instanceIdx++
-                            }
-                            val instanceFormKey = "${instanceForm.id}_${instanceIdx}_${instanceSubIndex}"
-                            
+                        val instanceFormKey = formKeyForDynamicInstance(instanceForm, baseForms)
+                        if (instanceFormKey != null) {
                             // Check if this instance is in the status sets
                             val isInCompleted = currentCompleted.contains(instanceFormKey)
                             val isInDraft = currentDraft.contains(instanceFormKey)
@@ -240,19 +243,8 @@ class FormSectionAdapter(
                 if (item !is FormListItem.FormItem) return@any false
                 val form = item.form
                 if (form.isDynamic && form.id == baseForm.id && form.name.contains(" #")) {
-                    val baseFormName = form.name.substringBefore(" #")
-                    val subIndex = Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
-                    if (subIndex != null) {
-                        val baseFormPosition = baseForms.indexOfFirst { it.id == form.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
-                        var instanceIndex = 0
-                        for (i in 0 until baseFormPosition) {
-                            if (baseForms[i].id == form.id) instanceIndex++
-                        }
-                        val formKey = "${form.id}_${instanceIndex}_${subIndex}"
-                        !completedFormIds.contains(formKey) && !draftFormIds.contains(formKey)
-                    } else {
-                        false
-                    }
+                    val formKey = formKeyForDynamicInstance(form, baseForms)
+                    formKey != null && !completedFormIds.contains(formKey) && !draftFormIds.contains(formKey)
                 } else {
                     false
                 }
@@ -268,42 +260,55 @@ class FormSectionAdapter(
         }
         
         private var sectionName: String = ""
-        
-        fun addDynamicFormInstance(baseForm: Form, subIndex: Int) {
-            // Get current list
-            val currentList = formAdapter.currentList.toMutableList()
-            
-            // Find the last instance of this dynamic form (or the add button after it)
+
+        /** Cached max instance number per base form id (Review #92). Avoids recalculating from list every time. */
+        private val cachedMaxInstanceByFormId: MutableMap<String, Int> = mutableMapOf()
+
+        /**
+         * Finds the last dynamic form instance index and the add-button index after it (Review #90).
+         * @return Pair(lastInstanceIndex, addButtonIndex); addButtonIndex is -1 if not found.
+         */
+        private fun findLastInstanceAndAddButtonIndex(currentList: List<FormListItem>, baseForm: Form): Pair<Int, Int> {
             val lastInstanceIndex = currentList.indexOfLast { item ->
                 item is FormListItem.FormItem && item.form.isDynamic && item.form.id == baseForm.id && item.form.name.contains(" #")
             }
-            
-            // Find the add button index (should be right after the last instance)
             val addButtonIndex = if (lastInstanceIndex >= 0 && lastInstanceIndex < currentList.size - 1) {
                 val nextItem = currentList[lastInstanceIndex + 1]
-                if (nextItem is FormListItem.AddButtonItem && nextItem.baseForm.id == baseForm.id) {
-                    lastInstanceIndex + 1
-                } else {
-                    -1
-                }
-            } else {
-                -1
+                if (nextItem is FormListItem.AddButtonItem && nextItem.baseForm.id == baseForm.id) lastInstanceIndex + 1 else -1
+            } else -1
+            return Pair(lastInstanceIndex, addButtonIndex)
+        }
+
+        /**
+         * Computes the formKey for a dynamic form instance (Review #90, #91).
+         * Used for status lookups; repeated pattern extracted into this helper.
+         */
+        private fun formKeyForDynamicInstance(form: Form, baseForms: List<Form>): String? {
+            val subIndex = Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1) ?: return null
+            val baseFormName = form.name.substringBefore(" #")
+            val baseFormPosition = baseForms.indexOfFirst { it.id == form.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
+            var instanceIndex = 0
+            for (j in 0 until baseFormPosition) {
+                if (baseForms[j].id == form.id) instanceIndex++
             }
-            
+            return "${form.id}_${instanceIndex}_$subIndex"
+        }
+
+        fun addDynamicFormInstance(baseForm: Form, subIndex: Int) {
+            // Get current list
+            val currentList = formAdapter.currentList.toMutableList()
+            val (lastInstanceIndex, addButtonIndex) = findLastInstanceAndAddButtonIndex(currentList, baseForm)
+
             if (lastInstanceIndex >= 0) {
-                // Calculate the next instance number based on existing instances
-                // Find all instances of this dynamic form and get the highest number
-                val existingInstances = currentList.filterIsInstance<FormListItem.FormItem>().filter { 
-                    it.form.isDynamic && it.form.id == baseForm.id && it.form.name.contains(" #")
+                // Next instance number: use cached max when available (Review #92), else compute from list
+                val maxNumber = cachedMaxInstanceByFormId[baseForm.id] ?: run {
+                    currentList.filterIsInstance<FormListItem.FormItem>()
+                        .filter { it.form.isDynamic && it.form.id == baseForm.id && it.form.name.contains(" #") }
+                        .mapNotNull { Regex("#(\\d+)$").find(it.form.name)?.groupValues?.get(1)?.toIntOrNull() }
+                        .maxOrNull() ?: 0
                 }
-                val maxNumber = existingInstances.mapNotNull { item ->
-                    Regex("#(\\d+)$").find(item.form.name)?.groupValues?.get(1)?.toIntOrNull()
-                }.maxOrNull() ?: 0
-                
-                // The new instance number should be maxNumber + 1
-                // But we also need to use subIndex from the file system to ensure consistency
-                // Use the larger of (maxNumber + 1) and (subIndex + 1) to ensure correct numbering
-                val newInstanceNumber = maxOf(maxNumber + 1, subIndex + 1)
+                // maxNumber is at most subIndex+1 in practice; next number is simply maxNumber+1 (Review #93)
+                val newInstanceNumber = maxNumber + 1
                 
                 val newInstance = baseForm.copy(
                     name = "${baseForm.name} #$newInstanceNumber",
@@ -317,6 +322,7 @@ class FormSectionAdapter(
                 val oldLastInstanceIndex = lastInstanceIndex
                 
                 // Submit the new list - DiffUtil will handle rebinding
+                cachedMaxInstanceByFormId[baseForm.id] = newInstanceNumber
                 formAdapter.submitList(currentList) {
                     // This callback runs after DiffUtil has finished dispatching updates.
                     // Notify the old last instance and the new one to ensure both are rebound
@@ -386,6 +392,7 @@ class FormSectionAdapter(
                 }
                 
                 // Submit the new list - DiffUtil will handle rebinding
+                cachedMaxInstanceByFormId.remove(form.id)
                 formAdapter.submitList(currentList) {
                     // After deletion, we need to rebind the new last instance (if any)
                     // Find the new last instance of this dynamic form group
@@ -465,18 +472,10 @@ class FormSectionAdapter(
                     val form = item.form
                     if (form.isDynamic && form.id == baseForm.id && form.name.contains(" #")) {
                         // Check if this instance is unsaved
-                        val formSubIndex = Regex("#(\\d+)$").find(form.name)?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
-                        if (formSubIndex != null) {
-                            val baseFormPosition = baseForms.indexOfFirst { it.id == form.id && it.name == baseFormName }.takeIf { it >= 0 } ?: 0
-                            var instanceIndex = 0
-                            for (j in 0 until baseFormPosition) {
-                                if (baseForms[j].id == form.id) instanceIndex++
-                            }
-                            val formKey = "${form.id}_${instanceIndex}_${formSubIndex}"
+                        val formKey = formKeyForDynamicInstance(form, baseForms)
+                        if (formKey != null) {
                             val isUnsaved = !completedFormIds.contains(formKey) && !draftFormIds.contains(formKey)
-                            
                             AppLogger.d("FormSectionAdapter", "Checking instance at index $i: formKey=$formKey, isUnsaved=$isUnsaved, name=${form.name}")
-                            
                             if (isUnsaved) {
                                 indicesToRemove.add(i)
                             } else {
@@ -492,13 +491,13 @@ class FormSectionAdapter(
                     }
                 }
                 
-                // Remove unsaved instances in reverse order to maintain indices
+                    // Remove unsaved instances in reverse order to maintain indices
                 if (indicesToRemove.isNotEmpty()) {
                     AppLogger.d("FormSectionAdapter", "Removing ${indicesToRemove.size} unsaved instances after instance #$instanceNumber")
                     indicesToRemove.reversed().forEach { index ->
                         currentList.removeAt(index)
                     }
-                    
+                    cachedMaxInstanceByFormId.remove(baseForm.id)
                     // Submit the updated list - use callback to ensure it's processed
                     formAdapter.submitList(currentList) {
                         AppLogger.d("FormSectionAdapter", "List updated after removing unsaved instances")
