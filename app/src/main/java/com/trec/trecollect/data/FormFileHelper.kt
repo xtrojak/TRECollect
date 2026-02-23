@@ -1,6 +1,7 @@
 package com.trec.trecollect.data
 
 import android.content.Context
+import android.os.Build
 import android.util.Xml
 import androidx.documentfile.provider.DocumentFile
 import com.trec.trecollect.util.AppLogger
@@ -12,6 +13,20 @@ import java.io.OutputStream
  * Helper class for saving and loading form XML files
  */
 class FormFileHelper(private val context: Context) {
+
+    /**
+     * Opens an output stream for writing that truncates the file first.
+     * On Android 10+ the default openOutputStream(uri) no longer truncates when new content
+     * is shorter than the existing file, which can produce invalid XML. Using mode "wt" ensures
+     * the file is cleared before writing.
+     */
+    private fun openOutputStreamTruncating(uri: android.net.Uri): OutputStream? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.contentResolver.openOutputStream(uri, "wt")
+        } else {
+            context.contentResolver.openOutputStream(uri)
+        }
+    }
     
     companion object {
         /**
@@ -225,10 +240,10 @@ class FormFileHelper(private val context: Context) {
             return false
         }
         
-        // Write XML content
+        // Write XML content (use truncating stream so shorter new content doesn't leave old bytes and corrupt XML)
         return try {
             val xmlContent = formDataWithVersion.toXml()
-            val outputStream: OutputStream? = context.contentResolver.openOutputStream(file.uri)
+            val outputStream: OutputStream? = openOutputStreamTruncating(file.uri)
             if (outputStream == null) {
                 AppLogger.e("FormFileHelper", "openOutputStream returned null for file: $fileName")
                 // If this was a newly created file, delete it to avoid leaving empty XML on disk
@@ -599,7 +614,7 @@ class FormFileHelper(private val context: Context) {
         
         return try {
             val xmlContent = SiteMetadata.toXml(metadata)
-            val outputStream: OutputStream? = context.contentResolver.openOutputStream(file.uri)
+            val outputStream: OutputStream? = openOutputStreamTruncating(file.uri)
             outputStream?.use { it.write(xmlContent.toByteArray()) }
             val success = outputStream != null
             if (success) {
@@ -749,7 +764,7 @@ class FormFileHelper(private val context: Context) {
                 if (content.isEmpty()) return@forEachIndexed
                 val newFile = siteFolder.createFile("text/xml", newFileName)
                 if (newFile != null) {
-                    context.contentResolver.openOutputStream(newFile.uri)?.use { it.write(content.toByteArray()) }
+                    openOutputStreamTruncating(newFile.uri)?.use { it.write(content.toByteArray()) }
                     oldFile.delete()
                     AppLogger.d("FormFileHelper", "Reindexed: $oldFileName -> $newFileName")
                 }
