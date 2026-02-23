@@ -228,6 +228,12 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+            } else {
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    "Please provide a site name",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
