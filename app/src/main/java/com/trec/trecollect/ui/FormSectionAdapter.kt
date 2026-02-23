@@ -140,9 +140,12 @@ class FormSectionAdapter(
             
             AppLogger.d("FormSectionAdapter", "Found dynamic form instances: startIndex=$startIndex, endIndex=$endIndex, total items=${currentList.size}")
             
+            // We loop over all instances of this dynamic form for two reasons. (1) Status is keyed by
+            // formKey; after updating one instance, other instances might still be wrongly in completed/draft sets
+            // (e.g. stale or shared state), so we fix any empty instance incorrectly marked as draft. (2) We
+            // rebind the whole range so that delete/add button states and card appearance stay in sync across
+            // the group. A single notifyItemChanged for the updated index would not refresh sibling instances.
             if (startIndex in 0..endIndex) {
-                // After updating the status for the deleted draft, check all instances in the group
-                // and ensure empty ones are not incorrectly marked as draft
                 val baseForms = formAdapter.baseFormsList
                 
                 // Get fresh status sets after the update (already done above)
