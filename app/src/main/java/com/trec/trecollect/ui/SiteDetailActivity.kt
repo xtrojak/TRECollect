@@ -566,7 +566,6 @@ class SiteDetailActivity : AppCompatActivity() {
             val firstVisible = layoutManager.findFirstVisibleItemPosition()
             if (firstVisible >= 0) {
                 savedScrollPosition = firstVisible
-                AppLogger.d("SiteDetailActivity", "Saved scroll position: $savedScrollPosition")
             }
         }
     }
@@ -576,7 +575,6 @@ class SiteDetailActivity : AppCompatActivity() {
         val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
         val adapter = formSectionAdapter
         if (layoutManager != null && adapter != null && savedScrollPosition >= 0) {
-            AppLogger.d("SiteDetailActivity", "Restoring scroll position: $savedScrollPosition (adapter has ${adapter.itemCount} items)")
             // Post to ensure the layout is complete before scrolling
             recyclerView.post {
                 // Double-check the position is still valid after layout
@@ -589,7 +587,6 @@ class SiteDetailActivity : AppCompatActivity() {
                     }.coerceAtLeast(0)
                     
                     if (targetPosition >= 0) {
-                        AppLogger.d("SiteDetailActivity", "Scrolling to position: $targetPosition")
                         layoutManager.scrollToPositionWithOffset(targetPosition, 0)
                     }
                 }
