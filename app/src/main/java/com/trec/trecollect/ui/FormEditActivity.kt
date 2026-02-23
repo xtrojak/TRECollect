@@ -840,14 +840,15 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     /**
-     * Common setup for fields that use [R.layout.field_text_input]: inflate, set label/hint and tag.
+     * Common setup for fields that use [R.layout.field_text_input]: inflate into [parent], set label/hint and [tag].
      * Returns the [TextInputLayout] and its [TextInputEditText] for the caller to add type-specific behaviour.
+     * Used by both top-level field creation and ForSubField (Review #78).
      */
-    private fun inflateTextInputField(fieldConfig: FormFieldConfig): Pair<TextInputLayout, TextInputEditText> {
+    private fun inflateTextInputFieldInto(fieldConfig: FormFieldConfig, parent: ViewGroup, tag: String): Pair<TextInputLayout, TextInputEditText> {
         val inflater = LayoutInflater.from(this)
         val textInputLayout = inflater.inflate(
             R.layout.field_text_input,
-            containerFields,
+            parent,
             false
         ) as TextInputLayout
         val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
@@ -856,8 +857,30 @@ class FormEditActivity : AppCompatActivity() {
         } else {
             textInputLayout.hint = fieldConfig.label
         }
-        textInputLayout.tag = fieldConfig.id
+        textInputLayout.tag = tag
         return Pair(textInputLayout, editText)
+    }
+    
+    /** Top-level variant: inflates into [containerFields] with tag = [fieldConfig].id. */
+    private fun inflateTextInputField(fieldConfig: FormFieldConfig): Pair<TextInputLayout, TextInputEditText> =
+        inflateTextInputFieldInto(fieldConfig, containerFields, fieldConfig.id)
+    
+    /**
+     * Common setup for checkbox fields: inflate into [parent], set label and [tag].
+     * Used by both top-level and ForSubField (Review #78).
+     */
+    private fun inflateCheckboxFieldInto(fieldConfig: FormFieldConfig, parent: ViewGroup, tag: String): Pair<LinearLayout, CheckBox> {
+        val inflater = LayoutInflater.from(this)
+        val container = inflater.inflate(R.layout.field_checkbox, parent, false) as LinearLayout
+        val checkbox = container.findViewById<CheckBox>(R.id.checkbox)
+        val textLabel = container.findViewById<TextView>(R.id.textLabel)
+        if (fieldConfig.required) {
+            textLabel.text = getString(R.string.label_required, fieldConfig.label)
+        } else {
+            textLabel.text = fieldConfig.label
+        }
+        container.tag = tag
+        return Pair(container, checkbox)
     }
     
     private fun createSectionHeader(fieldConfig: FormFieldConfig): View {
@@ -1301,24 +1324,7 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createCheckboxField(fieldConfig: FormFieldConfig): View {
-        val inflater = LayoutInflater.from(this)
-        val container = inflater.inflate(
-            R.layout.field_checkbox,
-            containerFields,
-            false
-        ) as LinearLayout
-        
-        val checkbox = container.findViewById<CheckBox>(R.id.checkbox)
-        val textLabel = container.findViewById<TextView>(R.id.textLabel)
-        
-        // Set label
-        if (fieldConfig.required) {
-            textLabel.text = getString(R.string.label_required, fieldConfig.label)
-        } else {
-            textLabel.text = fieldConfig.label
-        }
-        
-        container.tag = fieldConfig.id
+        val (container, checkbox) = inflateCheckboxFieldInto(fieldConfig, containerFields, fieldConfig.id)
         
         // Disable editing if read-only
         if (isReadOnly) {
@@ -2143,25 +2149,12 @@ class FormEditActivity : AppCompatActivity() {
         return subFieldView
     }
     
-    // Helper methods to create sub-fields for dynamic widgets
+    // Helper methods to create sub-fields for dynamic widgets (shared setup with top-level via inflateTextInputFieldInto; Review #78)
     private fun createTextFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            parent,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
         if (fieldConfig.inputType == "number") {
             editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-        }
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
         }
         
         // Handle mask if present
@@ -2190,8 +2183,6 @@ class FormEditActivity : AppCompatActivity() {
             }
         }
         
-        textInputLayout.tag = uniqueFieldId
-        
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
             editText.setKeyListener(null)
@@ -2203,24 +2194,7 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createCheckboxFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val container = inflater.inflate(
-            R.layout.field_checkbox,
-            parent,
-            false
-        ) as LinearLayout
-        
-        val checkbox = container.findViewById<CheckBox>(R.id.checkbox)
-        val textLabel = container.findViewById<TextView>(R.id.textLabel)
-        
-        // Set label
-        if (fieldConfig.required) {
-            textLabel.text = getString(R.string.label_required, fieldConfig.label)
-        } else {
-            textLabel.text = fieldConfig.label
-        }
-        
-        container.tag = uniqueFieldId
+        val (container, checkbox) = inflateCheckboxFieldInto(fieldConfig, parent, uniqueFieldId)
         
         if (isReadOnly) {
             checkbox.isEnabled = false
@@ -2233,25 +2207,9 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createTextAreaFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            parent,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         editText.minLines = 3
         editText.maxLines = 5
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = uniqueFieldId
         
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
@@ -2264,25 +2222,9 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createDateFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            parent,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         editText.isFocusable = false
         editText.isClickable = true
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = uniqueFieldId
         
         if (!isReadOnly) {
             editText.setOnClickListener {
@@ -2297,25 +2239,9 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createTimeFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            parent,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         editText.isFocusable = false
         editText.isClickable = true
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = uniqueFieldId
         
         if (!isReadOnly) {
             editText.setOnClickListener {
@@ -2330,25 +2256,9 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            parent,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         editText.isFocusable = false
         editText.isClickable = true
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = uniqueFieldId
         
         if (!isReadOnly) {
             editText.setOnClickListener {
@@ -2363,25 +2273,9 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun createMultiSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
-        val inflater = LayoutInflater.from(this)
-        val textInputLayout = inflater.inflate(
-            R.layout.field_text_input,
-            parent,
-            false
-        ) as TextInputLayout
-        
-        val editText = textInputLayout.findViewById<TextInputEditText>(R.id.editText)
-        // Don't set hint on EditText - only on TextInputLayout to avoid overlap
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
         editText.isFocusable = false
         editText.isClickable = true
-        
-        if (fieldConfig.required) {
-            textInputLayout.hint = "${fieldConfig.label} *"
-        } else {
-            textInputLayout.hint = fieldConfig.label
-        }
-        
-        textInputLayout.tag = uniqueFieldId
         
         // Load existing values
         val existingValue = fieldValues[uniqueFieldId]
