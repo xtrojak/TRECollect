@@ -233,41 +233,17 @@ class MainViewModel(
             return CreateSiteResult.Error("Site name cannot be empty")
         }
         
-        // Check if site already exists by checking folders
+        // Check if site already exists using cached lists (avoid file I/O; use DB/cache)
+        if (ongoingSites.first().any { it.name == trimmedName }) {
+            return CreateSiteResult.Error("A site with this name already exists")
+        }
+        if (finishedSites.first().any { it.name == trimmedName }) {
+            return CreateSiteResult.Error("A site with this name already exists")
+        }
+
+        // Check if storage is configured
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
-        
-        // Check ongoing folder
-        val ongoingFolder = try {
-            folderHelper.getOngoingFolder(settingsPreferences)
-        } catch (e: Exception) {
-            // Will be handled later
-            null
-        }
-        
-        if (ongoingFolder != null && ongoingFolder.exists() && ongoingFolder.canRead()) {
-            val existingFolder = ongoingFolder.findFile(trimmedName)
-            if (existingFolder != null && existingFolder.exists()) {
-                return CreateSiteResult.Error("A site with this name already exists")
-            }
-        }
-        
-        // Check finished folder
-        val finishedFolder = try {
-            folderHelper.getFinishedFolder(settingsPreferences)
-        } catch (e: Exception) {
-            // Will be handled later
-            null
-        }
-        
-        if (finishedFolder != null && finishedFolder.exists() && finishedFolder.canRead()) {
-            val existingFolder = finishedFolder.findFile(trimmedName)
-            if (existingFolder != null && existingFolder.exists()) {
-                return CreateSiteResult.Error("A site with this name already exists")
-            }
-        }
-        
-        // Check if storage is configured
         val folderUriString = settingsPreferences.getFolderUri()
         
         if (folderUriString.isEmpty()) {
@@ -308,16 +284,11 @@ class MainViewModel(
     }
     
     private suspend fun createSiteInFolder(siteName: String, trecFolder: androidx.documentfile.provider.DocumentFile): CreateSiteResult {
-        // Check if TREC_logsheets folder exists and is accessible
+        // Check if TREC_logsheets folder exists and is accessible (name already verified by createSite() caller; Review #97)
         if (!trecFolder.canRead() || !trecFolder.canWrite()) {
             return CreateSiteResult.Error("Cannot access TREC_logsheets folder. Please check permissions in Settings.")
         }
-        
-        // Verify this is actually TREC_logsheets
-        if (trecFolder.name != FolderStructureHelper.PARENT_FOLDER_NAME) {
-            return CreateSiteResult.Error("Internal error: Not working with TREC_logsheets folder. Please reconfigure storage.")
-        }
-        
+
         // Use FolderStructureHelper to get the ongoing folder (which handles team/subteam structure)
         val settingsPreferences = SettingsPreferences(context)
         val folderHelper = FolderStructureHelper(context)
