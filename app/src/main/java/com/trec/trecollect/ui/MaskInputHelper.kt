@@ -91,26 +91,8 @@ class MaskInputHelper(
     /**
      * Parse mask to identify sections (e.g., "mm:ss" -> [2, 2], "HH:mm:ss" -> [2, 2, 2])
      */
-    private fun parseMaskSections(mask: String): List<Int> {
-        val sections = mutableListOf<Int>()
-        var currentSectionLength = 0
-        
-        for (char in mask) {
-            if (char == ':') {
-                if (currentSectionLength > 0) {
-                    sections.add(currentSectionLength)
-                    currentSectionLength = 0
-                }
-            } else {
-                currentSectionLength++
-            }
-        }
-        if (currentSectionLength > 0) {
-            sections.add(currentSectionLength)
-        }
-        
-        return sections
-    }
+    private fun parseMaskSections(mask: String): List<Int> =
+        mask.split(':').map { it.length }.filter { it > 0 }
     
     /**
      * Format input text according to mask, preserving digit positions relative to colons
