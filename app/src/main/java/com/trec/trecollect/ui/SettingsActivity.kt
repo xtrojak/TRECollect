@@ -27,7 +27,9 @@ import com.trec.trecollect.data.FormConfigLoader
 import com.trec.trecollect.data.PredefinedForms
 import com.trec.trecollect.data.LogsheetDownloader
 import com.trec.trecollect.util.AppLogger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var settingsPreferences: SettingsPreferences
@@ -45,8 +47,9 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var textLogsheetsStatus: TextView
     private lateinit var progressBarDownload: android.widget.ProgressBar
     private lateinit var textDownloadProgress: TextView
-    private val teams = arrayOf("LSI", "AML")
+    private var teamsList: MutableList<String> = mutableListOf()
     private var currentSubteams: List<String> = emptyList()
+    private lateinit var teamAdapter: ArrayAdapter<String>
     private lateinit var subteamAdapter: ArrayAdapter<String>
     
     companion object {
@@ -81,10 +84,9 @@ class SettingsActivity : AppCompatActivity() {
         selectFolderButton = findViewById(R.id.buttonSelectFolder)
         buttonOfflineMaps = findViewById(R.id.buttonOfflineMaps)
         
-        // Setup team spinner
-        val teamAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, teams)
-        teamAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         teamSpinner = findViewById(R.id.spinnerTeam)
+        teamAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, mutableListOf<String>())
+        teamAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         teamSpinner.adapter = teamAdapter
         
         // Setup subteam spinner (will be populated dynamically)
@@ -128,7 +130,8 @@ class SettingsActivity : AppCompatActivity() {
         
         teamSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                val selectedTeam = teams[position]
+                if (position < 0 || position >= teamsList.size) return
+                val selectedTeam = teamsList[position]
                 val previousTeam = settingsPreferences.getSamplingTeam()
                 val wasTeamChanged = previousTeam != selectedTeam
                 settingsPreferences.setSamplingTeam(selectedTeam)
@@ -213,6 +216,45 @@ class SettingsActivity : AppCompatActivity() {
      * Shows/hides the spinner based on whether subteams are available
      * @param onComplete Optional callback to execute after subteams are loaded (e.g., to set selection)
      */
+    /**
+     * Populates team and subteam spinners from downloaded config and sets first team and first subteam.
+     * Used after initial download when teams list was empty.
+     */
+    private fun applyFirstTeamAndSubteamFromDownloadedConfig() {
+        lifecycleScope.launch {
+            val downloader = LogsheetDownloader(this@SettingsActivity)
+            val teams = withContext(Dispatchers.IO) { downloader.getAvailableTeams() }
+            if (teams.isEmpty()) return@launch
+            withContext(Dispatchers.Main) {
+                if (isDestroyed || isFinishing) return@withContext
+                val firstTeam = teams[0]
+                teamsList.clear()
+                teamsList.addAll(teams)
+                teamAdapter.clear()
+                teamAdapter.addAll(teamsList)
+                teamAdapter.notifyDataSetChanged()
+                settingsPreferences.setSamplingTeam(firstTeam)
+                settingsPreferences.setSamplingSubteam("")
+                val teamListener = teamSpinner.onItemSelectedListener
+                teamSpinner.onItemSelectedListener = null
+                teamSpinner.setSelection(0)
+                teamSpinner.onItemSelectedListener = teamListener
+                updateSubteamsForTeam(firstTeam) {
+                    if (currentSubteams.isNotEmpty()) {
+                        val firstSubteam = currentSubteams[0]
+                        settingsPreferences.setSamplingSubteam(firstSubteam)
+                        FormConfigLoader.clearCache()
+                        PredefinedForms.clearCache()
+                        val subteamListener = subteamSpinner.onItemSelectedListener
+                        subteamSpinner.onItemSelectedListener = null
+                        subteamSpinner.setSelection(0)
+                        subteamSpinner.onItemSelectedListener = subteamListener
+                    }
+                }
+            }
+        }
+    }
+
     private fun updateSubteamsForTeam(team: String, onComplete: (() -> Unit)? = null) {
         lifecycleScope.launch {
             try {
@@ -266,37 +308,40 @@ class SettingsActivity : AppCompatActivity() {
             resetFolderVisualState()
         }
         
-        val currentTeam = settingsPreferences.getSamplingTeam()
-        if (currentTeam.isNotEmpty()) {
-            val teamIndex = teams.indexOf(currentTeam)
-            if (teamIndex >= 0) {
-                // Set selection without triggering onItemSelected (by temporarily removing listener)
-                val teamListener = teamSpinner.onItemSelectedListener
-                teamSpinner.onItemSelectedListener = null
-                teamSpinner.setSelection(teamIndex)
-                teamSpinner.onItemSelectedListener = teamListener
-                
-                // Update subteams for the current team and show spinner
-                // Set selection after subteams are loaded
-                updateSubteamsForTeam(currentTeam) {
-                    // Load current subteam after subteams are populated
-                    val currentSubteam = settingsPreferences.getSamplingSubteam()
-                    if (currentSubteam.isNotEmpty() && currentSubteams.contains(currentSubteam)) {
-                        val subteamIndex = currentSubteams.indexOf(currentSubteam)
-                        if (subteamIndex >= 0) {
-                            // Set selection without triggering onItemSelected (by temporarily removing listener)
-                            val subteamListener = subteamSpinner.onItemSelectedListener
-                            subteamSpinner.onItemSelectedListener = null
-                            subteamSpinner.setSelection(subteamIndex)
-                            subteamSpinner.onItemSelectedListener = subteamListener
+        lifecycleScope.launch {
+            val teams = withContext(Dispatchers.IO) {
+                LogsheetDownloader(this@SettingsActivity).getAvailableTeams()
+            }
+            withContext(Dispatchers.Main) {
+                teamsList.clear()
+                teamsList.addAll(teams)
+                teamAdapter.clear()
+                teamAdapter.addAll(teamsList)
+                teamAdapter.notifyDataSetChanged()
+                val currentTeam = settingsPreferences.getSamplingTeam()
+                if (currentTeam.isNotEmpty() && teamsList.contains(currentTeam)) {
+                    val teamIndex = teamsList.indexOf(currentTeam)
+                    val teamListener = teamSpinner.onItemSelectedListener
+                    teamSpinner.onItemSelectedListener = null
+                    teamSpinner.setSelection(teamIndex)
+                    teamSpinner.onItemSelectedListener = teamListener
+                    updateSubteamsForTeam(currentTeam) {
+                        val currentSubteam = settingsPreferences.getSamplingSubteam()
+                        if (currentSubteam.isNotEmpty() && currentSubteams.contains(currentSubteam)) {
+                            val subteamIndex = currentSubteams.indexOf(currentSubteam)
+                            if (subteamIndex >= 0) {
+                                val subteamListener = subteamSpinner.onItemSelectedListener
+                                subteamSpinner.onItemSelectedListener = null
+                                subteamSpinner.setSelection(subteamIndex)
+                                subteamSpinner.onItemSelectedListener = subteamListener
+                            }
                         }
                     }
+                } else {
+                    subteamSpinner.visibility = android.view.View.GONE
+                    subteamLabel.visibility = android.view.View.GONE
                 }
             }
-        } else {
-            // No team selected yet - hide subteam
-            subteamSpinner.visibility = android.view.View.GONE
-            subteamLabel.visibility = android.view.View.GONE
         }
         
         // Load and display app UUID
@@ -630,12 +675,14 @@ class SettingsActivity : AppCompatActivity() {
                 if (isDestroyed || isFinishing) return@launch
                 if (success) {
                     settingsPreferences.setLogsheetsDownloaded(true)
-                    // Clear form config cache to reload from downloaded files
                     FormConfigLoader.clearCache()
                     PredefinedForms.clearCache()
                     textLogsheetsStatus.text = getString(R.string.status_last_download_completed)
                     textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_green_dark))
                     Toast.makeText(this@SettingsActivity, getString(R.string.logsheets_updated_success), Toast.LENGTH_SHORT).show()
+                    if (teamsList.isEmpty()) {
+                        applyFirstTeamAndSubteamFromDownloadedConfig()
+                    }
                 } else {
                     textLogsheetsStatus.text = getString(R.string.status_update_failed)
                     textLogsheetsStatus.setTextColor(getColor(android.R.color.holo_red_dark))

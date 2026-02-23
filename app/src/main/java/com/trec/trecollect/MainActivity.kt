@@ -124,8 +124,7 @@ class MainActivity : AppCompatActivity() {
         if (team.isEmpty()) {
             missingItems.add("sampling team")
         } else if (!subteamSet) {
-            // Both LSI and AML require subteam selection now
-            val teamDisplayName = if (team == "LSI") "LSI subteam" else "$team subteam"
+            val teamDisplayName = "$team subteam"
             missingItems.add(teamDisplayName)
         }
         
@@ -189,7 +188,7 @@ class MainActivity : AppCompatActivity() {
             val subteamSet = settingsPreferences.isSamplingSubteamSet()
             val folderUri = settingsPreferences.getFolderUri()
             
-            // Check if setup is complete (both LSI and AML now require subteam)
+            // Check if setup is complete
             if (team.isEmpty() || !subteamSet || folderUri.isEmpty()) {
                 android.widget.Toast.makeText(
                     this,

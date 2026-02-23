@@ -726,6 +726,33 @@ class LogsheetDownloader(private val context: Context) {
     }
     
     /**
+     * Discovers all available teams by scanning downloaded team configs.
+     * Returns distinct "team" values from config JSON files; empty if none downloaded.
+     */
+    fun getAvailableTeams(): List<String> {
+        if (!teamsDir.exists() || !teamsDir.isDirectory) {
+            return emptyList()
+        }
+        val teams = mutableSetOf<String>()
+        val teamFolders = teamsDir.listFiles()?.filter { it.isDirectory } ?: return emptyList()
+        for (teamFolder in teamFolders) {
+            val versionFiles = teamFolder.listFiles()?.filter { it.isFile && it.name.endsWith(".json") } ?: continue
+            if (versionFiles.isEmpty()) continue
+            val latestFile = versionFiles.maxWithOrNull(Comparator { f1, f2 ->
+                compareVersionStrings(f1.name.removeSuffix(".json"), f2.name.removeSuffix(".json"))
+            }) ?: continue
+            try {
+                val configObj = org.json.JSONObject(latestFile.readText())
+                val configTeam = configObj.optString("team", "")
+                if (configTeam.isNotEmpty()) teams.add(configTeam)
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        return teams.sorted()
+    }
+
+    /**
      * Discovers all available subteams for a given team by scanning downloaded team configs
      * Returns a list of subteam names (the "name" field from team configs)
      */
