@@ -1056,11 +1056,7 @@ class SiteDetailActivity : AppCompatActivity() {
                                                 val foundViewHolder = viewHolder
                                                 if (foundViewHolder != null) {
                                                     AppLogger.d("SiteDetailActivity", "Found ViewHolder, updating status in place")
-                                                    // Remove any unsaved instances that come after this one
-                                                    foundViewHolder.removeUnsavedInstancesAfter(baseForm, subIndex)
-                                                    
-                                                    // Use Handler.postDelayed to ensure the list update from removeUnsavedInstancesAfter completes
-                                                    // before we update the status and rebind (submitList is asynchronous)
+                                                    // Last instance: no instances after this one; update status in place
                                                     AppLogger.d("SiteDetailActivity", "Scheduling updateFormStatus with 100ms delay")
                                                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                                         if (isDestroyed || isFinishing) return@postDelayed
