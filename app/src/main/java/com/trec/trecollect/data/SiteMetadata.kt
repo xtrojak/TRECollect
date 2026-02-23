@@ -14,7 +14,8 @@ data class SiteMetadata(
     val teamConfigId: String = "", // Team config folder ID (should always be set for normal sites)
     val teamConfigVersion: String = "", // Team config version e.g. "1.0.0" (should always be set for normal sites)
     val submittedAt: String? = null, // ISO 8601 UTC timestamp when submitted
-    val deletedAt: String? = null // ISO 8601 UTC timestamp when deleted
+    val deletedAt: String? = null, // ISO 8601 UTC timestamp when deleted
+    val uploadedAt: String? = null // ISO 8601 UTC timestamp when uploaded (persisted so status survives DB rebuild)
 ) {
     companion object {
         /**
@@ -66,7 +67,11 @@ data class SiteMetadata(
                 serializer.text(metadata.deletedAt)
                 serializer.endTag(null, "deletedAt")
             }
-            
+            if (metadata.uploadedAt != null) {
+                serializer.startTag(null, "uploadedAt")
+                serializer.text(metadata.uploadedAt)
+                serializer.endTag(null, "uploadedAt")
+            }
             serializer.endTag(null, "siteMetadata")
             serializer.endDocument()
             
@@ -89,6 +94,7 @@ data class SiteMetadata(
                 var teamConfigVersion = ""
                 var submittedAt: String? = null
                 var deletedAt: String? = null
+                var uploadedAt: String? = null
                 var currentTag: String? = null
                 
                 while (eventType != XmlPullParser.END_DOCUMENT) {
@@ -104,6 +110,7 @@ data class SiteMetadata(
                                 "teamConfigVersion" -> teamConfigVersion = parser.text ?: ""
                                 "submittedAt" -> submittedAt = parser.text
                                 "deletedAt" -> deletedAt = parser.text
+                                "uploadedAt" -> uploadedAt = parser.text
                             }
                         }
                         XmlPullParser.END_TAG -> {
@@ -120,7 +127,8 @@ data class SiteMetadata(
                         teamConfigId = teamConfigId,
                         teamConfigVersion = teamConfigVersion,
                         submittedAt = submittedAt,
-                        deletedAt = deletedAt
+                        deletedAt = deletedAt,
+                        uploadedAt = uploadedAt
                     )
                 } else {
                     null

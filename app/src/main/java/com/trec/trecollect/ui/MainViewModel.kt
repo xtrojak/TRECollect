@@ -158,17 +158,18 @@ class MainViewModel(
                                 siteWithCorrectStatus
                             } else {
                                 AppLogger.d("MainViewModel", "Site not found in database, will create: name='${folder.name}'")
-                                // Create new site record with default upload status
+                                val formFileHelper = com.trec.trecollect.data.FormFileHelper(context)
+                                val metadata = formFileHelper.loadSiteMetadata(folder.name!!)
+                                val uploadStatus = if (metadata?.uploadedAt != null && metadata.uploadedAt.isNotEmpty())
+                                    UploadStatus.UPLOADED else UploadStatus.NOT_UPLOADED
                                 val newSite = SamplingSite(
                                     id = 0,
                                     name = folder.name!!,
                                     status = SiteStatus.FINISHED,
-                                    uploadStatus = UploadStatus.NOT_UPLOADED,
+                                    uploadStatus = uploadStatus,
                                     createdAt = System.currentTimeMillis()
                                 )
-                                // Queue for batch insert
                                 sitesToInsert.add(newSite)
-                                // Return temporary site for immediate UI update
                                 newSite
                             }
                         }
@@ -320,6 +321,98 @@ class MainViewModel(
             return Pair(null, "Cannot access finished folder. Please check permissions.")
         }
         return Pair(finishedFolder, null)
+    }
+
+    /** Deletes form completions for a site and reloads the site list. Used when storage is unavailable or folder checks fail. */
+    private suspend fun deleteFormCompletionsForSiteAndReload(siteName: String) {
+        try {
+            database.formCompletionDao().deleteCompletionsForSiteByName(siteName)
+        } catch (e: Exception) {
+            AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
+        }
+        loadSitesFromFolders()
+    }
+
+    /** Updates site to UPLOAD_FAILED in DB and refreshes UI (StateFlow in-place or loadSitesFromFolders). */
+    private suspend fun setSiteUploadFailedAndRefresh(site: SamplingSite) {
+        val siteToUpdate = if (site.id > 0) site else database.samplingSiteDao().getSiteByName(site.name)
+        if (siteToUpdate == null) return
+        val failedSite = siteToUpdate.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
+        try {
+            database.samplingSiteDao().updateSite(failedSite)
+            viewModelScope.launch(Dispatchers.Main) {
+                val current = _finishedSites.value.toMutableList()
+                val idx = current.indexOfFirst { it.name == site.name }
+                if (idx >= 0) {
+                    current[idx] = failedSite
+                    _finishedSites.value = current
+                } else {
+                    loadSitesFromFolders()
+                }
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                loadSitesFromFolders()
+            }
+        } catch (e: Exception) {
+            AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${e.message}", e)
+        }
+    }
+
+    /** Returns the site to use for upload (by id or by name); creates a new DB record if missing. */
+    private suspend fun getOrCreateSiteForUpload(site: SamplingSite): SamplingSite? {
+        if (site.id > 0) return site
+        val found = database.samplingSiteDao().getSiteByName(site.name)
+        if (found != null) return found
+        val newSite = SamplingSite(
+            id = 0,
+            name = site.name,
+            status = SiteStatus.FINISHED,
+            uploadStatus = UploadStatus.NOT_UPLOADED,
+            createdAt = System.currentTimeMillis()
+        )
+        return try {
+            val id = database.samplingSiteDao().insertSite(newSite)
+            newSite.copy(id = id)
+        } catch (e: Exception) {
+            AppLogger.e("MainViewModel", "Error creating site for upload: ${e.message}", e)
+            null
+        }
+    }
+
+    /** Updates site upload status in DB and reloads site list. Use for UPLOADING and UPLOADED. */
+    private suspend fun updateSiteUploadStatusAndReload(site: SamplingSite, uploadStatus: UploadStatus) {
+        val siteToUpdate = getOrCreateSiteForUpload(site) ?: return
+        val updated = siteToUpdate.copy(uploadStatus = uploadStatus)
+        try {
+            database.samplingSiteDao().updateSite(updated)
+            loadSitesFromFolders()
+        } catch (e: Exception) {
+            AppLogger.e("MainViewModel", "Error updating site upload status: ${e.message}", e)
+        }
+    }
+
+    /** Ensures site is in DB with given status and upload status; returns the site (for finalize and similar flows). */
+    private suspend fun ensureSiteInDbWithStatus(site: SamplingSite, status: SiteStatus, uploadStatus: UploadStatus): SamplingSite {
+        val updated = site.copy(status = status, uploadStatus = uploadStatus)
+        if (site.id > 0) {
+            database.samplingSiteDao().updateSite(updated)
+            return database.samplingSiteDao().getSiteByName(site.name) ?: updated
+        }
+        val found = database.samplingSiteDao().getSiteByName(site.name)
+        if (found != null) {
+            val withStatus = found.copy(status = status, uploadStatus = uploadStatus)
+            database.samplingSiteDao().updateSite(withStatus)
+            return database.samplingSiteDao().getSiteByName(site.name) ?: withStatus
+        }
+        val newSite = SamplingSite(
+            id = 0,
+            name = site.name,
+            status = status,
+            uploadStatus = uploadStatus,
+            createdAt = System.currentTimeMillis()
+        )
+        val id = database.samplingSiteDao().insertSite(newSite)
+        return newSite.copy(id = id)
     }
     
     private suspend fun createSiteInFolder(siteName: String, trecFolder: DocumentFile): CreateSiteResult {
@@ -536,46 +629,13 @@ class MainViewModel(
             formFileHelper.saveSiteMetadata(site.name, metadata)
         }
         
-        // Update site status to FINISHED with NOT_UPLOADED status
         val updatedSite = site.copy(status = SiteStatus.FINISHED, uploadStatus = UploadStatus.NOT_UPLOADED)
-        
-        // Ensure site is in database and get the updated site with correct ID
-        val siteForUpload = if (site.id > 0) {
-            try {
-                database.samplingSiteDao().updateSite(updatedSite)
-                // Reload from database to ensure we have the latest data
-                database.samplingSiteDao().getSiteByName(site.name) ?: updatedSite
-            } catch (e: Exception) {
-                AppLogger.e("MainViewModel", "Error updating site status to FINISHED: ${e.message}", e)
-                updatedSite
-            }
-        } else {
-            // Site not in database, try to find it or create it
-            try {
-                val foundSite = database.samplingSiteDao().getSiteByName(site.name)
-                if (foundSite != null) {
-                    val siteWithStatus = foundSite.copy(status = SiteStatus.FINISHED, uploadStatus = UploadStatus.NOT_UPLOADED)
-                    database.samplingSiteDao().updateSite(siteWithStatus)
-                    database.samplingSiteDao().getSiteByName(site.name) ?: siteWithStatus
-                } else {
-                    // Create new site record
-                    val newSite = SamplingSite(
-                        id = 0,
-                        name = site.name,
-                        status = SiteStatus.FINISHED,
-                        uploadStatus = UploadStatus.NOT_UPLOADED,
-                        createdAt = System.currentTimeMillis()
-                    )
-                    val insertedId = database.samplingSiteDao().insertSite(newSite)
-                    newSite.copy(id = insertedId)
-                }
-            } catch (e: Exception) {
-                AppLogger.e("MainViewModel", "Error ensuring site in database: ${e.message}", e)
-                updatedSite
-            }
+        val siteForUpload = try {
+            ensureSiteInDbWithStatus(site, SiteStatus.FINISHED, UploadStatus.NOT_UPLOADED)
+        } catch (e: Exception) {
+            AppLogger.e("MainViewModel", "Error ensuring site in database: ${e.message}", e)
+            updatedSite
         }
-        
-        // Reload sites from folders to update the UI
         loadSitesFromFolders()
         
         AppLogger.i("MainViewModel", "Site finalized successfully: name='${site.name}', id=${siteForUpload.id}")
@@ -621,40 +681,9 @@ class MainViewModel(
                 AppLogger.i("MainViewModel", "Automatic upload completed for site: name='${siteForUpload.name}', result=${result}")
             } catch (e: Exception) {
                 AppLogger.e("MainViewModel", "Site upload error: name='${siteForUpload.name}'", e)
-                // Update status to UPLOAD_FAILED if upload fails
-                try {
-                    val siteToUpdate = if (siteForUpload.id > 0) {
-                        siteForUpload
-                    } else {
-                        database.samplingSiteDao().getSiteByName(siteForUpload.name)
-                    }
-                    if (siteToUpdate != null) {
-                        val failedSite = siteToUpdate.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
-                        database.samplingSiteDao().updateSite(failedSite)
-                        
-                        // Immediately update the StateFlow to reflect the change
-                        viewModelScope.launch(Dispatchers.Main) {
-                            val currentFinishedSites = _finishedSites.value.toMutableList()
-                            val index = currentFinishedSites.indexOfFirst { it.name == siteForUpload.name }
-                            if (index >= 0) {
-                                currentFinishedSites[index] = failedSite
-                                _finishedSites.value = currentFinishedSites
-                            } else {
-                                loadSitesFromFolders()
-                            }
-                        }
-                        
-                        // Also reload from database to ensure consistency
-                        viewModelScope.launch(Dispatchers.IO) {
-                            loadSitesFromFolders()
-                        }
-                    }
-                } catch (dbException: Exception) {
-                    AppLogger.e("MainViewModel", "Error updating site upload status: ${dbException.message}", dbException)
-                }
+                setSiteUploadFailedAndRefresh(siteForUpload)
             }
         }
-        
         return FinalizeSiteResult.Success
     }
     
@@ -670,13 +699,7 @@ class MainViewModel(
         val folderUriString = settingsPreferences.getFolderUri()
         
         if (folderUriString.isEmpty()) {
-            // No storage configured, just delete form completions
-            try {
-                database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
-            } catch (e: Exception) {
-                AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
-            }
-            loadSitesFromFolders()
+            deleteFormCompletionsForSiteAndReload(site.name)
             return DeleteSiteResult.Success
         }
         
@@ -703,25 +726,12 @@ class MainViewModel(
         
         if (ongoingFolder == null || !ongoingFolder.exists() || !ongoingFolder.canRead()) {
             AppLogger.w("MainViewModel", "Ongoing folder not accessible")
-            // Delete form completions anyway
-            try {
-                database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
-            } catch (e: Exception) {
-                AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
-            }
-            loadSitesFromFolders()
+            deleteFormCompletionsForSiteAndReload(site.name)
             return DeleteSiteResult.Success
         }
-        
         if (deletedFolder == null || !deletedFolder.exists() || !deletedFolder.canWrite()) {
             AppLogger.w("MainViewModel", "Deleted folder not accessible")
-            // Delete form completions anyway
-            try {
-                database.formCompletionDao().deleteCompletionsForSiteByName(site.name)
-            } catch (e: Exception) {
-                AppLogger.w("MainViewModel", "Could not delete form completions: ${e.message}")
-            }
-            loadSitesFromFolders()
+            deleteFormCompletionsForSiteAndReload(site.name)
             return DeleteSiteResult.Success
         }
         
@@ -928,40 +938,12 @@ class MainViewModel(
     suspend fun uploadSiteToOwnCloud(site: SamplingSite): UploadSiteResult {
         AppLogger.i("MainViewModel", "Starting site upload: name='${site.name}', id=${site.id}")
         
-        // Update status to UPLOADING
-        // Try to find the site in the database by name if ID is 0
         try {
-            val siteToUpdate = if (site.id > 0) {
-                site
-            } else {
-                // Find site by name
-                val foundSite = database.samplingSiteDao().getSiteByName(site.name)
-                if (foundSite != null) {
-                    foundSite
-                } else {
-                    // Site not in database yet, create it
-                    val newSite = SamplingSite(
-                        id = 0,
-                        name = site.name,
-                        status = SiteStatus.FINISHED,
-                        uploadStatus = UploadStatus.UPLOADING,
-                        createdAt = System.currentTimeMillis()
-                    )
-                    val insertedId = database.samplingSiteDao().insertSite(newSite)
-                    newSite.copy(id = insertedId)
-                }
-            }
-            
-            database.samplingSiteDao().updateSite(
-                siteToUpdate.copy(uploadStatus = UploadStatus.UPLOADING)
-            )
-            AppLogger.d("MainViewModel", "Updated site upload status to UPLOADING: name='${site.name}', id=${siteToUpdate.id}")
-            loadSitesFromFolders()
+            updateSiteUploadStatusAndReload(site, UploadStatus.UPLOADING)
         } catch (e: Exception) {
             AppLogger.e("MainViewModel", "Error updating site upload status to UPLOADING: ${e.message}", e)
-            // Continue anyway - the upload can still proceed
         }
-        
+
         try {
             val settingsPreferences = SettingsPreferences(context)
             val folderHelper = FolderStructureHelper(context)
@@ -975,16 +957,7 @@ class MainViewModel(
             val siteFolder = finishedFolder.findFile(site.name)
             if (siteFolder == null || !siteFolder.exists()) {
                 AppLogger.e("MainViewModel", "Site folder not found: name='${site.name}'")
-                if (site.id > 0) {
-                    try {
-                        database.samplingSiteDao().updateSite(
-                            site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
-                        )
-                        loadSitesFromFolders()
-                    } catch (e: Exception) {
-                        AppLogger.e("MainViewModel", "Error updating site upload status: ${e.message}", e)
-                    }
-                }
+                setSiteUploadFailedAndRefresh(site)
                 return UploadSiteResult.Error("Site folder not found")
             }
             
@@ -1001,85 +974,27 @@ class MainViewModel(
             }
             
             if (uploadResult.success && uploadResult.uploadedCount > 0) {
-                // Update status to UPLOADED
-                // Try to find the site in the database by name if ID is 0
                 try {
-                    val siteToUpdate = if (site.id > 0) {
-                        site
-                    } else {
-                        // Find site by name
-                        val foundSite = database.samplingSiteDao().getAllSites().first().find { it.name == site.name }
-                        if (foundSite != null) {
-                            foundSite
-                        } else {
-                            // Site not in database yet, create it
-                            val newSite = SamplingSite(
-                                id = 0,
-                                name = site.name,
-                                status = SiteStatus.FINISHED,
-                                uploadStatus = UploadStatus.UPLOADED,
-                                createdAt = System.currentTimeMillis()
-                            )
-                            val insertedId = database.samplingSiteDao().insertSite(newSite)
-                            newSite.copy(id = insertedId)
-                        }
-                    }
-                    
-                    val updatedSite = siteToUpdate.copy(uploadStatus = UploadStatus.UPLOADED)
-                    database.samplingSiteDao().updateSite(updatedSite)
-                    AppLogger.i("MainViewModel", "Updated site upload status to UPLOADED: name='${site.name}', id=${siteToUpdate.id}")
-                    
-                    // Reload sites from folders to update the UI
-                    // Database operations are synchronous within the transaction, so no delay needed
-                    AppLogger.d("MainViewModel", "Reloading sites after upload status update for: name='${site.name}'")
-                    loadSitesFromFolders()
+                    updateSiteUploadStatusAndReload(site, UploadStatus.UPLOADED)
+                    val formFileHelper = com.trec.trecollect.data.FormFileHelper(context)
+                    val existingMeta = formFileHelper.loadSiteMetadata(site.name)
+                    val metaWithUploaded = (existingMeta ?: SiteMetadata(
+                        siteName = site.name,
+                        createdAt = SiteMetadata.getCurrentTimestamp()
+                    )).copy(uploadedAt = SiteMetadata.getCurrentTimestamp())
+                    formFileHelper.saveSiteMetadata(site.name, metaWithUploaded)
                 } catch (e: Exception) {
                     AppLogger.e("MainViewModel", "Error updating site upload status to UPLOADED: ${e.message}", e)
                 }
                 AppLogger.i("MainViewModel", "Site upload completed successfully: name='${site.name}', files=${uploadResult.uploadedCount}/${uploadResult.totalCount}")
                 return UploadSiteResult.Success(uploadResult.uploadedCount, uploadResult.totalCount)
             } else {
-                // Update status to UPLOAD_FAILED (only if site has valid ID)
-                if (site.id > 0) {
-                    try {
-                        val failedSite = site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
-                        database.samplingSiteDao().updateSite(failedSite)
-                        
-                        // Immediately update the StateFlow to reflect the change
-                        viewModelScope.launch(Dispatchers.Main) {
-                            val currentFinishedSites = _finishedSites.value.toMutableList()
-                            val index = currentFinishedSites.indexOfFirst { it.name == site.name }
-                            if (index >= 0) {
-                                currentFinishedSites[index] = failedSite
-                                _finishedSites.value = currentFinishedSites
-                            } else {
-                                loadSitesFromFolders()
-                            }
-                        }
-                        
-                        // Also reload from database to ensure consistency
-                        viewModelScope.launch(Dispatchers.IO) {
-                            loadSitesFromFolders()
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${e.message}", e)
-                    }
-                }
+                setSiteUploadFailedAndRefresh(site)
                 AppLogger.e("MainViewModel", "Site upload failed: name='${site.name}', error='${uploadResult.errorMessage}'")
                 return UploadSiteResult.Error(uploadResult.errorMessage ?: "Upload failed")
             }
         } catch (e: Exception) {
-            // Update status to UPLOAD_FAILED (only if site has valid ID)
-            if (site.id > 0) {
-                try {
-                    database.samplingSiteDao().updateSite(
-                        site.copy(uploadStatus = UploadStatus.UPLOAD_FAILED)
-                    )
-                    loadSitesFromFolders()
-                } catch (dbException: Exception) {
-                    AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${dbException.message}", dbException)
-                }
-            }
+            setSiteUploadFailedAndRefresh(site)
             AppLogger.e("MainViewModel", "Site upload error: name='${site.name}'", e)
             return UploadSiteResult.Error("Upload error: ${e.message}")
         }
