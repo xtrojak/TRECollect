@@ -40,7 +40,8 @@
         <activity
             android:name=".ui.FormEditActivity"
             android:parentActivityName=".ui.SiteDetailActivity"
-            android:label="Edit Form" />
+            android:label="Edit Form"
+            android:configChanges="keyboard|keyboardHidden" />
         <!-- Portrait locked for consistent camera preview; see AndroidLintLockedOrientationActivity -->
         <activity
             android:name=".ui.CameraActivity"

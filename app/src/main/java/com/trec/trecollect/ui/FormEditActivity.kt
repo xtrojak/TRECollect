@@ -71,6 +71,11 @@ class FormEditActivity : AppCompatActivity() {
     /** Debounce Tab/Enter from barcode scanners: some devices deliver the key twice, causing two focus moves. */
     private var lastFocusTraversalKeyTimeNs = 0L
     
+    /** Suppress key events from HID devices right after connect/disconnect to avoid form clear or garbage input. */
+    private val hidDeviceFirstSeenNs = mutableMapOf<Int, Long>()
+    private val hidDeviceSuppressUntilNs = mutableMapOf<Int, Long>()
+    private val hidDeviceRecentEventTimesNs = mutableMapOf<Int, MutableList<Long>>()
+    
     /** Undo rapid double focus move (one key triggering two moves on some devices). */
     private var lastFocusChangeTimeNs = 0L
     private var lastFocusedViewInForm: View? = null
@@ -635,14 +640,37 @@ class FormEditActivity : AppCompatActivity() {
     /**
      * Debounce Tab and Enter so a second key within 400ms is ignored.
      * On some devices, barcode scanner input is delivered twice (only in this app), causing two focus moves.
+     * Also suppress key events from HID devices (e.g. physical barcode scanner) right after connect/disconnect
+     * to avoid spurious input that can clear the form or paste garbage into fields.
      */
     override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
         if (event != null && event.action == KeyEvent.ACTION_DOWN) {
+            val now = System.nanoTime()
+            val deviceId = event.deviceId
+            if (deviceId != 0 && deviceId != -1) {
+                pruneHidDeviceTracking(now)
+                if (hidDeviceSuppressUntilNs.getOrDefault(deviceId, 0L) > now) {
+                    return true
+                }
+                val firstSeen = hidDeviceFirstSeenNs[deviceId] ?: 0L
+                if (firstSeen == 0L || (now - firstSeen) > HID_DEVICE_FORGET_NS) {
+                    hidDeviceFirstSeenNs[deviceId] = now
+                    hidDeviceSuppressUntilNs[deviceId] = now + HID_NEW_DEVICE_SUPPRESS_MS * 1_000_000
+                    return true
+                }
+                val recent = hidDeviceRecentEventTimesNs.getOrPut(deviceId) { mutableListOf() }
+                recent.add(now)
+                val cutoff = now - HID_BURST_WINDOW_MS * 1_000_000
+                while (recent.isNotEmpty() && recent.first() < cutoff) recent.removeAt(0)
+                if (recent.size > HID_BURST_THRESHOLD) {
+                    hidDeviceSuppressUntilNs[deviceId] = now + HID_BURST_SUPPRESS_MS * 1_000_000
+                    return true
+                }
+            }
             val isFocusTraversal = event.keyCode == KeyEvent.KEYCODE_TAB ||
                 event.keyCode == KeyEvent.KEYCODE_ENTER ||
                 event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
             if (isFocusTraversal) {
-                val now = System.nanoTime()
                 val elapsedMs = (now - lastFocusTraversalKeyTimeNs) / 1_000_000
                 if (elapsedMs < FOCUS_TRAVERSAL_DEBOUNCE_MS && lastFocusTraversalKeyTimeNs != 0L) {
                     return true
@@ -651,6 +679,16 @@ class FormEditActivity : AppCompatActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+    
+    private fun pruneHidDeviceTracking(nowNs: Long) {
+        val forgetBefore = nowNs - HID_DEVICE_FORGET_NS
+        hidDeviceFirstSeenNs.entries.removeIf { it.value < forgetBefore }
+        hidDeviceSuppressUntilNs.entries.removeIf { it.value < nowNs }
+        hidDeviceRecentEventTimesNs.entries.removeIf { (_, times) ->
+            times.removeAll { it < forgetBefore }
+            times.isEmpty()
+        }
     }
     
     /** Returns true if [view] is [container] or a descendant of [container]. */
@@ -1511,6 +1549,11 @@ class FormEditActivity : AppCompatActivity() {
         private const val REQUEST_CODE_GPS_PICKER = 2001
         private const val FOCUS_TRAVERSAL_DEBOUNCE_MS = 400L
         private const val FOCUS_CHANGE_DEBOUNCE_MS = 120L
+        private const val HID_NEW_DEVICE_SUPPRESS_MS = 500L
+        private const val HID_BURST_WINDOW_MS = 200L
+        private const val HID_BURST_THRESHOLD = 12
+        private const val HID_BURST_SUPPRESS_MS = 800L
+        private const val HID_DEVICE_FORGET_NS = 60_000L * 1_000_000
     }
     
     /**
