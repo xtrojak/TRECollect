@@ -58,6 +58,8 @@ class FormEditActivity : AppCompatActivity() {
     private val fieldViews = mutableMapOf<String, View>()
     private val fieldValues = mutableMapOf<String, FormFieldValue>()
     private val initialFieldValues = mutableMapOf<String, FormFieldValue>() // Track initial state
+    /** Deterministic signature of form data when loaded (or after save/clear); used to detect unsaved changes. */
+    private var initialFormStateSignature: String? = null
     private var currentPhotoFieldId: String? = null
     private var photoFile: File? = null
     private var currentBarcodeFieldId: String? = null
@@ -386,6 +388,7 @@ class FormEditActivity : AppCompatActivity() {
         
         renderFields()
         setupFocusChangeDebounce()
+        initialFormStateSignature = computeFormStateSignature()
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -447,58 +450,72 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun hasUnsavedChanges(): Boolean {
-        if (isFormSaved) {
-            return false
-        }
-        
-        // Compare current values with initial values
-        if (fieldValues.size != initialFieldValues.size) {
-            return true
-        }
-        
-        for ((key, value) in fieldValues) {
-            val initialValue = initialFieldValues[key]
-            if (initialValue == null || !valuesEqual(value, initialValue)) {
-                return true
-            }
-        }
-        
-        // Check for removed values
-        for (key in initialFieldValues.keys) {
-            if (!fieldValues.containsKey(key)) {
-                return true
-            }
-        }
-        
-        return false
+        if (isFormSaved) return false
+        val initial = initialFormStateSignature ?: return false
+        return computeFormStateSignature() != initial
     }
     
-    private fun valuesEqual(v1: FormFieldValue, v2: FormFieldValue): Boolean {
-        // Compare tableData
-        val tableData1 = v1.tableData ?: emptyMap()
-        val tableData2 = v2.tableData ?: emptyMap()
-        if (tableData1.size != tableData2.size) {
-            return false
-        }
-        for ((row, rowData1) in tableData1) {
-            val rowData2 = tableData2[row] ?: return false
-            if (rowData1.size != rowData2.size) {
-                return false
+    /**
+     * Builds the same map of field values that saveForm uses (collectFieldValues + merge),
+     * so we can compute a deterministic signature of the current form state.
+     */
+    private fun buildCurrentFormValuesForSignature(): Map<String, FormFieldValue> {
+        val dynamicFieldIds = formConfig.fields
+            .filter { it.type == FormFieldConfig.FieldType.DYNAMIC }
+            .map { it.id }
+            .toSet()
+        val allValues = mutableMapOf<String, FormFieldValue>()
+        collectFieldValues().forEach { allValues[it.fieldId] = it }
+        fieldValues.forEach { (id, value) ->
+            val isSubField = dynamicFieldIds.any { id.startsWith("${it}_instance") }
+            if (!isSubField && !allValues.containsKey(id)) {
+                allValues[id] = value
             }
-            for ((col, value1) in rowData1) {
-                val value2 = rowData2[col] ?: return false
-                if (value1 != value2) {
-                    return false
+        }
+        return allValues
+    }
+    
+    /**
+     * Produces a deterministic string from the form values map (sorted keys, recursive for dynamicData)
+     * so that two equal states yield the same string and any change yields a different string.
+     */
+    private fun formValuesToSignatureString(values: Map<String, FormFieldValue>): String {
+        val sb = StringBuilder()
+        for (key in values.keys.sorted()) {
+            sb.append("[").append(key).append("]")
+            appendFormFieldValueToSignature(sb, values[key]!!)
+            sb.append("\n")
+        }
+        return sb.toString()
+    }
+    
+    private fun appendFormFieldValueToSignature(sb: StringBuilder, v: FormFieldValue) {
+        sb.append("v=").append(v.value ?: "").append(";")
+        sb.append("vals=").append(v.values?.sorted()?.joinToString(",") ?: "").append(";")
+        sb.append("gps=").append(v.gpsLatitude ?: "").append(",").append(v.gpsLongitude ?: "").append(";")
+        sb.append("photo=").append(v.photoFileName ?: "").append(";")
+        v.tableData?.let { table ->
+            for (row in table.keys.sorted()) {
+                val rowData = table[row]!!
+                for (col in rowData.keys.sorted()) {
+                    sb.append("t:").append(row).append(":").append(col).append("=").append(rowData[col] ?: "").append(";")
                 }
             }
         }
-        
-        return v1.value == v2.value &&
-               v1.values == v2.values &&
-               v1.gpsLatitude == v2.gpsLatitude &&
-               v1.gpsLongitude == v2.gpsLongitude &&
-               v1.photoFileName == v2.photoFileName
+        v.dynamicData?.let { list ->
+            for (i in list.indices) {
+                sb.append("d").append(i).append(":")
+                val map = list[i]
+                for (subId in map.keys.sorted()) {
+                    sb.append("(").append(subId).append(")")
+                    appendFormFieldValueToSignature(sb, map[subId]!!)
+                }
+            }
+        }
     }
+    
+    private fun computeFormStateSignature(): String =
+        formValuesToSignatureString(buildCurrentFormValuesForSignature())
     
     private fun showSaveChangesDialog() {
         if (wasLoadedAsSubmitted) {
@@ -566,6 +583,7 @@ class FormEditActivity : AppCompatActivity() {
 
                 // Re-render fields to show empty state
                 renderFields()
+                initialFormStateSignature = computeFormStateSignature()
 
                 withContext(Dispatchers.Main) {
                     if (deleted) {
@@ -3839,6 +3857,7 @@ class FormEditActivity : AppCompatActivity() {
                 initialFieldValues.clear()
                 initialFieldValues.putAll(allValues)
                 isFormSaved = true
+                initialFormStateSignature = formValuesToSignatureString(allValues)
                 
                 if (saveAsDraft) {
                     AppLogger.i("FormEditActivity", "Draft saved: site=$siteName, form=$formId")
