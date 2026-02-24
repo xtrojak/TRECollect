@@ -28,6 +28,11 @@ import com.trec.trecollect.util.AppLogger
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_SITE_TO_UPLOAD = "site_to_upload"
+    }
+
     private lateinit var viewModel: MainViewModel
     private lateinit var ongoingAdapter: SamplingSiteAdapter
     private lateinit var finishedAdapter: SamplingSiteAdapter
@@ -65,6 +70,25 @@ class MainActivity : AppCompatActivity() {
             val mapsManager = OfflineMapsManager(this@MainActivity)
             mapsManager.cleanupExpiredRegions()
         }
+        handleSiteToUploadFromIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (::viewModel.isInitialized) {
+            handleSiteToUploadFromIntent(intent)
+        }
+    }
+
+    /**
+     * If we were launched with a site that was just finalized (from SiteDetailActivity), start
+     * the upload in our ViewModel so the checkbox updates when it completes.
+     */
+    private fun handleSiteToUploadFromIntent(intent: Intent?) {
+        val site = intent?.getParcelableExtra<SamplingSite>(EXTRA_SITE_TO_UPLOAD) ?: return
+        intent.removeExtra(EXTRA_SITE_TO_UPLOAD)
+        viewModel.startAutomaticUploadForSite(site)
     }
     
     override fun onResume() {
@@ -84,18 +108,19 @@ class MainActivity : AppCompatActivity() {
         // Reload if:
         // 1. Team/subteam changed (force reload regardless of time)
         // 2. We've been away for more than 2 seconds (to avoid unnecessary reloads)
+        // When returning from another activity (e.g. SiteDetailActivity after finalize), we must
+        // force reload: that activity has a different MainViewModel instance, so our list was not
+        // updated when automatic upload completed. Loading from DB ensures checkboxes show correctly.
         if (teamChanged || lastResumeTime == 0L || (currentTime - lastResumeTime) > 2000) {
             if (teamChanged) {
                 AppLogger.d("MainActivity", "Team/subteam changed: team='$lastKnownTeam'->'$currentTeam', subteam='$lastKnownSubteam'->'$currentSubteam'")
                 // Clear form config cache when team changes
                 FormConfigLoader.clearCache()
                 PredefinedForms.clearCache()
-                // Force reload by bypassing debounce
-                viewModel.loadSitesFromFolders(force = true)
-            } else {
-                // Normal reload (with debounce)
-            viewModel.loadSitesFromFolders()
             }
+            // Always force reload when resuming so we get latest upload status from DB (e.g. after
+            // automatic upload completed in SiteDetailActivity's ViewModel)
+            viewModel.loadSitesFromFolders(force = true)
             // Update last known values AFTER calling loadSitesFromFolders
             lastKnownTeam = currentTeam
             lastKnownSubteam = currentSubteam
@@ -250,6 +275,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.finishedSites.collect { sites ->
+                        val uploadStatuses = sites.joinToString { "${it.name}=${it.uploadStatus}" }
+                        AppLogger.d("UploadCheckbox", "MainActivity finishedSites collected: size=${sites.size}, sites=$uploadStatuses")
                         finishedAdapter.submitList(sites)
                     }
                 }

@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
+import androidx.annotation.VisibleForTesting
 import androidx.documentfile.provider.DocumentFile
 
 class MainViewModel(
@@ -222,6 +223,8 @@ class MainViewModel(
             
             // Update finished sites StateFlow on main thread
             withContext(Dispatchers.Main) {
+                val statuses = finishedSitesList.joinToString { "${it.name}=${it.uploadStatus}" }
+                AppLogger.d("UploadCheckbox", "loadSitesFromFolders setting _finishedSites: size=${finishedSitesList.size}, sites=$statuses")
                 _finishedSites.value = finishedSitesList
             }
         }
@@ -347,11 +350,11 @@ class MainViewModel(
                     current[idx] = failedSite
                     _finishedSites.value = current
                 } else {
-                    loadSitesFromFolders()
+                    loadSitesFromFolders(force = true)
                 }
             }
             viewModelScope.launch(Dispatchers.IO) {
-                loadSitesFromFolders()
+                loadSitesFromFolders(force = true)
             }
         } catch (e: Exception) {
             AppLogger.e("MainViewModel", "Error updating site upload status to UPLOAD_FAILED: ${e.message}", e)
@@ -379,13 +382,25 @@ class MainViewModel(
         }
     }
 
-    /** Updates site upload status in DB and reloads site list. Use for UPLOADING and UPLOADED. */
+    /** Updates site upload status in DB and refreshes UI. Use for UPLOADING and UPLOADED. */
     private suspend fun updateSiteUploadStatusAndReload(site: SamplingSite, uploadStatus: UploadStatus) {
+        AppLogger.d("UploadCheckbox", "updateSiteUploadStatusAndReload called: site=${site.name}, uploadStatus=$uploadStatus")
         val siteToUpdate = getOrCreateSiteForUpload(site) ?: return
         val updated = siteToUpdate.copy(uploadStatus = uploadStatus)
         try {
             database.samplingSiteDao().updateSite(updated)
-            loadSitesFromFolders()
+            withContext(Dispatchers.Main) {
+                val current = _finishedSites.value.toMutableList()
+                val idx = current.indexOfFirst { it.name == site.name }
+                if (idx >= 0) {
+                    current[idx] = updated
+                } else {
+                    current.add(updated)
+                    current.sortBy { it.name }
+                }
+                _finishedSites.value = current
+            }
+            loadSitesFromFolders(force = true)
         } catch (e: Exception) {
             AppLogger.e("MainViewModel", "Error updating site upload status: ${e.message}", e)
         }
@@ -636,59 +651,56 @@ class MainViewModel(
             AppLogger.e("MainViewModel", "Error ensuring site in database: ${e.message}", e)
             updatedSite
         }
-        loadSitesFromFolders()
-        
+
         AppLogger.i("MainViewModel", "Site finalized successfully: name='${site.name}', id=${siteForUpload.id}")
-        
-        // Trigger upload in background using a scope that won't be cancelled when ViewModel is cleared
-        // Use SupervisorJob to prevent cancellation of other uploads if one fails
-        val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        uploadScope.launch {
+        return FinalizeSiteResult.Success(siteForUpload)
+    }
+    
+    /**
+     * Starts automatic upload for a site in the background. Call this from MainActivity when
+     * launched with a site that was just finalized (so the upload runs in MainActivity's ViewModel
+     * and the checkbox updates when it completes).
+     */
+    fun startAutomaticUploadForSite(site: SamplingSite) {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                AppLogger.i("MainViewModel", "Starting automatic upload for site: name='${siteForUpload.name}'")
-                
-                // Show upload start toast on main thread
+                AppLogger.i("MainViewModel", "Starting automatic upload for site: name='${site.name}'")
                 Handler(Looper.getMainLooper()).post {
                     android.widget.Toast.makeText(
                         context.applicationContext,
-                        "Uploading ${siteForUpload.name}...",
+                        "Uploading ${site.name}...",
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }
-                
-                val result = uploadSiteToOwnCloud(siteForUpload)
-                
-                // Show upload completion toast on main thread
+                val result = uploadSiteToOwnCloud(site)
                 Handler(Looper.getMainLooper()).post {
                     when (result) {
                         is UploadSiteResult.Success -> {
                             android.widget.Toast.makeText(
                                 context.applicationContext,
-                                "${siteForUpload.name} uploaded successfully",
+                                "${site.name} uploaded successfully",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                         }
                         is UploadSiteResult.Error -> {
                             android.widget.Toast.makeText(
                                 context.applicationContext,
-                                "Upload failed for ${siteForUpload.name}: ${result.message}",
+                                "Upload failed for ${site.name}: ${result.message}",
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                         }
                     }
                 }
-                
-                AppLogger.i("MainViewModel", "Automatic upload completed for site: name='${siteForUpload.name}', result=${result}")
+                AppLogger.i("MainViewModel", "Automatic upload completed for site: name='${site.name}', result=$result")
             } catch (e: Exception) {
-                AppLogger.e("MainViewModel", "Site upload error: name='${siteForUpload.name}'", e)
-                setSiteUploadFailedAndRefresh(siteForUpload)
+                AppLogger.e("MainViewModel", "Site upload error: name='${site.name}'", e)
+                setSiteUploadFailedAndRefresh(site)
             }
         }
-        return FinalizeSiteResult.Success
     }
     
     sealed class FinalizeSiteResult {
-        object Success : FinalizeSiteResult()
+        data class Success(val siteToUpload: SamplingSite) : FinalizeSiteResult()
         data class Error(val message: String) : FinalizeSiteResult()
     }
     
@@ -1000,6 +1012,27 @@ class MainViewModel(
         }
     }
     
+    /**
+     * For instrumented tests only: sets the finished sites list so tests can assert
+     * that when upload success is simulated from background, the list updates.
+     */
+    @VisibleForTesting
+    fun testOnlySetFinishedSites(sites: List<SamplingSite>) {
+        _finishedSites.value = sites
+    }
+
+    /**
+     * For instrumented tests only: simulates upload completing successfully from a background
+     * scope (same as automatic upload after finalize). Used to verify that finishedSites
+     * flow emits the site with UPLOADED so the checkbox updates.
+     */
+    @VisibleForTesting
+    fun testOnlySimulateUploadSuccessFromBackground(site: SamplingSite) {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            updateSiteUploadStatusAndReload(site, UploadStatus.UPLOADED)
+        }
+    }
+
     sealed class UploadSiteResult {
         data class Success(val uploadedCount: Int, val totalCount: Int) : UploadSiteResult()
         data class Error(val message: String) : UploadSiteResult()

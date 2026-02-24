@@ -289,6 +289,15 @@ class SiteDetailActivity : AppCompatActivity() {
         startActivity(intent)
         finish()
     }
+
+    private fun navigateToHomeWithSiteToUpload(site: com.trec.trecollect.data.SamplingSite) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            putExtra(MainActivity.EXTRA_SITE_TO_UPLOAD, site)
+        }
+        startActivity(intent)
+        finish()
+    }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.site_detail_menu, menu)
@@ -460,8 +469,8 @@ class SiteDetailActivity : AppCompatActivity() {
                         when (result) {
                             is MainViewModel.FinalizeSiteResult.Success -> {
                                 Toast.makeText(this@SiteDetailActivity, "Site finalized", Toast.LENGTH_SHORT).show()
-                                // Navigate back to main activity
-                                navigateToHome()
+                                // Navigate to MainActivity with site so it starts upload in its ViewModel (checkbox will update)
+                                navigateToHomeWithSiteToUpload(result.siteToUpload)
                             }
                             is MainViewModel.FinalizeSiteResult.Error -> {
                                 Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
