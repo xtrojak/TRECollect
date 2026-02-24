@@ -379,6 +379,11 @@ class FormEditActivity : AppCompatActivity() {
             }
         }
         
+        // When editing an already-submitted form, hide Save Draft so we only save as completed
+        if (wasLoadedAsSubmitted) {
+            buttonSaveDraft.visibility = View.GONE
+        }
+        
         renderFields()
         setupFocusChangeDebounce()
     }
@@ -496,18 +501,42 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun showSaveChangesDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Unsaved Changes")
-            .setMessage("You have unsaved changes. What would you like to do?")
-            .setPositiveButton("Save Draft") { _, _ ->
-                saveForm(isDraft = true)
-                finish()
-            }
-            .setNeutralButton("Discard") { _, _ ->
-                finish()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        if (wasLoadedAsSubmitted) {
+            // Editing a previously submitted form: save only as completed; no draft option
+            AlertDialog.Builder(this)
+                .setTitle("Unsaved Changes")
+                .setMessage("You have unsaved changes. Save as completed, or discard?")
+                .setPositiveButton("Save") { _, _ ->
+                    if (validateForm()) {
+                        saveForm(isDraft = false)
+                        // finish() is called inside saveForm() on success
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Please fix validation errors. You can discard changes or continue editing.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+                .setNeutralButton("Discard") { _, _ ->
+                    finish()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("Unsaved Changes")
+                .setMessage("You have unsaved changes. What would you like to do?")
+                .setPositiveButton("Save Draft") { _, _ ->
+                    saveForm(isDraft = true)
+                    finish()
+                }
+                .setNeutralButton("Discard") { _, _ ->
+                    finish()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
     
     private fun showClearFormConfirmation() {
@@ -641,6 +670,9 @@ class FormEditActivity : AppCompatActivity() {
     
     private var existingFormData: FormData? = null
     
+    /** True when the form was loaded as already submitted; we never save as draft in that case. */
+    private var wasLoadedAsSubmitted: Boolean = false
+    
     private fun loadExistingData() {
         // OPTIMIZATION: Load form data once without filtering, then check if it's draft or submitted
         // This avoids loading and parsing the same file twice
@@ -650,6 +682,7 @@ class FormEditActivity : AppCompatActivity() {
             // Prefer draft over submitted if both exist, but for now we just use what we found
             // (In practice, if a form is submitted, there shouldn't be a draft, and vice versa)
             existingFormData = loadedData
+            wasLoadedAsSubmitted = loadedData.isSubmitted
         }
         
         if (existingFormData != null) {
@@ -3738,6 +3771,8 @@ class FormEditActivity : AppCompatActivity() {
     }
     
     private fun saveForm(isDraft: Boolean) {
+        // Never save as draft when editing an already-submitted form
+        val saveAsDraft = isDraft && !wasLoadedAsSubmitted
         lifecycleScope.launch {
             // Collect current field values from UI
             val currentValues = collectFieldValues()
@@ -3790,9 +3825,9 @@ class FormEditActivity : AppCompatActivity() {
             val formData = FormData(
                 formId = formId,
                 siteName = siteName,
-                isSubmitted = !isDraft,
+                isSubmitted = !saveAsDraft,
                 createdAt = createdAt,
-                submittedAt = if (!isDraft) FormData.getCurrentTimestamp() else null,
+                submittedAt = if (!saveAsDraft) FormData.getCurrentTimestamp() else null,
                 logsheetVersion = logsheetVersion,
                 fieldValues = allValues.values.toList()
             )
@@ -3805,7 +3840,7 @@ class FormEditActivity : AppCompatActivity() {
                 initialFieldValues.putAll(allValues)
                 isFormSaved = true
                 
-                if (isDraft) {
+                if (saveAsDraft) {
                     AppLogger.i("FormEditActivity", "Draft saved: site=$siteName, form=$formId")
                     Toast.makeText(this@FormEditActivity, "Draft saved", Toast.LENGTH_SHORT).show()
                 } else {
@@ -3823,7 +3858,7 @@ class FormEditActivity : AppCompatActivity() {
                     finish()
                 }
             } else {
-                AppLogger.e("FormEditActivity", "Failed to save form: site=$siteName, form=$formId, isDraft=$isDraft")
+                AppLogger.e("FormEditActivity", "Failed to save form: site=$siteName, form=$formId, isDraft=$saveAsDraft")
                 Toast.makeText(
                     this@FormEditActivity,
                     "Error saving form",
