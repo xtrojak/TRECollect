@@ -1,0 +1,13 @@
+# Copy this file to local.properties and fill in your ownCloud values.
+# local.properties is gitignored and must not contain real credentials in the repo.
+#
+# For CI (e.g. GitHub Actions), set these as repository secrets and the workflow
+# will create local.properties from them before building.
+#
+# owncloud.url=https://your-owncloud-server/public.php/webdav/
+# owncloud.access_token=your_upload_share_token
+# owncloud.logsheets_token=your_logsheets_download_share_token
+
+owncloud.url=
+owncloud.access_token=
+owncloud.logsheets_token=
