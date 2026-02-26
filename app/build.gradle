@@ -27,8 +27,10 @@ android {
         applicationId = "com.trec.trecollect"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // CI/release: set via -PVERSION_CODE and -PVERSION_NAME (e.g. from release tag v1.2.3).
+        // Debug/local: versionName "0.0.0" so Settings shows "v0.0.0"; versionCode must be >= 1.
+        versionCode project.findProperty("VERSION_CODE") != null ? Integer.parseInt(project.findProperty("VERSION_CODE").toString()) : 1
+        versionName project.findProperty("VERSION_NAME") ?: "0.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -41,8 +43,26 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        release {
+            def storeFileProp = project.findProperty("RELEASE_STORE_FILE")
+            if (storeFileProp != null) {
+                // Resolve relative paths from root project (so -PRELEASE_STORE_FILE=release.keystore works from repo root)
+                def pathStr = storeFileProp.toString()
+                def storeFilePath = new File(pathStr).isAbsolute() ? file(pathStr) : rootProject.file(pathStr)
+                storeFile storeFilePath
+                storePassword project.findProperty("RELEASE_STORE_PASSWORD") ?: ""
+                keyAlias project.findProperty("RELEASE_KEY_ALIAS") ?: ""
+                keyPassword project.findProperty("RELEASE_KEY_PASSWORD") ?: ""
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (project.findProperty("RELEASE_STORE_FILE") != null) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled = false
             proguardFiles = [
                 getDefaultProguardFile('proguard-android-optimize.txt'),

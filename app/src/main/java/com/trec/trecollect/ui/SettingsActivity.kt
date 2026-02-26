@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.net.toUri
 import android.os.Bundle
@@ -351,6 +352,20 @@ class SettingsActivity : AppCompatActivity() {
         
         // Load and display logsheets status
         updateLogsheetsStatus()
+
+        // Version at end of scrollable content (e.g. "v1.2.3"); default "v0.0.0" for debug builds
+        val versionText = findViewById<TextView>(R.id.textVersion)
+        versionText.text = getAppVersionString()
+    }
+
+    private fun getAppVersionString(): String {
+        return try {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            val versionName = info.versionName ?: "?"
+            "v$versionName"
+        } catch (e: PackageManager.NameNotFoundException) {
+            "v?"
+        }
     }
     
     private fun updateLogsheetsStatus() {

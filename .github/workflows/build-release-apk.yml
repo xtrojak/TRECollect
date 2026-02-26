@@ -1,0 +1,93 @@
+# Build signed release APK and attach to GitHub Release
+#
+# Trigger: when a release is published (tag must be semver-like, e.g. v1.2.3).
+# The APK is built with the same version as the tag and signed with the repo's
+# release keystore. The resulting APK is uploaded as a release asset.
+#
+# Required repository secrets:
+#   ANDROID_KEYSTORE_BASE64  - Base64-encoded release keystore (.jks or .keystore)
+#   RELEASE_STORE_PASSWORD   - Keystore password
+#   RELEASE_KEY_ALIAS       - Key alias
+#   RELEASE_KEY_PASSWORD    - Key password
+#
+# Package: applicationId is set in app/build.gradle (com.trec.trecollect).
+# versionCode: derived from tag (e.g. v1.2.3 → 10203 = 1*10000 + 2*100 + 3).
+# versionName: tag without 'v' (e.g. v1.2.3 → 1.2.3).
+
+name: Build Release APK
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # upload release asset
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse release tag for version
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          # Strip leading 'v' if present
+          VERSION_NAME="${TAG#v}"
+          # versionCode: major*10000 + minor*100 + patch (e.g. 1.2.3 → 10203)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${VERSION_NAME}.0.0"
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Parsed: versionName=${VERSION_NAME}, versionCode=${VERSION_CODE}"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Decode signing keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          echo "Keystore decoded ($(wc -c < release.keystore) bytes)"
+
+      - name: Build signed release APK
+        run: |
+          ./gradlew assembleRelease \
+            -PVERSION_NAME="${{ steps.version.outputs.version_name }}" \
+            -PVERSION_CODE="${{ steps.version.outputs.version_code }}" \
+            -PRELEASE_STORE_FILE="${{ github.workspace }}/release.keystore" \
+            -PRELEASE_STORE_PASSWORD="${{ secrets.RELEASE_STORE_PASSWORD }}" \
+            -PRELEASE_KEY_ALIAS="${{ secrets.RELEASE_KEY_ALIAS }}" \
+            -PRELEASE_KEY_PASSWORD="${{ secrets.RELEASE_KEY_PASSWORD }}"
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+
+      - name: Rename APK with version
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "TRECollect-${{ steps.version.outputs.version_name }}.apk"
+          ls -la "TRECollect-${{ steps.version.outputs.version_name }}.apk"
+
+      - name: Upload APK to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "TRECollect-${{ steps.version.outputs.version_name }}.apk" \
+            --clobber
+
+      - name: Remove keystore from runner
+        if: always()
+        run: rm -f release.keystore
