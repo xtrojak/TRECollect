@@ -57,6 +57,15 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # ownCloud URL and tokens are in repo secrets; inject into local.properties for the build
+      - name: Create local.properties with ownCloud credentials
+        run: |
+          {
+            echo "owncloud.url=${{ secrets.OWNCLOUD_URL }}"
+            echo "owncloud.access_token=${{ secrets.OWNCLOUD_ACCESS_TOKEN }}"
+            echo "owncloud.logsheets_token=${{ secrets.OWNCLOUD_LOGSHEETS_TOKEN }}"
+          } >> local.properties
+
       - name: Decode signing keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
