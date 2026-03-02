@@ -1,6 +1,6 @@
 # TRECollect
 
-[![Unit Tests](actions/workflows/unit_tests.yml/badge.svg)](actions/workflows/unit_tests.yml)
+[![Unit Tests](https://github.com/grp-bork/TRECollect/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/grp-bork/TRECollect/actions/workflows/unit_tests.yml) [![Latest Release](https://img.shields.io/github/v/release/grp-bork/TRECollect)](https://github.com/grp-bork/TRECollect/releases)
 
 TRECollect is an Android application for collecting and managing field sampling metadata with custom logsheets. The app enables researchers to create sampling sites, fill out dynamic forms, capture GPS locations, take photos, and upload submissions to centralized storage for processing.
 
