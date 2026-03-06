@@ -353,7 +353,7 @@ class SettingsActivity : AppCompatActivity() {
         // Load and display logsheets status
         updateLogsheetsStatus()
 
-        // Version at end of scrollable content (e.g. "v1.2.3"); default "v0.0.0" for debug builds
+        // Version at end of scrollable content (e.g. "v1.2.3"); default "vdev" for debug builds
         val versionText = findViewById<TextView>(R.id.textVersion)
         versionText.text = getAppVersionString()
     }
