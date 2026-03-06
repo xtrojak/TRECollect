@@ -552,6 +552,9 @@ class SettingsActivity : AppCompatActivity() {
             
             android.util.Log.i("SettingsActivity", "TRECollect_logsheets folder ready: ${trecFolder.uri}")
             
+            // Ensure UUID file in output folder: write current UUID if new, else read and use existing
+            folderHelper.ensureUuidFileInOutputFolder(trecFolder, settingsPreferences)
+            
             // Only create deeper structure (team/subteam) if team and subteam are set
             if (team.isNotEmpty() && subteam.isNotEmpty()) {
                 android.util.Log.d("SettingsActivity", "Team and subteam are set, creating deeper folder structure...")

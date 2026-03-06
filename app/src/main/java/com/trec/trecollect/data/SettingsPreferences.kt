@@ -89,6 +89,13 @@ class SettingsPreferences(context: Context) {
         }
         return uuid
     }
+
+    /**
+     * Sets the app UUID (e.g. when read from the UUID file in the output folder).
+     */
+    fun setAppUuid(uuid: String) {
+        prefs.edit { putString(KEY_APP_UUID, uuid) }
+    }
     
     /**
      * Checks if ownCloud folder has been verified/created

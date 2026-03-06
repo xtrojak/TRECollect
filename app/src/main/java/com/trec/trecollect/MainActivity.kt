@@ -471,6 +471,13 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
                 
+                // Create ownCloud folder only after the user has selected an output folder.
+                // That way we've already run ensureUuidFileInOutputFolder (write or read UUID),
+                // so the app UUID is stable and we don't create a folder that will never be used.
+                if (settingsPreferences.getFolderUri().isEmpty()) {
+                    return@launch
+                }
+                
                 val appUuid = settingsPreferences.getAppUuid()
                 AppLogger.d("MainActivity", "Retrying ownCloud folder creation for UUID: $appUuid")
                 val ownCloudManager = OwnCloudManager(this@MainActivity)
