@@ -11,7 +11,7 @@ class FolderStructureHelperTest {
 
     @Test
     fun `folder name constants are defined correctly`() {
-        assertEquals("TREC_logsheets", FolderStructureHelper.PARENT_FOLDER_NAME)
+        assertEquals("TRECollect_logsheets", FolderStructureHelper.PARENT_FOLDER_NAME)
         assertEquals("ongoing", FolderStructureHelper.ONGOING_FOLDER)
         assertEquals("finished", FolderStructureHelper.FINISHED_FOLDER)
         assertEquals("deleted", FolderStructureHelper.DELETED_FOLDER)

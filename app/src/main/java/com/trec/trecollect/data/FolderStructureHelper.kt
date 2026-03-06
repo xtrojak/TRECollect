@@ -7,7 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 
 class FolderStructureHelper(private val context: Context) {
     companion object {
-        const val PARENT_FOLDER_NAME = "TREC_logsheets"
+        const val PARENT_FOLDER_NAME = "TRECollect_logsheets"
         const val ONGOING_FOLDER = "ongoing"
         const val FINISHED_FOLDER = "finished"
         const val DELETED_FOLDER = "deleted"
@@ -30,7 +30,7 @@ class FolderStructureHelper(private val context: Context) {
     }
 
     /**
-     * Gets the TREC_logsheets folder URI from settings
+     * Gets the TRECollect_logsheets folder URI from settings
      */
     fun getTrecLogsheetsFolderUri(settingsPreferences: SettingsPreferences): Uri? {
         val uriString = settingsPreferences.getFolderUri()
@@ -46,33 +46,33 @@ class FolderStructureHelper(private val context: Context) {
     }
     
     /**
-     * Gets the DocumentFile for the TREC_logsheets folder
-     * The stored URI should point directly to TREC_logsheets folder
-     * If the URI points to a parent folder, it will look for TREC_logsheets inside it
+     * Gets the DocumentFile for the TRECollect_logsheets folder
+     * The stored URI should point directly to TRECollect_logsheets folder
+     * If the URI points to a parent folder, it will look for TRECollect_logsheets inside it
      */
     fun getTrecLogsheetsFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
         val uri = getTrecLogsheetsFolderUri(settingsPreferences) ?: return null
         try {
-            // The URI stored should be a tree URI pointing to TREC_logsheets
+            // The URI stored should be a tree URI pointing to TRECollect_logsheets
             val documentFile = DocumentFile.fromTreeUri(context, uri)
             if (documentFile == null) {
                 android.util.Log.e("FolderStructureHelper", "DocumentFile.fromTreeUri returned null for URI: $uri")
                 return null
             }
             
-            // Verify it's actually the TREC_logsheets folder by checking the name
+            // Verify it's actually the TRECollect_logsheets folder by checking the name
             val folderName = documentFile.name
             android.util.Log.d("FolderStructureHelper", "Retrieved folder name: '$folderName', expected: '$PARENT_FOLDER_NAME'")
             
             if (folderName != null && folderName == PARENT_FOLDER_NAME) {
-                // This is the TREC_logsheets folder - return it
+                // This is the TRECollect_logsheets folder - return it
                 return documentFile
             }
             
             // If name doesn't match, the URI might point to the parent folder
-            // Try to find TREC_logsheets inside it (use both findFile and listFiles for reliability)
+            // Try to find TRECollect_logsheets inside it (use both findFile and listFiles for reliability)
             if (folderName != null) {
-                android.util.Log.w("FolderStructureHelper", "URI points to '$folderName', not '$PARENT_FOLDER_NAME'. Looking for TREC_logsheets inside...")
+                android.util.Log.w("FolderStructureHelper", "URI points to '$folderName', not '$PARENT_FOLDER_NAME'. Looking for TRECollect_logsheets inside...")
                 var trecFolder = documentFile.findFile(PARENT_FOLDER_NAME)
                 if (trecFolder == null || !trecFolder.exists()) {
                     // Also check by listing files (fallback in case findFile() doesn't work reliably)
@@ -80,27 +80,27 @@ class FolderStructureHelper(private val context: Context) {
                         val files = documentFile.listFiles()
                         trecFolder = files.firstOrNull { it.name == PARENT_FOLDER_NAME && it.isDirectory && it.exists() }
                     } catch (e: Exception) {
-                        android.util.Log.w("FolderStructureHelper", "Error listing files to find TREC_logsheets: ${e.message}")
+                        android.util.Log.w("FolderStructureHelper", "Error listing files to find TRECollect_logsheets: ${e.message}")
                     }
                 }
                 if (trecFolder != null && trecFolder.exists()) {
-                    android.util.Log.d("FolderStructureHelper", "Found TREC_logsheets inside parent folder")
+                    android.util.Log.d("FolderStructureHelper", "Found TRECollect_logsheets inside parent folder")
                     return trecFolder
                 }
             }
             
-            // If we can't find TREC_logsheets, don't return the wrong folder
+            // If we can't find TRECollect_logsheets, don't return the wrong folder
             // This prevents creating team folders at the wrong level
-            android.util.Log.e("FolderStructureHelper", "Could not find TREC_logsheets folder. URI points to '$folderName' but TREC_logsheets not found inside it.")
+            android.util.Log.e("FolderStructureHelper", "Could not find TRECollect_logsheets folder. URI points to '$folderName' but TRECollect_logsheets not found inside it.")
             return null
         } catch (e: Exception) {
-            android.util.Log.e("FolderStructureHelper", "Error getting TREC_logsheets folder: ${e.message}", e)
+            android.util.Log.e("FolderStructureHelper", "Error getting TRECollect_logsheets folder: ${e.message}", e)
             return null
         }
     }
     
     /**
-     * Gets the team folder inside TREC_logsheets
+     * Gets the team folder inside TRECollect_logsheets
      * Safely handles existing folders to avoid creating duplicates
      */
     private fun getTeamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
@@ -112,7 +112,7 @@ class FolderStructureHelper(private val context: Context) {
     
     /**
      * Gets the subteam folder for the current team/subteam
-     * All teams now use the same structure: TREC_logsheets/{team}/{subteam}/
+     * All teams now use the same structure: TRECollect_logsheets/{team}/{subteam}/
      * Safely handles existing folders to avoid creating duplicates
      */
     private fun getSubteamFolder(settingsPreferences: SettingsPreferences): DocumentFile? {
@@ -163,7 +163,7 @@ class FolderStructureHelper(private val context: Context) {
 
     /**
      * Ensures the folder structure exists, creating it only if it doesn't exist.
-     * Structure: baseFolder/TREC_logsheets/{team}/{subteam}/{ongoing, finished, deleted}.
+     * Structure: baseFolder/TRECollect_logsheets/{team}/{subteam}/{ongoing, finished, deleted}.
      * Called when the user selects a base folder (e.g. in Settings); [ensureSubfoldersExist] is used to ensure ongoing/finished/deleted exist for the current team/subteam.
      */
     fun ensureFolderStructure(baseUri: Uri, settingsPreferences: SettingsPreferences): DocumentFile? {
@@ -192,16 +192,16 @@ class FolderStructureHelper(private val context: Context) {
             return null
         }
 
-        android.util.Log.i("FolderStructureHelper", "TREC_logsheets folder ready: ${trecFolder.uri}")
+        android.util.Log.i("FolderStructureHelper", "TRECollect_logsheets folder ready: ${trecFolder.uri}")
 
         val team = settingsPreferences.getSamplingTeam()
         val subteam = settingsPreferences.getSamplingSubteam()
         if (team.isEmpty()) {
-            android.util.Log.i("FolderStructureHelper", "Team not set - TREC_logsheets created, team/subteam later")
+            android.util.Log.i("FolderStructureHelper", "Team not set - TRECollect_logsheets created, team/subteam later")
             return trecFolder
         }
         if (subteam.isEmpty()) {
-            android.util.Log.i("FolderStructureHelper", "Subteam not set - TREC_logsheets created, team/subteam later")
+            android.util.Log.i("FolderStructureHelper", "Subteam not set - TRECollect_logsheets created, team/subteam later")
             return trecFolder
         }
 
@@ -220,7 +220,7 @@ class FolderStructureHelper(private val context: Context) {
     }
 
     /**
-     * Ensures the TREC_logsheets subfolders (ongoing, finished, deleted) exist for the current team/subteam.
+     * Ensures the TRECollect_logsheets subfolders (ongoing, finished, deleted) exist for the current team/subteam.
      * Called when team/subteam are already set and we need to ensure the three subfolders exist (e.g. after settings change or before save).
      */
     fun ensureSubfoldersExist(settingsPreferences: SettingsPreferences): Boolean {
