@@ -103,24 +103,22 @@ class FolderStructureHelper(private val context: Context) {
 
     /**
      * Ensures the UUID file exists in the root of the output folder (TRECollect_logsheets).
-     * If the file already exists, reads the UUID from it and sets it as the app UUID (does not overwrite).
-     * If the file does not exist, writes the current app UUID to a new file.
-     * Call this when the output folder is selected (e.g. after user picks a folder in Settings).
+     * If the file already exists (release only), reads the UUID and sets it in prefs.
+     * If the file does not exist, writes the current app UUID (getAppUuid()) to a new file.
      */
     fun ensureUuidFileInOutputFolder(trecFolder: DocumentFile, settingsPreferences: SettingsPreferences) {
         if (!trecFolder.exists() || !trecFolder.canWrite()) return
         val existingFile = trecFolder.findFile(UUID_FILENAME)
         if (existingFile != null && existingFile.exists() && existingFile.canRead()) {
-            try {
-                context.contentResolver.openInputStream(existingFile.uri)?.use { input ->
-                    val uuid = input.bufferedReader().readText().trim()
-                    if (uuid.isNotEmpty()) {
-                        settingsPreferences.setAppUuid(uuid)
-                        android.util.Log.i("FolderStructureHelper", "Using UUID from output folder: $uuid")
+            if (!settingsPreferences.isDevBuild()) {
+                try {
+                    context.contentResolver.openInputStream(existingFile.uri)?.use { input ->
+                        val uuid = input.bufferedReader().readText().trim()
+                        if (uuid.isNotEmpty()) settingsPreferences.setAppUuid(uuid)
                     }
+                } catch (e: Exception) {
+                    android.util.Log.w("FolderStructureHelper", "Could not read UUID file: ${e.message}")
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("FolderStructureHelper", "Could not read UUID file: ${e.message}")
             }
             return
         }
@@ -129,7 +127,6 @@ class FolderStructureHelper(private val context: Context) {
             val file = trecFolder.createFile("text/plain", UUID_FILENAME)
             if (file != null && file.exists()) {
                 context.contentResolver.openOutputStream(file.uri)?.use { it.write(uuid.toByteArray()) }
-                android.util.Log.i("FolderStructureHelper", "Wrote UUID file to output folder: $uuid")
             }
         } catch (e: Exception) {
             android.util.Log.w("FolderStructureHelper", "Could not write UUID file: ${e.message}")

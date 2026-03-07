@@ -59,6 +59,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            // BuildConfig.DEBUG = true → app uses fixed "dev-debug" UUID
+        }
         release {
             if (project.findProperty("RELEASE_STORE_FILE") != null) {
                 signingConfig signingConfigs.release
