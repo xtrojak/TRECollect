@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import java.util.concurrent.ConcurrentHashMap
 
 class FolderStructureHelper(private val context: Context) {
     companion object {
@@ -13,22 +14,55 @@ class FolderStructureHelper(private val context: Context) {
         const val DELETED_FOLDER = "deleted"
         /** Filename for the UUID file stored in the root of the output folder. */
         const val UUID_FILENAME = "app_uuid.txt"
+        
+        /** Locks per (parentUri, folderName) so concurrent callers don't both create the same folder. */
+        private val folderLocks = ConcurrentHashMap<String, Any>()
+        private fun lockFor(parentUri: Uri, folderName: String): Any =
+            folderLocks.getOrPut("${parentUri}_$folderName") { Any() }
     }
 
     /**
-     * Finds an existing child folder by name or creates it. Uses findFile first, then listFiles as fallback, then createDirectory.
+     * Finds an existing child folder by name or creates it. Uses a per-folder lock so that
+     * concurrent callers (e.g. Settings + ViewModel) don't both create the same folder.
+     * After createDirectory, if the provider returned a duplicate (e.g. "ongoing (1)"), we
+     * re-query and return the folder with the exact name so callers always get the canonical folder.
      */
     private fun findOrCreateChildFolder(parent: DocumentFile, folderName: String): DocumentFile? {
-        var folder = parent.findFile(folderName)
-        if (folder != null && folder.exists()) return folder
+        val lock = lockFor(parent.uri, folderName)
+        return synchronized(lock) {
+            findOrCreateChildFolderLocked(parent, folderName)
+        }
+    }
+    
+    private fun findOrCreateChildFolderLocked(parent: DocumentFile, folderName: String): DocumentFile? {
+        // 1) Try listFiles() first (often more up-to-date than findFile after a create)
         try {
             val files = parent.listFiles()
-            folder = files.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
+            val folder = files?.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
             if (folder != null) return folder
         } catch (e: Exception) {
             android.util.Log.w("FolderStructureHelper", "Error listing files in ${parent.name}: ${e.message}")
         }
-        return parent.createDirectory(folderName)
+        // 2) Try findFile
+        var folder = parent.findFile(folderName)
+        if (folder != null && folder.exists()) return folder
+        // 3) Create
+        val created = parent.createDirectory(folderName) ?: return null
+        // 4) If provider created a duplicate (e.g. "ongoing (1)" because "ongoing" already existed),
+        //    find and return the folder with the exact name so we never return the (1) variant
+        if (created.name != folderName) {
+            try {
+                val files = parent.listFiles()
+                val exact = files?.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
+                if (exact != null) return exact
+            } catch (_: Exception) { }
+        }
+        try {
+            val files = parent.listFiles()
+            val existing = files?.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
+            if (existing != null) return existing
+        } catch (_: Exception) { }
+        return created
     }
 
     /**
@@ -254,11 +288,25 @@ class FolderStructureHelper(private val context: Context) {
     }
 
     /**
-     * Ensures the TRECollect_logsheets subfolders (ongoing, finished, deleted) exist for the current team/subteam.
-     * Called when team/subteam are already set and we need to ensure the three subfolders exist (e.g. after settings change or before save).
+     * Ensures the TRECollect_logsheets subfolders (team/subteam/ongoing/finished/deleted) exist.
+     * Uses the stored folder URI. Use when folder is already saved (e.g. after team/subteam change).
      */
     fun ensureSubfoldersExist(settingsPreferences: SettingsPreferences): Boolean {
         val subteamFolder = getSubteamFolder(settingsPreferences) ?: return false
+        return ensureSubfoldersInSubteamFolder(subteamFolder)
+    }
+
+    /**
+     * Ensures team/subteam/ongoing/finished/deleted exist under the given TRECollect_logsheets folder.
+     * Use this when you have the trecFolder directly (e.g. right after creating it) so the folder
+     * URI does not need to be saved yet. Avoids creating team/subteam twice.
+     */
+    fun ensureSubfoldersExist(trecFolder: DocumentFile, settingsPreferences: SettingsPreferences): Boolean {
+        val team = settingsPreferences.getSamplingTeam()
+        val subteam = settingsPreferences.getSamplingSubteam()
+        if (team.isEmpty() || subteam.isEmpty()) return true
+        val teamFolder = findOrCreateChildFolder(trecFolder, team) ?: return false
+        val subteamFolder = findOrCreateChildFolder(teamFolder, subteam) ?: return false
         return ensureSubfoldersInSubteamFolder(subteamFolder)
     }
 }

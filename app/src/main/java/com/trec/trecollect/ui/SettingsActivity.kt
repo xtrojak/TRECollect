@@ -53,8 +53,13 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var teamAdapter: ArrayAdapter<String>
     private lateinit var subteamAdapter: ArrayAdapter<String>
     
+    /** Debounce: avoid creating team/subteam folders twice when team and subteam both trigger verify. */
+    private var lastVerifiedTeamSubteam: Pair<String, String>? = null
+    private var lastVerifiedTimeMs: Long = 0
+    
     companion object {
         private const val REQUEST_CODE_OPEN_FOLDER = 1001
+        private const val VERIFY_DEBOUNCE_MS = 2000L
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -555,16 +560,20 @@ class SettingsActivity : AppCompatActivity() {
             // Ensure UUID file in output folder: write current UUID if new, else read and use existing
             folderHelper.ensureUuidFileInOutputFolder(trecFolder, settingsPreferences)
             
-            // Only create deeper structure (team/subteam) if team and subteam are set
+            // Create team/subteam/ongoing/finished/deleted only when needed, and only once:
+            // - If we used ensureFolderStructure (parent folder selected), it already created them — do not call ensureSubfoldersExist.
+            // - If we used docFile directly (user selected TRECollect_logsheets), create structure under this trecFolder.
             if (team.isNotEmpty() && subteam.isNotEmpty()) {
-                android.util.Log.d("SettingsActivity", "Team and subteam are set, creating deeper folder structure...")
-                // Ensure subfolders exist (team/subteam/ongoing/finished/deleted)
-                // This will create team/subteam folders inside TRECollect_logsheets
-                if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
-                    android.util.Log.w("SettingsActivity", "Could not ensure all subfolders exist")
-                    Toast.makeText(this, "Warning: Could not create all subfolders", Toast.LENGTH_SHORT).show()
+                if (isTrecFolder) {
+                    android.util.Log.d("SettingsActivity", "Team and subteam set, creating deeper folder structure under selected TRECollect_logsheets...")
+                    if (!folderHelper.ensureSubfoldersExist(trecFolder, settingsPreferences)) {
+                        android.util.Log.w("SettingsActivity", "Could not ensure all subfolders exist")
+                        Toast.makeText(this, "Warning: Could not create all subfolders", Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.util.Log.i("SettingsActivity", "Deeper folder structure created successfully")
+                    }
                 } else {
-                    android.util.Log.i("SettingsActivity", "Deeper folder structure created successfully")
+                    android.util.Log.d("SettingsActivity", "Team and subteam set; structure already created via ensureFolderStructure")
                 }
             } else {
                 android.util.Log.i("SettingsActivity", "Team or subteam not set yet - TRECollect_logsheets folder created, deeper structure will be created later")
@@ -616,9 +625,20 @@ class SettingsActivity : AppCompatActivity() {
     /**
      * Verifies that the folder structure exists without recreating it.
      * This is called when team/subteam changes to ensure structure is still valid.
-     * Only ensures subfolders exist, doesn't recreate TRECollect_logsheets or team/subteam folders.
+     * Debounced so we don't create folders twice when both team and subteam triggers fire (e.g. team callback + subteam onItemSelected).
      */
     private fun verifyFolderStructure(uri: Uri) {
+        val team = settingsPreferences.getSamplingTeam()
+        val subteam = settingsPreferences.getSamplingSubteam()
+        if (team.isEmpty() || subteam.isEmpty()) return
+        val key = Pair(team, subteam)
+        val now = System.currentTimeMillis()
+        if (lastVerifiedTeamSubteam == key && (now - lastVerifiedTimeMs) < VERIFY_DEBOUNCE_MS) {
+            android.util.Log.d("SettingsActivity", "verifyFolderStructure: skip (debounce) for $team / $subteam")
+            return
+        }
+        lastVerifiedTeamSubteam = key
+        lastVerifiedTimeMs = now
         try {
             val folderHelper = FolderStructureHelper(this)
             val docFile = DocumentFile.fromTreeUri(this, uri)
@@ -626,15 +646,13 @@ class SettingsActivity : AppCompatActivity() {
             // Check if URI points to TRECollect_logsheets folder
             if (docFile?.name == FolderStructureHelper.PARENT_FOLDER_NAME) {
                 // URI points to TRECollect_logsheets, just verify subfolders exist (team/subteam/ongoing/finished/deleted)
-                // This won't recreate anything, just ensures the subfolders exist
                 if (!folderHelper.ensureSubfoldersExist(settingsPreferences)) {
                     android.util.Log.w("SettingsActivity", "Some subfolders could not be verified/created")
+                    lastVerifiedTeamSubteam = null // allow retry
                 } else {
                     android.util.Log.d("SettingsActivity", "Folder structure verified successfully")
                 }
             } else {
-                // URI points to parent folder - structure should already exist
-                // Don't do anything, just log
                 android.util.Log.d("SettingsActivity", "URI points to parent folder, structure should already exist")
             }
         } catch (e: Exception) {
