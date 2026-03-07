@@ -905,6 +905,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TEXTAREA -> createTextAreaField(fieldConfig)
                 FormFieldConfig.FieldType.DATE -> createDateField(fieldConfig)
                 FormFieldConfig.FieldType.TIME -> createTimeField(fieldConfig)
+                FormFieldConfig.FieldType.TIMEPICKER -> createTimepickerField(fieldConfig)
                 FormFieldConfig.FieldType.SELECT -> createSelectField(fieldConfig)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectField(fieldConfig)
                 FormFieldConfig.FieldType.SELECT_IMAGE -> createSelectImageField(fieldConfig)
@@ -1215,7 +1216,7 @@ class FormEditActivity : AppCompatActivity() {
     private fun createTimeField(fieldConfig: FormFieldConfig): View {
         val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
-        
+
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
             editText.setKeyListener(null)
@@ -1227,8 +1228,56 @@ class FormEditActivity : AppCompatActivity() {
                 showTimePicker(fieldConfig.id, editText)
             }
         }
-        
+
         return textInputLayout
+    }
+
+    /** Timepicker: shows value (HH:MM:SS) in the list; click opens pop-up with spinners and Save/Clear/Cancel. */
+    private fun createTimepickerField(fieldConfig: FormFieldConfig): View {
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
+        editText.setText("00:00:00")
+        editText.isFocusable = false
+        editText.isClickable = true
+
+        if (isReadOnly) {
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
+        } else {
+            editText.setOnClickListener {
+                showTimepickerDialog(fieldConfig.id, editText, null)
+            }
+        }
+
+        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = "00:00:00")
+        return textInputLayout
+    }
+
+    private fun setupTimepickerSpinners(
+        numberPickerHours: NumberPicker,
+        numberPickerMinutes: NumberPicker,
+        numberPickerSeconds: NumberPicker
+    ) {
+        val displayedValues = (0..59).map { String.format(Locale.US, "%02d", it) }.toTypedArray()
+        for (picker in listOf(numberPickerHours, numberPickerMinutes, numberPickerSeconds)) {
+            picker.minValue = 0
+            picker.maxValue = 59
+            picker.displayedValues = displayedValues
+            picker.value = 0
+            picker.wrapSelectorWheel = false
+        }
+    }
+
+    private fun formatTimepickerValue(hours: Int, minutes: Int, seconds: Int): String {
+        return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
+    private fun parseTimepickerValue(value: String?): Triple<Int, Int, Int> {
+        if (value.isNullOrBlank()) return Triple(0, 0, 0)
+        val parts = value.trim().split(":")
+        val h = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val m = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val s = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        return Triple(h, m, s)
     }
     
     private fun createSelectField(fieldConfig: FormFieldConfig): View {
@@ -2239,6 +2288,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TEXTAREA -> createTextAreaFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.DATE -> createDateFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.TIME -> createTimeFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.TIMEPICKER -> createTimepickerFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.SELECT -> createSelectFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId, parent)
@@ -2385,6 +2435,27 @@ class FormEditActivity : AppCompatActivity() {
             editText.setTextIsSelectable(true)
         }
         
+        return textInputLayout
+    }
+
+    private fun createTimepickerFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
+        editText.setText("00:00:00")
+        editText.isFocusable = false
+        editText.isClickable = true
+
+        if (!isReadOnly) {
+            editText.setOnClickListener {
+                showTimepickerDialog(uniqueFieldId, editText) {
+                    dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
+                }
+            }
+        } else {
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
+        }
+
+        fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = "00:00:00")
         return textInputLayout
     }
     
@@ -2728,6 +2799,7 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.TEXTAREA,
             FormFieldConfig.FieldType.DATE,
             FormFieldConfig.FieldType.TIME,
+            FormFieldConfig.FieldType.TIMEPICKER,
             FormFieldConfig.FieldType.SELECT,
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
@@ -3003,6 +3075,54 @@ class FormEditActivity : AppCompatActivity() {
             dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
         }
     }
+
+    /**
+     * Shows the timepicker pop-up (hours, minutes, seconds 0–60). On Save, updates [editText] and [fieldValues].
+     * [onAfterValueSet] is called after save (e.g. to refresh dynamic add button).
+     */
+    private fun showTimepickerDialog(fieldId: String, editText: TextInputEditText, onAfterValueSet: (() -> Unit)?) {
+        val currentValue = editText.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "00:00:00"
+        val (h, m, s) = parseTimepickerValue(currentValue)
+
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_timepicker, null)
+        val numberPickerHours = dialogView.findViewById<NumberPicker>(R.id.numberPickerHours)
+        val numberPickerMinutes = dialogView.findViewById<NumberPicker>(R.id.numberPickerMinutes)
+        val numberPickerSeconds = dialogView.findViewById<NumberPicker>(R.id.numberPickerSeconds)
+        val buttonClear = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.buttonClear)
+        val buttonCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.buttonCancel)
+        val buttonSave = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.buttonSave)
+
+        setupTimepickerSpinners(numberPickerHours, numberPickerMinutes, numberPickerSeconds)
+        numberPickerHours.value = h
+        numberPickerMinutes.value = m
+        numberPickerSeconds.value = s
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setTitle(R.string.timepicker_dialog_title)
+            .create()
+
+        buttonClear.setOnClickListener {
+            numberPickerHours.value = 0
+            numberPickerMinutes.value = 0
+            numberPickerSeconds.value = 0
+        }
+        buttonCancel.setOnClickListener { dialog.dismiss() }
+        buttonSave.setOnClickListener {
+            val value = formatTimepickerValue(
+                numberPickerHours.value,
+                numberPickerMinutes.value,
+                numberPickerSeconds.value
+            )
+            editText.setText(value)
+            fieldValues[fieldId] = FormFieldValue(fieldId, value = value)
+            markFormChanged()
+            onAfterValueSet?.invoke()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
     
     private fun showSelectDialog(fieldConfig: FormFieldConfig, editText: TextInputEditText) {
         val options = fieldConfig.options ?: return
@@ -3203,6 +3323,10 @@ class FormEditActivity : AppCompatActivity() {
                     editText?.setText(value)
                 }
             }
+            FormFieldConfig.FieldType.TIMEPICKER -> {
+                val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                editText?.setText(fieldValue.value ?: "00:00:00")
+            }
             FormFieldConfig.FieldType.SELECT -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
@@ -3350,6 +3474,13 @@ class FormEditActivity : AppCompatActivity() {
                     editText?.setText(timeValue)
                     fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = timeValue)
                 }
+
+                FormFieldConfig.FieldType.TIMEPICKER -> {
+                    val value = parseTimepickerValue(defaultValue).let { (h, m, s) -> formatTimepickerValue(h, m, s) }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(value)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                }
                 
                 else -> {
                     // Default values not supported for this field type
@@ -3465,6 +3596,13 @@ class FormEditActivity : AppCompatActivity() {
                     editText?.setText(timeValue)
                     fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = timeValue)
                 }
+
+                FormFieldConfig.FieldType.TIMEPICKER -> {
+                    val value = parseTimepickerValue(prefillValue).let { (h, m, s) -> formatTimepickerValue(h, m, s) }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(value)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                }
                 
                 else -> {
                     // Prefills not supported for this field type
@@ -3524,6 +3662,11 @@ class FormEditActivity : AppCompatActivity() {
                     if (value.isNotEmpty()) {
                         values.add(FormFieldValue(fieldId, value = value))
                     }
+                }
+                FormFieldConfig.FieldType.TIMEPICKER -> {
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    val value = editText?.text?.toString()?.trim() ?: "00:00:00"
+                    values.add(FormFieldValue(fieldId, value = value))
                 }
                 FormFieldConfig.FieldType.CHECKBOX -> {
                     val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
@@ -3706,6 +3849,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TEXTAREA,
                 FormFieldConfig.FieldType.DATE,
                 FormFieldConfig.FieldType.TIME,
+                FormFieldConfig.FieldType.TIMEPICKER,
                 FormFieldConfig.FieldType.SELECT,
                 FormFieldConfig.FieldType.SELECT_IMAGE,
                 FormFieldConfig.FieldType.BARCODE -> {
@@ -3785,6 +3929,7 @@ class FormEditActivity : AppCompatActivity() {
                                 FormFieldConfig.FieldType.TEXTAREA,
                                 FormFieldConfig.FieldType.DATE,
                                 FormFieldConfig.FieldType.TIME,
+                                FormFieldConfig.FieldType.TIMEPICKER,
                                 FormFieldConfig.FieldType.SELECT,
                                 FormFieldConfig.FieldType.BARCODE ->
                                     subFieldValue?.value?.trim()?.isEmpty() ?: true

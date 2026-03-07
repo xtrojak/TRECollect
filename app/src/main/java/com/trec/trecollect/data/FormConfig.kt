@@ -37,6 +37,7 @@ data class FormFieldConfig(
         TEXTAREA,
         DATE,
         TIME,
+        TIMEPICKER, // Spinner for hours, minutes, seconds (0–60), stored as HH:MM:SS
         SELECT,
         MULTISELECT,
         SELECT_IMAGE, // Single select with images
@@ -616,6 +617,7 @@ object FormConfigLoader {
                     "textarea" -> FormFieldConfig.FieldType.TEXTAREA
                     "date" -> FormFieldConfig.FieldType.DATE
                     "time" -> FormFieldConfig.FieldType.TIME
+                    "timepicker" -> FormFieldConfig.FieldType.TIMEPICKER
                     "select" -> FormFieldConfig.FieldType.SELECT
                     "multiselect" -> FormFieldConfig.FieldType.MULTISELECT
                     "select_image" -> FormFieldConfig.FieldType.SELECT_IMAGE
@@ -710,6 +712,7 @@ object FormConfigLoader {
                         FormFieldConfig.FieldType.MULTISELECT_IMAGE,
                         FormFieldConfig.FieldType.DATE,
                         FormFieldConfig.FieldType.TIME,
+                        FormFieldConfig.FieldType.TIMEPICKER,
                         FormFieldConfig.FieldType.CHECKBOX -> defaultValueString.takeIf { it.isNotEmpty() }
                         else -> null
                     }

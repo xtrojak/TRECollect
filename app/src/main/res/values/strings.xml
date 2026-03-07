@@ -183,4 +183,11 @@
     <string name="download_progress_downloading">Downloading tiles… (%1$d)</string>
     <string name="region_downloaded_success">Region downloaded successfully</string>
     <string name="region_download_error">Error downloading region. Please check your internet connection.</string>
+
+    <!-- Timepicker dialog -->
+    <string name="timepicker_dialog_title">Set time (H:M:S)</string>
+    <string name="timepicker_hours_label">H</string>
+    <string name="timepicker_minutes_label">M</string>
+    <string name="timepicker_seconds_label">S</string>
+    <string name="timepicker_save">Save</string>
 </resources>
