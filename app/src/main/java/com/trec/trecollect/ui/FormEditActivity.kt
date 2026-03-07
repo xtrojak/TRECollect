@@ -352,7 +352,7 @@ class FormEditActivity : AppCompatActivity() {
      */
     private fun clearPhotoSelection(photoFieldContainer: View) {
         val fieldId = photoFieldContainer.tag as? String ?: return
-        fieldValues[fieldId] = FormFieldValue(fieldId, photoFileName = "")
+        fieldValues[fieldId] = FormFieldValue(fieldId, photoFileName = null)
         photoFieldContainer.findViewById<View>(R.id.photoInfoRow)?.visibility = View.GONE
     }
 

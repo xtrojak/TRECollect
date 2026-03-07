@@ -17,7 +17,18 @@ data class FormFieldValue(
     val photoFileName: String? = null, // For photo: filename in app's photos dir
     val tableData: Map<String, Map<String, String>>? = null, // For table: Map<rowName, Map<columnName, value>>
     val dynamicData: List<Map<String, FormFieldValue>>? = null // For dynamic: List of instances, each instance is Map<subFieldId, FormFieldValue>
-)
+) {
+    /** True if this field has any content that should be serialized to XML. Used to skip empty fields. */
+    fun hasSerializableContent(): Boolean {
+        if (!value.isNullOrBlank()) return true
+        if (!values.isNullOrEmpty()) return true
+        if (gpsLatitude != null && gpsLongitude != null) return true
+        if (!photoFileName.isNullOrBlank()) return true
+        if (!tableData.isNullOrEmpty()) return true
+        if (!dynamicData.isNullOrEmpty()) return true
+        return false
+    }
+}
 
 /**
  * Represents a complete form submission or draft
@@ -54,6 +65,7 @@ data class FormData(
         
         serializer.startTag(null, "fields")
         for (fieldValue in fieldValues) {
+            if (!fieldValue.hasSerializableContent()) continue
             serializer.startTag(null, "field")
             serializer.attribute(null, "id", fieldValue.fieldId)
             
@@ -70,8 +82,8 @@ data class FormData(
                 serializer.attribute(null, "gpsLongitude", fieldValue.gpsLongitude.toString())
             }
             
-            if (fieldValue.photoFileName != null) {
-                serializer.attribute(null, "photoFileName", fieldValue.photoFileName)
+            fieldValue.photoFileName?.takeIf { it.isNotBlank() }?.let {
+                serializer.attribute(null, "photoFileName", it)
             }
             
             if (fieldValue.tableData != null && fieldValue.tableData.isNotEmpty()) {
@@ -108,8 +120,8 @@ data class FormData(
                             serializer.attribute(null, "gpsLatitude", subFieldValue.gpsLatitude.toString())
                             serializer.attribute(null, "gpsLongitude", subFieldValue.gpsLongitude.toString())
                         }
-                        if (subFieldValue.photoFileName != null) {
-                            serializer.attribute(null, "photoFileName", subFieldValue.photoFileName)
+                        subFieldValue.photoFileName?.takeIf { it.isNotBlank() }?.let {
+                            serializer.attribute(null, "photoFileName", it)
                         }
                         if (subFieldValue.tableData != null && subFieldValue.tableData.isNotEmpty()) {
                             val tableJson = org.json.JSONObject()
@@ -225,7 +237,7 @@ data class FormData(
                                         currentValues = valuesStr?.split(",")?.map { it.trim() }
                                         currentGpsLat = parser.getAttributeValue(null, "gpsLatitude")?.toDoubleOrNull()
                                         currentGpsLon = parser.getAttributeValue(null, "gpsLongitude")?.toDoubleOrNull()
-                                        currentPhotoFileName = parser.getAttributeValue(null, "photoFileName")
+                                        currentPhotoFileName = parser.getAttributeValue(null, "photoFileName")?.takeIf { it.isNotBlank() }
                                         val tableDataStr = parser.getAttributeValue(null, "tableData")
                                         currentTableData = if (tableDataStr != null) {
                                             try {
@@ -267,7 +279,7 @@ data class FormData(
                                     currentSubFieldValues = valuesStr?.split(",")?.map { it.trim() }
                                     currentSubFieldGpsLat = parser.getAttributeValue(null, "gpsLatitude")?.toDoubleOrNull()
                                     currentSubFieldGpsLon = parser.getAttributeValue(null, "gpsLongitude")?.toDoubleOrNull()
-                                    currentSubFieldPhotoFileName = parser.getAttributeValue(null, "photoFileName")
+                                    currentSubFieldPhotoFileName = parser.getAttributeValue(null, "photoFileName")?.takeIf { it.isNotBlank() }
                                     val tableDataStr = parser.getAttributeValue(null, "tableData")
                                     currentSubFieldTableData = if (tableDataStr != null) {
                                         try {
