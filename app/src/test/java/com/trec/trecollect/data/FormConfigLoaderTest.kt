@@ -1609,7 +1609,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "now" for date field`() {
+    fun `parseJson parses default_value (now) for date field`() {
         val jsonString = """
         {
             "forms": [
@@ -1638,7 +1638,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "now" for time field`() {
+    fun `parseJson parses default_value (now) for time field`() {
         val jsonString = """
         {
             "forms": [
@@ -2012,7 +2012,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "true" for checkbox field`() {
+    fun `parseJson parses default_value (true) for checkbox field`() {
         val jsonString = """
         {
             "forms": [
@@ -2041,7 +2041,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "false" for checkbox field`() {
+    fun `parseJson parses default_value (false) for checkbox field`() {
         val jsonString = """
         {
             "forms": [

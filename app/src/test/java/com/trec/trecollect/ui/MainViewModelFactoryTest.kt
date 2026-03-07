@@ -40,9 +40,7 @@ class MainViewModelFactoryTest {
     @Test
     fun `create returns MainViewModel for correct class`() {
         val viewModel = factory.create(MainViewModel::class.java)
-
         assertNotNull(viewModel)
-        assertTrue(viewModel is MainViewModel)
     }
 
     @Test
@@ -58,8 +56,8 @@ class MainViewModelFactoryTest {
     @Test
     fun `create handles ViewModel superclass`() {
         val viewModel = factory.create(MainViewModel::class.java)
-
-        assertTrue(viewModel is ViewModel)
+        val asViewModel: ViewModel = viewModel
+        assertNotNull(asViewModel)
     }
 
     // Helper test ViewModel class

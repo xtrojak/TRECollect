@@ -52,7 +52,6 @@ class MainViewModelTest {
         )
         val result = MainViewModel.CreateSiteResult.Success(site)
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Success)
         assertEquals(site, result.site)
     }
 
@@ -61,7 +60,6 @@ class MainViewModelTest {
         val message = "Error message"
         val result = MainViewModel.CreateSiteResult.Error(message)
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Error)
         assertEquals(message, result.message)
     }
 
@@ -69,7 +67,6 @@ class MainViewModelTest {
     fun `UploadSiteResult Success contains counts`() {
         val result = MainViewModel.UploadSiteResult.Success(5, 5)
 
-        assertTrue(result is MainViewModel.UploadSiteResult.Success)
         assertEquals(5, result.uploadedCount)
         assertEquals(5, result.totalCount)
     }
@@ -79,7 +76,6 @@ class MainViewModelTest {
         val message = "Upload failed"
         val result = MainViewModel.UploadSiteResult.Error(message)
 
-        assertTrue(result is MainViewModel.UploadSiteResult.Error)
         assertEquals(message, result.message)
     }
 
@@ -103,7 +99,6 @@ class MainViewModelTest {
     fun `CreateSiteResult Error with empty message`() {
         val result = MainViewModel.CreateSiteResult.Error("")
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Error)
         assertEquals("", result.message)
     }
     
@@ -112,7 +107,6 @@ class MainViewModelTest {
         val longMessage = "A".repeat(1000)
         val result = MainViewModel.CreateSiteResult.Error(longMessage)
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Error)
         assertEquals(longMessage, result.message)
     }
     
@@ -120,7 +114,6 @@ class MainViewModelTest {
     fun `UploadSiteResult Success with zero counts`() {
         val result = MainViewModel.UploadSiteResult.Success(0, 0)
 
-        assertTrue(result is MainViewModel.UploadSiteResult.Success)
         assertEquals(0, result.uploadedCount)
         assertEquals(0, result.totalCount)
     }
@@ -130,7 +123,6 @@ class MainViewModelTest {
         // Edge case: uploadedCount > totalCount (shouldn't happen but test it)
         val result = MainViewModel.UploadSiteResult.Success(10, 5)
 
-        assertTrue(result is MainViewModel.UploadSiteResult.Success)
         assertEquals(10, result.uploadedCount)
         assertEquals(5, result.totalCount)
     }
@@ -140,7 +132,6 @@ class MainViewModelTest {
         // Note: message is not nullable, but test empty string
         val result = MainViewModel.UploadSiteResult.Error("")
 
-        assertTrue(result is MainViewModel.UploadSiteResult.Error)
         assertEquals("", result.message)
     }
     
@@ -153,7 +144,6 @@ class MainViewModelTest {
         )
         val result = MainViewModel.CreateSiteResult.Success(site)
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Success)
         assertEquals(0L, result.site.id)
     }
     
@@ -166,7 +156,6 @@ class MainViewModelTest {
         )
         val result = MainViewModel.CreateSiteResult.Success(site)
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Success)
         assertEquals(-1L, result.site.id)
     }
     
@@ -178,7 +167,6 @@ class MainViewModelTest {
         )
         val result = MainViewModel.CreateSiteResult.Success(site)
 
-        assertTrue(result is MainViewModel.CreateSiteResult.Success)
         assertEquals("", result.site.name)
     }
     

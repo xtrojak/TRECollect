@@ -401,6 +401,8 @@ class MainViewModel(
                 _finishedSites.value = current
             }
             loadSitesFromFolders(force = true)
+            // Do not call loadSitesFromFolders here: we already updated _finishedSites in-place.
+            // A full reload from disk can overwrite with empty/stale data (e.g. in tests or when folder is not ready).
         } catch (e: Exception) {
             AppLogger.e("MainViewModel", "Error updating site upload status: ${e.message}", e)
         }

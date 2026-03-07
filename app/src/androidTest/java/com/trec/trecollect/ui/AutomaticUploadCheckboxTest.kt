@@ -3,6 +3,7 @@ package com.trec.trecollect.ui
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.trec.trecollect.MainActivity
 import com.trec.trecollect.data.AppDatabase
 import com.trec.trecollect.data.SamplingSite
@@ -74,6 +75,7 @@ class AutomaticUploadCheckboxTest {
         val start = System.currentTimeMillis()
         var listWithUploaded: List<SamplingSite>? = null
         while (System.currentTimeMillis() - start < timeoutMs) {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             val list = viewModel.finishedSites.first()
             if (list.any { it.name == siteName && it.uploadStatus == UploadStatus.UPLOADED }) {
                 listWithUploaded = list

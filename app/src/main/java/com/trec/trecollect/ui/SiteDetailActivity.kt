@@ -1065,9 +1065,10 @@ class SiteDetailActivity : AppCompatActivity() {
                                                         // Update the add button state (canAdd for dynamic forms is always true)
                                                         lifecycleScope.launch {
                                                             withContext(Dispatchers.Main) {
-                                                                if (isDestroyed || isFinishing) return@withContext
-                                                                foundViewHolder.updateAddButtonState(baseForm) { f ->
-                                                                    f.id == baseForm.id && f.isDynamic
+                                                                if (!isDestroyed && !isFinishing) {
+                                                                    foundViewHolder.updateAddButtonState(baseForm) { f ->
+                                                                        f.id == baseForm.id && f.isDynamic
+                                                                    }
                                                                 }
                                                             }
                                                         }

@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.widget.*
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -394,6 +395,17 @@ class FormEditActivity : AppCompatActivity() {
         renderFields()
         setupFocusChangeDebounce()
         initialFormStateSignature = computeFormStateSignature()
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (hasUnsavedChanges()) {
+                    showSaveChangesDialog()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -433,24 +445,8 @@ class FormEditActivity : AppCompatActivity() {
             if (isReadOnly) {
                 finish() // No need to check for unsaved changes in read-only mode
             } else {
-                handleBackPress()
+                onBackPressedDispatcher.onBackPressed()
             }
-        }
-    }
-    
-    override fun onBackPressed() {
-        if (hasUnsavedChanges()) {
-            showSaveChangesDialog()
-        } else {
-            super.onBackPressed()
-        }
-    }
-    
-    private fun handleBackPress() {
-        if (hasUnsavedChanges()) {
-            showSaveChangesDialog()
-        } else {
-            super.onBackPressed()
         }
     }
     

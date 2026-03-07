@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -86,7 +87,7 @@ class MainActivity : AppCompatActivity() {
      * the upload in our ViewModel so the checkbox updates when it completes.
      */
     private fun handleSiteToUploadFromIntent(intent: Intent?) {
-        val site = intent?.getParcelableExtra<SamplingSite>(EXTRA_SITE_TO_UPLOAD) ?: return
+        val site = intent?.let { IntentCompat.getParcelableExtra(it, EXTRA_SITE_TO_UPLOAD, SamplingSite::class.java) } ?: return
         intent.removeExtra(EXTRA_SITE_TO_UPLOAD)
         viewModel.startAutomaticUploadForSite(site)
     }

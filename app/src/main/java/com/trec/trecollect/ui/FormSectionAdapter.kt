@@ -138,7 +138,6 @@ class FormSectionAdapter(
             // Find and notify all items in this dynamic group to rebind
             // Each item will recalculate its own form key and check the updated status sets
             val currentList = formAdapter.currentList
-            val baseFormName = form.name.substringBefore(" #")
             
             // Find all instances of this dynamic form (only FormItem, skip AddButtonItem)
             val startIndex = currentList.indexOfFirst { item ->
@@ -322,7 +321,8 @@ class FormSectionAdapter(
             return "${form.id}_${instanceIndex}_$subIndex"
         }
 
-        fun addDynamicFormInstance(baseForm: Form, subIndex: Int) {
+        @Suppress("UNUSED_PARAMETER")
+        fun addDynamicFormInstance(baseForm: Form, _subIndex: Int) {
             // Get current list
             val currentList = formAdapter.currentList.toMutableList()
             val (lastInstanceIndex, addButtonIndex) = findLastInstanceAndAddButtonIndex(currentList, baseForm)

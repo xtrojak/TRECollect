@@ -38,7 +38,7 @@ class FolderStructureHelper(private val context: Context) {
         // 1) Try listFiles() first (often more up-to-date than findFile after a create)
         try {
             val files = parent.listFiles()
-            val folder = files?.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
+            val folder = files.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
             if (folder != null) return folder
         } catch (e: Exception) {
             android.util.Log.w("FolderStructureHelper", "Error listing files in ${parent.name}: ${e.message}")
@@ -53,13 +53,13 @@ class FolderStructureHelper(private val context: Context) {
         if (created.name != folderName) {
             try {
                 val files = parent.listFiles()
-                val exact = files?.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
+                val exact = files.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
                 if (exact != null) return exact
             } catch (_: Exception) { }
         }
         try {
             val files = parent.listFiles()
-            val existing = files?.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
+            val existing = files.firstOrNull { it.name == folderName && it.isDirectory && it.exists() }
             if (existing != null) return existing
         } catch (_: Exception) { }
         return created
