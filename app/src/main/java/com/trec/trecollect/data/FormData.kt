@@ -14,7 +14,7 @@ data class FormFieldValue(
     val values: List<String>? = null, // For multiselect
     val gpsLatitude: Double? = null, // For GPS
     val gpsLongitude: Double? = null, // For GPS
-    val photoFileName: String? = null, // For photo (just filename, not full path)
+    val photoFileName: String? = null, // For photo: filename in app's photos dir
     val tableData: Map<String, Map<String, String>>? = null, // For table: Map<rowName, Map<columnName, value>>
     val dynamicData: List<Map<String, FormFieldValue>>? = null // For dynamic: List of instances, each instance is Map<subFieldId, FormFieldValue>
 )

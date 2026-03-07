@@ -5,6 +5,10 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -14,7 +18,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.*
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
@@ -232,7 +238,7 @@ class FormEditActivity : AppCompatActivity() {
                         currentPhotoFieldId!!,
                         photoFileName = fileName
                     )
-                    updatePhotoFieldView(currentPhotoFieldId!!, fileName)
+                    updatePhotoFieldView(currentPhotoFieldId!!, fileName, photoFile!!.absolutePath)
                     markFormChanged()
                 }
             }
@@ -241,6 +247,172 @@ class FormEditActivity : AppCompatActivity() {
             currentPhotoFieldId = null
         }
         photoFile = null
+    }
+
+    private val galleryPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (isDestroyed || isFinishing || uri == null) return@registerForActivityResult
+        val fieldId = currentPhotoFieldId ?: return@registerForActivityResult
+        val photoDir = getPhotoDir()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                when (uri.scheme) {
+                    "file" -> {
+                        val path = uri.path ?: return@withContext null
+                        val file = File(path)
+                        if (!file.exists() || !file.canRead()) return@withContext null
+                        // If already in app's photo dir, use it as-is (just filename).
+                        if (file.parentFile == photoDir || file.canonicalFile.parentFile == photoDir.canonicalFile) {
+                            Pair(file.name, file.absolutePath)
+                        } else {
+                            // From elsewhere: copy to app dir with app naming scheme, then register in gallery.
+                            copyToAppPhotosDir(uri)?.let { destFile ->
+                                savePhotoToMediaStore(destFile) // so it appears in Pictures/TREC_Logsheets
+                                Pair(destFile.name, destFile.absolutePath)
+                            }
+                        }
+                    }
+                    else -> {
+                        // Content URI: copy to app dir with app naming scheme, then register in gallery.
+                        copyToAppPhotosDir(uri)?.let { destFile ->
+                            savePhotoToMediaStore(destFile) // so it appears in Pictures/TREC_Logsheets
+                            Pair(destFile.name, destFile.absolutePath)
+                        }
+                    }
+                }
+            }
+            if (result != null) {
+                val (fileName, path) = result
+                runOnUiThread {
+                    fieldValues[fieldId] = FormFieldValue(fieldId, photoFileName = fileName)
+                    updatePhotoFieldView(fieldId, fileName, path)
+                    markFormChanged()
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this@FormEditActivity, getString(R.string.photo_copy_error), Toast.LENGTH_SHORT).show()
+                }
+            }
+            currentPhotoFieldId = null
+        }
+    }
+
+    /** Copies the image from [uri] (file or content) to the app's photos dir with name IMG_yyyyMMdd_HHmmss.jpg. Returns the new file or null on failure. */
+    private fun copyToAppPhotosDir(uri: Uri): File? {
+        return try {
+            val photoDir = getPhotoDir()
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val destFile = File(photoDir, "IMG_${timestamp}.jpg")
+            val inputStream = when (uri.scheme) {
+                "file" -> uri.path?.let { File(it).inputStream() }
+                else -> contentResolver.openInputStream(uri)
+            }
+            inputStream?.use { input ->
+                destFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            destFile.takeIf { it.exists() }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error copying photo to app dir", e)
+            null
+        }
+    }
+    
+    private fun getPhotoDir(): File {
+        val dir = File(getExternalFilesDir(null), "photos")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+    
+    /** Resolves a stored photo filename (or full path) to a File. For content URIs use [getPhotoPathOrUri] and open via URI. */
+    private fun getPhotoFileByFileName(fileName: String?): File? {
+        if (fileName.isNullOrBlank()) return null
+        val asFile = File(fileName)
+        if (asFile.isAbsolute && asFile.exists()) return asFile
+        val file = File(getPhotoDir(), fileName)
+        return file.takeIf { it.exists() }
+    }
+
+    /** Returns path for loading/previewing the photo, or null. All photos are stored in app's photo dir. */
+    private fun getPhotoPathOrUri(fieldValue: FormFieldValue?): String? {
+        if (fieldValue == null) return null
+        return getPhotoFileByFileName(fieldValue.photoFileName)?.absolutePath
+    }
+
+    /** Returns display name for the photo (filename only). */
+    private fun getPhotoDisplayName(fieldValue: FormFieldValue?): String? {
+        if (fieldValue?.photoFileName == null) return null
+        val name = fieldValue.photoFileName
+        return if (File(name).isAbsolute) File(name).name else name
+    }
+
+    /**
+     * Clears the selected photo for the field whose view is [photoFieldContainer].
+     * [photoFieldContainer] must be the root view of a photo field (tag = field id).
+     */
+    private fun clearPhotoSelection(photoFieldContainer: View) {
+        val fieldId = photoFieldContainer.tag as? String ?: return
+        fieldValues[fieldId] = FormFieldValue(fieldId, photoFileName = "")
+        photoFieldContainer.findViewById<View>(R.id.photoInfoRow)?.visibility = View.GONE
+    }
+
+    private fun showPhotoPreviewDialog(path: String?) {
+        if (path.isNullOrBlank()) return
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_photo_preview, null)
+        val imagePhoto = dialogView.findViewById<ZoomableImageView>(R.id.imagePhoto)
+        val buttonClose = dialogView.findViewById<ImageButton>(R.id.buttonClosePreview)
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        dialog.window?.apply {
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+            setBackgroundDrawableResource(android.R.color.black)
+        }
+        buttonClose.setOnClickListener { dialog.dismiss() }
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                decodeBitmapWithExifOrientation(path)
+            }
+            runOnUiThread {
+                if (!isDestroyed && !isFinishing && dialog.isShowing && bitmap != null) {
+                    imagePhoto.setImageBitmap(bitmap)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    /**
+     * Decodes a bitmap from [path] with inSampleSize 2 and applies EXIF orientation
+     * so the image displays with correct rotation (e.g. photos taken in portrait).
+     */
+    private fun decodeBitmapWithExifOrientation(path: String): Bitmap? {
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = 2
+            inJustDecodeBounds = false
+        }
+        var bitmap = BitmapFactory.decodeFile(path, opts) ?: return null
+        val orientation = try {
+            ExifInterface(path).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+        val rotation = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotation == 0f) return bitmap
+        val matrix = Matrix().apply { postRotate(rotation) }
+        val rotated = Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+        )
+        if (rotated != bitmap) bitmap.recycle()
+        return rotated
     }
     
     private val requestPermissionLauncher = registerForActivityResult(
@@ -1650,7 +1822,11 @@ class FormEditActivity : AppCompatActivity() {
         
         val textLabel = container.findViewById<TextView>(R.id.textLabel)
         val buttonCapture = container.findViewById<MaterialButton>(R.id.buttonCapture)
+        val buttonChooseFromGallery = container.findViewById<MaterialButton>(R.id.buttonChooseFromGallery)
+        val photoInfoRow = container.findViewById<View>(R.id.photoInfoRow)
         val textFileName = container.findViewById<TextView>(R.id.textFileName)
+        val buttonViewPhoto = container.findViewById<ImageButton>(R.id.buttonViewPhoto)
+        val buttonClearPhoto = container.findViewById<ImageButton>(R.id.buttonClearPhoto)
         
         textLabel.text = if (fieldConfig.required) {
             "${fieldConfig.label} *"
@@ -1660,11 +1836,20 @@ class FormEditActivity : AppCompatActivity() {
         
         container.tag = fieldConfig.id
         
-        // Load existing photo filename
+        buttonViewPhoto?.setOnClickListener {
+            showPhotoPreviewDialog(it.tag as? String)
+        }
+        
+        buttonClearPhoto?.setOnClickListener { clearPhotoSelection(container) }
+        
+        // Load existing photo filename and show view button
         val existingValue = fieldValues[fieldConfig.id]
         if (existingValue?.photoFileName != null) {
-            textFileName.text = getString(R.string.photo_filename, existingValue.photoFileName)
-            textFileName.visibility = View.VISIBLE
+            textFileName.text = getString(R.string.photo_filename, getPhotoDisplayName(existingValue) ?: existingValue.photoFileName)
+            photoInfoRow?.visibility = View.VISIBLE
+            val pathOrUri = getPhotoPathOrUri(existingValue)
+            buttonViewPhoto?.tag = pathOrUri
+            buttonViewPhoto?.visibility = if (pathOrUri != null) View.VISIBLE else View.GONE
         }
         
         if (!isReadOnly) {
@@ -1672,8 +1857,14 @@ class FormEditActivity : AppCompatActivity() {
                 currentPhotoFieldId = fieldConfig.id
                 checkCameraPermissionAndCapture()
             }
+            buttonChooseFromGallery?.setOnClickListener {
+                currentPhotoFieldId = fieldConfig.id
+                galleryPickerLauncher.launch("image/*")
+            }
         } else {
             buttonCapture.isEnabled = false
+            buttonChooseFromGallery?.isEnabled = false
+            buttonClearPhoto?.isEnabled = false
         }
         
         return container
@@ -1696,12 +1887,7 @@ class FormEditActivity : AppCompatActivity() {
     @Suppress("UNUSED_PARAMETER")
     private fun capturePhoto(fieldId: String) {
         try {
-            // Create a file to store the photo
-            val photoDir = File(getExternalFilesDir(null), "photos")
-            if (!photoDir.exists()) {
-                photoDir.mkdirs()
-            }
-            
+            val photoDir = getPhotoDir()
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val photoFile = File(photoDir, "IMG_${timestamp}.jpg")
             this.photoFile = photoFile
@@ -1752,23 +1938,30 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
-    private fun updatePhotoFieldView(fieldId: String, fileName: String) {
-        // Try to find the view in regular fields first
+    private fun updatePhotoFieldView(fieldId: String, fileName: String, pathForPreview: String? = null) {
+        val pathOrUri = pathForPreview ?: getPhotoFileByFileName(fileName)?.absolutePath
+            ?: (if (File(fileName).isAbsolute && File(fileName).exists()) fileName else null)
+        val displayName = if (File(fileName).isAbsolute) File(fileName).name else fileName
         val fieldView = fieldViews[fieldId]
         if (fieldView != null) {
+            val photoInfoRow = fieldView.findViewById<View>(R.id.photoInfoRow)
             val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = getString(R.string.photo_filename, fileName)
-            textFileName?.visibility = View.VISIBLE
+            val buttonViewPhoto = fieldView.findViewById<ImageButton>(R.id.buttonViewPhoto)
+            textFileName?.text = getString(R.string.photo_filename, displayName)
+            photoInfoRow?.visibility = View.VISIBLE
+            buttonViewPhoto?.tag = pathOrUri
+            if (pathOrUri == null) buttonViewPhoto?.visibility = View.GONE else buttonViewPhoto?.visibility = View.VISIBLE
             return
         }
-        
-        // If not found, it might be a dynamic widget sub-field
-        // Use findViewWithTag to search the entire view hierarchy
         val photoView = containerFields.findViewWithTag<View>(fieldId)
         if (photoView != null) {
+            val photoInfoRow = photoView.findViewById<View>(R.id.photoInfoRow)
             val textFileName = photoView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = getString(R.string.photo_filename, fileName)
-            textFileName?.visibility = View.VISIBLE
+            val buttonViewPhoto = photoView.findViewById<ImageButton>(R.id.buttonViewPhoto)
+            textFileName?.text = getString(R.string.photo_filename, displayName)
+            photoInfoRow?.visibility = View.VISIBLE
+            buttonViewPhoto?.tag = pathOrUri
+            if (pathOrUri == null) buttonViewPhoto?.visibility = View.GONE else buttonViewPhoto?.visibility = View.VISIBLE
         }
     }
     
@@ -2557,7 +2750,11 @@ class FormEditActivity : AppCompatActivity() {
         
         val textLabel = container.findViewById<TextView>(R.id.textLabel)
         val buttonCapture = container.findViewById<MaterialButton>(R.id.buttonCapture)
+        val buttonChooseFromGallery = container.findViewById<MaterialButton>(R.id.buttonChooseFromGallery)
+        val photoInfoRow = container.findViewById<View>(R.id.photoInfoRow)
         val textFileName = container.findViewById<TextView>(R.id.textFileName)
+        val buttonViewPhoto = container.findViewById<ImageButton>(R.id.buttonViewPhoto)
+        val buttonClearPhoto = container.findViewById<ImageButton>(R.id.buttonClearPhoto)
         
         if (textLabel == null || buttonCapture == null || textFileName == null) {
             android.util.Log.e("FormEditActivity", "Failed to find views in field_photo layout")
@@ -2572,11 +2769,20 @@ class FormEditActivity : AppCompatActivity() {
         
         container.tag = uniqueFieldId
         
-        // Load existing photo filename
+        buttonViewPhoto?.setOnClickListener {
+            showPhotoPreviewDialog(it.tag as? String)
+        }
+        
+        buttonClearPhoto?.setOnClickListener { clearPhotoSelection(container) }
+        
+        // Load existing photo filename and show view button
         val existingValue = fieldValues[uniqueFieldId]
         if (existingValue?.photoFileName != null) {
-            textFileName.text = getString(R.string.photo_filename, existingValue.photoFileName)
-            textFileName.visibility = View.VISIBLE
+            textFileName.text = getString(R.string.photo_filename, getPhotoDisplayName(existingValue) ?: existingValue.photoFileName)
+            photoInfoRow?.visibility = View.VISIBLE
+            val pathOrUri = getPhotoPathOrUri(existingValue)
+            buttonViewPhoto?.tag = pathOrUri
+            buttonViewPhoto?.visibility = if (pathOrUri != null) View.VISIBLE else View.GONE
         }
         
         if (!isReadOnly) {
@@ -2584,8 +2790,14 @@ class FormEditActivity : AppCompatActivity() {
                 currentPhotoFieldId = uniqueFieldId
                 checkCameraPermissionAndCapture()
             }
+            buttonChooseFromGallery?.setOnClickListener {
+                currentPhotoFieldId = uniqueFieldId
+                galleryPickerLauncher.launch("image/*")
+            }
         } else {
             buttonCapture.isEnabled = false
+            buttonChooseFromGallery?.isEnabled = false
+            buttonClearPhoto?.isEnabled = false
         }
         
         return container
@@ -3351,6 +3563,20 @@ class FormEditActivity : AppCompatActivity() {
                 }
                 if (fieldValue.gpsLongitude != null) {
                     editTextLongitude?.setText(fieldValue.gpsLongitude.toString())
+                }
+            }
+            FormFieldConfig.FieldType.PHOTO -> {
+                val fileName = fieldValue.photoFileName
+                if (!fileName.isNullOrBlank()) {
+                    val photoInfoRow = fieldView.findViewById<View>(R.id.photoInfoRow)
+                    val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
+                    val buttonViewPhoto = fieldView.findViewById<ImageButton>(R.id.buttonViewPhoto)
+                    val displayName = getPhotoDisplayName(fieldValue) ?: fileName
+                    val pathOrUri = getPhotoPathOrUri(fieldValue)
+                    textFileName?.text = getString(R.string.photo_filename, displayName)
+                    photoInfoRow?.visibility = View.VISIBLE
+                    buttonViewPhoto?.tag = pathOrUri
+                    buttonViewPhoto?.visibility = if (pathOrUri != null) View.VISIBLE else View.GONE
                 }
             }
             FormFieldConfig.FieldType.DYNAMIC -> {
