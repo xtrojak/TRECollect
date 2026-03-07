@@ -187,7 +187,8 @@ class SettingsPreferencesTest {
     @Test
     fun `getAppUuid returns dev-debug when dev build`() {
         whenever(mockSharedPreferences.getString("app_uuid", null)).thenReturn(null)
-        val result = settingsPreferences.getAppUuid()
+        val settingsPrefsDev = SettingsPreferences(mockContext, isDevBuildOverride = { true })
+        val result = settingsPrefsDev.getAppUuid()
         assertEquals("dev-debug", result)
         verify(mockEditor, never()).putString(eq("app_uuid"), any())
     }
