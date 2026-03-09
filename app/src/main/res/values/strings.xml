@@ -94,6 +94,7 @@
     <string name="use_map">Use map</string>
     <string name="display_image">Display image</string>
     <string name="take_photo">Take Photo</string>
+    <string name="choose_photo">Choose from gallery</string>
     <string name="no_selection">No selection</string>
     <string name="table">Table</string>
 
@@ -147,6 +148,11 @@
     <string name="error_label">Error: %1$s</string>
     <string name="label_required">%1$s *</string>
     <string name="photo_filename">Photo: %1$s</string>
+    <string name="photo_preview_content_description">Photo preview</string>
+    <string name="view_photo">View photo</string>
+    <string name="clear_photo">Clear photo</string>
+    <string name="close">Close</string>
+    <string name="photo_copy_error">Could not use selected image</string>
     <string name="instance_number">%1$s %2$d</string>
     <string name="no_logs_matching">No logs available matching \"%1$s\"</string>
     <string name="error_loading_path">Error loading path: %1$s</string>
@@ -183,4 +189,11 @@
     <string name="download_progress_downloading">Downloading tiles… (%1$d)</string>
     <string name="region_downloaded_success">Region downloaded successfully</string>
     <string name="region_download_error">Error downloading region. Please check your internet connection.</string>
+
+    <!-- Timepicker dialog -->
+    <string name="timepicker_dialog_title">Set time (H:M:S)</string>
+    <string name="timepicker_hours_label">H</string>
+    <string name="timepicker_minutes_label">M</string>
+    <string name="timepicker_seconds_label">S</string>
+    <string name="timepicker_save">Save</string>
 </resources>

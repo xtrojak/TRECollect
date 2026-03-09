@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -86,7 +87,7 @@ class MainActivity : AppCompatActivity() {
      * the upload in our ViewModel so the checkbox updates when it completes.
      */
     private fun handleSiteToUploadFromIntent(intent: Intent?) {
-        val site = intent?.getParcelableExtra<SamplingSite>(EXTRA_SITE_TO_UPLOAD) ?: return
+        val site = intent?.let { IntentCompat.getParcelableExtra(it, EXTRA_SITE_TO_UPLOAD, SamplingSite::class.java) } ?: return
         intent.removeExtra(EXTRA_SITE_TO_UPLOAD)
         viewModel.startAutomaticUploadForSite(site)
     }
@@ -468,6 +469,13 @@ class MainActivity : AppCompatActivity() {
                 
                 // Only retry if folder hasn't been verified yet
                 if (settingsPreferences.isOwnCloudFolderVerified()) {
+                    return@launch
+                }
+                
+                // Create ownCloud folder only after the user has selected an output folder.
+                // That way we've already run ensureUuidFileInOutputFolder (write or read UUID),
+                // so the app UUID is stable and we don't create a folder that will never be used.
+                if (settingsPreferences.getFolderUri().isEmpty()) {
                     return@launch
                 }
                 

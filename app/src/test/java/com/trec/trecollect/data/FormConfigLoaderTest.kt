@@ -136,6 +136,7 @@ class FormConfigLoaderTest {
                         {"id": "textarea", "label": "Textarea", "type": "textarea"},
                         {"id": "date", "label": "Date", "type": "date"},
                         {"id": "time", "label": "Time", "type": "time"},
+                        {"id": "timepicker", "label": "Timepicker", "type": "timepicker"},
                         {"id": "select", "label": "Select", "type": "select", "options": ["opt1"]},
                         {"id": "multiselect", "label": "Multiselect", "type": "multiselect", "options": ["opt1"]},
                         {"id": "select_image", "label": "Select Image", "type": "select_image", "options": [{"value": "opt1", "image": "images/opt1.png"}]},
@@ -158,23 +159,24 @@ class FormConfigLoaderTest {
 
         assertEquals(1, configs.size)
         val fields = configs[0].fields
-        assertEquals(16, fields.size)
+        assertEquals(17, fields.size)
         assertEquals(FormFieldConfig.FieldType.TEXT, fields[0].type)
         assertEquals(FormFieldConfig.FieldType.TEXTAREA, fields[1].type)
         assertEquals(FormFieldConfig.FieldType.DATE, fields[2].type)
         assertEquals(FormFieldConfig.FieldType.TIME, fields[3].type)
-        assertEquals(FormFieldConfig.FieldType.SELECT, fields[4].type)
-        assertEquals(FormFieldConfig.FieldType.MULTISELECT, fields[5].type)
-        assertEquals(FormFieldConfig.FieldType.SELECT_IMAGE, fields[6].type)
-        assertEquals(FormFieldConfig.FieldType.MULTISELECT_IMAGE, fields[7].type)
-        assertEquals(FormFieldConfig.FieldType.GPS, fields[8].type)
-        assertEquals(FormFieldConfig.FieldType.PHOTO, fields[9].type)
-        assertEquals(FormFieldConfig.FieldType.BARCODE, fields[10].type)
-        assertEquals(FormFieldConfig.FieldType.CHECKBOX, fields[11].type)
-        assertEquals(FormFieldConfig.FieldType.SECTION, fields[12].type)
-        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, fields[13].type)
-        assertEquals(FormFieldConfig.FieldType.TABLE, fields[14].type)
-        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[15].type)
+        assertEquals(FormFieldConfig.FieldType.TIMEPICKER, fields[4].type)
+        assertEquals(FormFieldConfig.FieldType.SELECT, fields[5].type)
+        assertEquals(FormFieldConfig.FieldType.MULTISELECT, fields[6].type)
+        assertEquals(FormFieldConfig.FieldType.SELECT_IMAGE, fields[7].type)
+        assertEquals(FormFieldConfig.FieldType.MULTISELECT_IMAGE, fields[8].type)
+        assertEquals(FormFieldConfig.FieldType.GPS, fields[9].type)
+        assertEquals(FormFieldConfig.FieldType.PHOTO, fields[10].type)
+        assertEquals(FormFieldConfig.FieldType.BARCODE, fields[11].type)
+        assertEquals(FormFieldConfig.FieldType.CHECKBOX, fields[12].type)
+        assertEquals(FormFieldConfig.FieldType.SECTION, fields[13].type)
+        assertEquals(FormFieldConfig.FieldType.IMAGE_DISPLAY, fields[14].type)
+        assertEquals(FormFieldConfig.FieldType.TABLE, fields[15].type)
+        assertEquals(FormFieldConfig.FieldType.DYNAMIC, fields[16].type)
     }
 
     @Test
@@ -1607,7 +1609,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "now" for date field`() {
+    fun `parseJson parses default_value (now) for date field`() {
         val jsonString = """
         {
             "forms": [
@@ -1636,7 +1638,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "now" for time field`() {
+    fun `parseJson parses default_value (now) for time field`() {
         val jsonString = """
         {
             "forms": [
@@ -2010,7 +2012,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "true" for checkbox field`() {
+    fun `parseJson parses default_value (true) for checkbox field`() {
         val jsonString = """
         {
             "forms": [
@@ -2039,7 +2041,7 @@ class FormConfigLoaderTest {
     }
 
     @Test
-    fun `parseJson parses default_value "false" for checkbox field`() {
+    fun `parseJson parses default_value (false) for checkbox field`() {
         val jsonString = """
         {
             "forms": [

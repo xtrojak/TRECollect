@@ -48,7 +48,7 @@ TRECollect is an Android application for collecting and managing field sampling 
   - Room database for local persistence
   - XML-based form data storage
   - Team/subteam-based folder organization:
-    - Local: `TREC_logsheets/{team}/{subteam}/{ongoing,finished,deleted}/`
+    - Local: `TRECollect_logsheets/{team}/{subteam}/{ongoing,finished,deleted}/`
     - ownCloud: `{UUID}/{team}/{subteam}/{siteName}/`
 
 ## Requirements
@@ -91,7 +91,7 @@ TRECollect is an Android application for collecting and managing field sampling 
    - This determines which forms are available and the folder structure
 
 2. **Select Output Folder**: Choose where submissions will be stored
-   - The app will create the folder structure: `TREC_logsheets/{team}/{subteam}/`
+   - The app will create the folder structure: `TRECollect_logsheets/{team}/{subteam}/`
 
 3. **Optional - ownCloud (uploads and logsheet downloads):** Credentials are **not** in the repo. Copy `local.properties.example` to `local.properties` and set:
    - `owncloud.url`: Your ownCloud WebDAV base URL (e.g. `https://oc.example.com/public.php/webdav/`)
@@ -184,7 +184,7 @@ app/
 
 **Local Storage:**
 ```
-TREC_logsheets/
+TRECollect_logsheets/
 ├── LSI/
 │   ├── Soil/
 │   │   ├── ongoing/

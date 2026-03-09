@@ -5,6 +5,10 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -14,9 +18,12 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.*
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -231,7 +238,7 @@ class FormEditActivity : AppCompatActivity() {
                         currentPhotoFieldId!!,
                         photoFileName = fileName
                     )
-                    updatePhotoFieldView(currentPhotoFieldId!!, fileName)
+                    updatePhotoFieldView(currentPhotoFieldId!!, fileName, photoFile!!.absolutePath)
                     markFormChanged()
                 }
             }
@@ -240,6 +247,172 @@ class FormEditActivity : AppCompatActivity() {
             currentPhotoFieldId = null
         }
         photoFile = null
+    }
+
+    private val galleryPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (isDestroyed || isFinishing || uri == null) return@registerForActivityResult
+        val fieldId = currentPhotoFieldId ?: return@registerForActivityResult
+        val photoDir = getPhotoDir()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                when (uri.scheme) {
+                    "file" -> {
+                        val path = uri.path ?: return@withContext null
+                        val file = File(path)
+                        if (!file.exists() || !file.canRead()) return@withContext null
+                        // If already in app's photo dir, use it as-is (just filename).
+                        if (file.parentFile == photoDir || file.canonicalFile.parentFile == photoDir.canonicalFile) {
+                            Pair(file.name, file.absolutePath)
+                        } else {
+                            // From elsewhere: copy to app dir with app naming scheme, then register in gallery.
+                            copyToAppPhotosDir(uri)?.let { destFile ->
+                                savePhotoToMediaStore(destFile) // so it appears in Pictures/TREC_Logsheets
+                                Pair(destFile.name, destFile.absolutePath)
+                            }
+                        }
+                    }
+                    else -> {
+                        // Content URI: copy to app dir with app naming scheme, then register in gallery.
+                        copyToAppPhotosDir(uri)?.let { destFile ->
+                            savePhotoToMediaStore(destFile) // so it appears in Pictures/TREC_Logsheets
+                            Pair(destFile.name, destFile.absolutePath)
+                        }
+                    }
+                }
+            }
+            if (result != null) {
+                val (fileName, path) = result
+                runOnUiThread {
+                    fieldValues[fieldId] = FormFieldValue(fieldId, photoFileName = fileName)
+                    updatePhotoFieldView(fieldId, fileName, path)
+                    markFormChanged()
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this@FormEditActivity, getString(R.string.photo_copy_error), Toast.LENGTH_SHORT).show()
+                }
+            }
+            currentPhotoFieldId = null
+        }
+    }
+
+    /** Copies the image from [uri] (file or content) to the app's photos dir with name IMG_yyyyMMdd_HHmmss.jpg. Returns the new file or null on failure. */
+    private fun copyToAppPhotosDir(uri: Uri): File? {
+        return try {
+            val photoDir = getPhotoDir()
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val destFile = File(photoDir, "IMG_${timestamp}.jpg")
+            val inputStream = when (uri.scheme) {
+                "file" -> uri.path?.let { File(it).inputStream() }
+                else -> contentResolver.openInputStream(uri)
+            }
+            inputStream?.use { input ->
+                destFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            destFile.takeIf { it.exists() }
+        } catch (e: Exception) {
+            android.util.Log.e("FormEditActivity", "Error copying photo to app dir", e)
+            null
+        }
+    }
+    
+    private fun getPhotoDir(): File {
+        val dir = File(getExternalFilesDir(null), "photos")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+    
+    /** Resolves a stored photo filename (or full path) to a File. For content URIs use [getPhotoPathOrUri] and open via URI. */
+    private fun getPhotoFileByFileName(fileName: String?): File? {
+        if (fileName.isNullOrBlank()) return null
+        val asFile = File(fileName)
+        if (asFile.isAbsolute && asFile.exists()) return asFile
+        val file = File(getPhotoDir(), fileName)
+        return file.takeIf { it.exists() }
+    }
+
+    /** Returns path for loading/previewing the photo, or null. All photos are stored in app's photo dir. */
+    private fun getPhotoPathOrUri(fieldValue: FormFieldValue?): String? {
+        if (fieldValue == null) return null
+        return getPhotoFileByFileName(fieldValue.photoFileName)?.absolutePath
+    }
+
+    /** Returns display name for the photo (filename only). */
+    private fun getPhotoDisplayName(fieldValue: FormFieldValue?): String? {
+        if (fieldValue?.photoFileName == null) return null
+        val name = fieldValue.photoFileName
+        return if (File(name).isAbsolute) File(name).name else name
+    }
+
+    /**
+     * Clears the selected photo for the field whose view is [photoFieldContainer].
+     * [photoFieldContainer] must be the root view of a photo field (tag = field id).
+     */
+    private fun clearPhotoSelection(photoFieldContainer: View) {
+        val fieldId = photoFieldContainer.tag as? String ?: return
+        fieldValues[fieldId] = FormFieldValue(fieldId, photoFileName = null)
+        photoFieldContainer.findViewById<View>(R.id.photoInfoRow)?.visibility = View.GONE
+    }
+
+    private fun showPhotoPreviewDialog(path: String?) {
+        if (path.isNullOrBlank()) return
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_photo_preview, null)
+        val imagePhoto = dialogView.findViewById<ZoomableImageView>(R.id.imagePhoto)
+        val buttonClose = dialogView.findViewById<ImageButton>(R.id.buttonClosePreview)
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        dialog.window?.apply {
+            setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+            setBackgroundDrawableResource(android.R.color.black)
+        }
+        buttonClose.setOnClickListener { dialog.dismiss() }
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                decodeBitmapWithExifOrientation(path)
+            }
+            runOnUiThread {
+                if (!isDestroyed && !isFinishing && dialog.isShowing && bitmap != null) {
+                    imagePhoto.setImageBitmap(bitmap)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    /**
+     * Decodes a bitmap from [path] with inSampleSize 2 and applies EXIF orientation
+     * so the image displays with correct rotation (e.g. photos taken in portrait).
+     */
+    private fun decodeBitmapWithExifOrientation(path: String): Bitmap? {
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = 2
+            inJustDecodeBounds = false
+        }
+        var bitmap = BitmapFactory.decodeFile(path, opts) ?: return null
+        val orientation = try {
+            ExifInterface(path).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
+        val rotation = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotation == 0f) return bitmap
+        val matrix = Matrix().apply { postRotate(rotation) }
+        val rotated = Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+        )
+        if (rotated != bitmap) bitmap.recycle()
+        return rotated
     }
     
     private val requestPermissionLauncher = registerForActivityResult(
@@ -394,6 +567,17 @@ class FormEditActivity : AppCompatActivity() {
         renderFields()
         setupFocusChangeDebounce()
         initialFormStateSignature = computeFormStateSignature()
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (hasUnsavedChanges()) {
+                    showSaveChangesDialog()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
     
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -433,24 +617,8 @@ class FormEditActivity : AppCompatActivity() {
             if (isReadOnly) {
                 finish() // No need to check for unsaved changes in read-only mode
             } else {
-                handleBackPress()
+                onBackPressedDispatcher.onBackPressed()
             }
-        }
-    }
-    
-    override fun onBackPressed() {
-        if (hasUnsavedChanges()) {
-            showSaveChangesDialog()
-        } else {
-            super.onBackPressed()
-        }
-    }
-    
-    private fun handleBackPress() {
-        if (hasUnsavedChanges()) {
-            showSaveChangesDialog()
-        } else {
-            super.onBackPressed()
         }
     }
     
@@ -905,6 +1073,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TEXTAREA -> createTextAreaField(fieldConfig)
                 FormFieldConfig.FieldType.DATE -> createDateField(fieldConfig)
                 FormFieldConfig.FieldType.TIME -> createTimeField(fieldConfig)
+                FormFieldConfig.FieldType.TIMEPICKER -> createTimepickerField(fieldConfig)
                 FormFieldConfig.FieldType.SELECT -> createSelectField(fieldConfig)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectField(fieldConfig)
                 FormFieldConfig.FieldType.SELECT_IMAGE -> createSelectImageField(fieldConfig)
@@ -1215,7 +1384,7 @@ class FormEditActivity : AppCompatActivity() {
     private fun createTimeField(fieldConfig: FormFieldConfig): View {
         val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
         // Don't set hint on EditText - only on TextInputLayout to avoid overlap
-        
+
         // Read-only: allow focus and selection for copying, but not editing
         if (isReadOnly) {
             editText.setKeyListener(null)
@@ -1227,8 +1396,56 @@ class FormEditActivity : AppCompatActivity() {
                 showTimePicker(fieldConfig.id, editText)
             }
         }
-        
+
         return textInputLayout
+    }
+
+    /** Timepicker: shows value (HH:MM:SS) in the list; click opens pop-up with spinners and Save/Clear/Cancel. */
+    private fun createTimepickerField(fieldConfig: FormFieldConfig): View {
+        val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
+        editText.setText("00:00:00")
+        editText.isFocusable = false
+        editText.isClickable = true
+
+        if (isReadOnly) {
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
+        } else {
+            editText.setOnClickListener {
+                showTimepickerDialog(fieldConfig.id, editText, null)
+            }
+        }
+
+        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = "00:00:00")
+        return textInputLayout
+    }
+
+    private fun setupTimepickerSpinners(
+        numberPickerHours: NumberPicker,
+        numberPickerMinutes: NumberPicker,
+        numberPickerSeconds: NumberPicker
+    ) {
+        val displayedValues = (0..59).map { String.format(Locale.US, "%02d", it) }.toTypedArray()
+        for (picker in listOf(numberPickerHours, numberPickerMinutes, numberPickerSeconds)) {
+            picker.minValue = 0
+            picker.maxValue = 59
+            picker.displayedValues = displayedValues
+            picker.value = 0
+            picker.wrapSelectorWheel = false
+        }
+    }
+
+    private fun formatTimepickerValue(hours: Int, minutes: Int, seconds: Int): String {
+        return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
+    private fun parseTimepickerValue(value: String?): Triple<Int, Int, Int> {
+        if (value.isNullOrBlank()) return Triple(0, 0, 0)
+        val parts = value.trim().split(":")
+        val h = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val m = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val s = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        return Triple(h, m, s)
     }
     
     private fun createSelectField(fieldConfig: FormFieldConfig): View {
@@ -1605,7 +1822,11 @@ class FormEditActivity : AppCompatActivity() {
         
         val textLabel = container.findViewById<TextView>(R.id.textLabel)
         val buttonCapture = container.findViewById<MaterialButton>(R.id.buttonCapture)
+        val buttonChooseFromGallery = container.findViewById<MaterialButton>(R.id.buttonChooseFromGallery)
+        val photoInfoRow = container.findViewById<View>(R.id.photoInfoRow)
         val textFileName = container.findViewById<TextView>(R.id.textFileName)
+        val buttonViewPhoto = container.findViewById<ImageButton>(R.id.buttonViewPhoto)
+        val buttonClearPhoto = container.findViewById<ImageButton>(R.id.buttonClearPhoto)
         
         textLabel.text = if (fieldConfig.required) {
             "${fieldConfig.label} *"
@@ -1615,11 +1836,20 @@ class FormEditActivity : AppCompatActivity() {
         
         container.tag = fieldConfig.id
         
-        // Load existing photo filename
+        buttonViewPhoto?.setOnClickListener {
+            showPhotoPreviewDialog(it.tag as? String)
+        }
+        
+        buttonClearPhoto?.setOnClickListener { clearPhotoSelection(container) }
+        
+        // Load existing photo filename and show view button
         val existingValue = fieldValues[fieldConfig.id]
         if (existingValue?.photoFileName != null) {
-            textFileName.text = getString(R.string.photo_filename, existingValue.photoFileName)
-            textFileName.visibility = View.VISIBLE
+            textFileName.text = getString(R.string.photo_filename, getPhotoDisplayName(existingValue) ?: existingValue.photoFileName)
+            photoInfoRow?.visibility = View.VISIBLE
+            val pathOrUri = getPhotoPathOrUri(existingValue)
+            buttonViewPhoto?.tag = pathOrUri
+            buttonViewPhoto?.visibility = if (pathOrUri != null) View.VISIBLE else View.GONE
         }
         
         if (!isReadOnly) {
@@ -1627,8 +1857,14 @@ class FormEditActivity : AppCompatActivity() {
                 currentPhotoFieldId = fieldConfig.id
                 checkCameraPermissionAndCapture()
             }
+            buttonChooseFromGallery?.setOnClickListener {
+                currentPhotoFieldId = fieldConfig.id
+                galleryPickerLauncher.launch("image/*")
+            }
         } else {
             buttonCapture.isEnabled = false
+            buttonChooseFromGallery?.isEnabled = false
+            buttonClearPhoto?.isEnabled = false
         }
         
         return container
@@ -1651,12 +1887,7 @@ class FormEditActivity : AppCompatActivity() {
     @Suppress("UNUSED_PARAMETER")
     private fun capturePhoto(fieldId: String) {
         try {
-            // Create a file to store the photo
-            val photoDir = File(getExternalFilesDir(null), "photos")
-            if (!photoDir.exists()) {
-                photoDir.mkdirs()
-            }
-            
+            val photoDir = getPhotoDir()
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val photoFile = File(photoDir, "IMG_${timestamp}.jpg")
             this.photoFile = photoFile
@@ -1707,23 +1938,30 @@ class FormEditActivity : AppCompatActivity() {
         }
     }
     
-    private fun updatePhotoFieldView(fieldId: String, fileName: String) {
-        // Try to find the view in regular fields first
+    private fun updatePhotoFieldView(fieldId: String, fileName: String, pathForPreview: String? = null) {
+        val pathOrUri = pathForPreview ?: getPhotoFileByFileName(fileName)?.absolutePath
+            ?: (if (File(fileName).isAbsolute && File(fileName).exists()) fileName else null)
+        val displayName = if (File(fileName).isAbsolute) File(fileName).name else fileName
         val fieldView = fieldViews[fieldId]
         if (fieldView != null) {
+            val photoInfoRow = fieldView.findViewById<View>(R.id.photoInfoRow)
             val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = getString(R.string.photo_filename, fileName)
-            textFileName?.visibility = View.VISIBLE
+            val buttonViewPhoto = fieldView.findViewById<ImageButton>(R.id.buttonViewPhoto)
+            textFileName?.text = getString(R.string.photo_filename, displayName)
+            photoInfoRow?.visibility = View.VISIBLE
+            buttonViewPhoto?.tag = pathOrUri
+            if (pathOrUri == null) buttonViewPhoto?.visibility = View.GONE else buttonViewPhoto?.visibility = View.VISIBLE
             return
         }
-        
-        // If not found, it might be a dynamic widget sub-field
-        // Use findViewWithTag to search the entire view hierarchy
         val photoView = containerFields.findViewWithTag<View>(fieldId)
         if (photoView != null) {
+            val photoInfoRow = photoView.findViewById<View>(R.id.photoInfoRow)
             val textFileName = photoView.findViewById<TextView>(R.id.textFileName)
-            textFileName?.text = getString(R.string.photo_filename, fileName)
-            textFileName?.visibility = View.VISIBLE
+            val buttonViewPhoto = photoView.findViewById<ImageButton>(R.id.buttonViewPhoto)
+            textFileName?.text = getString(R.string.photo_filename, displayName)
+            photoInfoRow?.visibility = View.VISIBLE
+            buttonViewPhoto?.tag = pathOrUri
+            if (pathOrUri == null) buttonViewPhoto?.visibility = View.GONE else buttonViewPhoto?.visibility = View.VISIBLE
         }
     }
     
@@ -2239,6 +2477,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TEXTAREA -> createTextAreaFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.DATE -> createDateFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.TIME -> createTimeFieldForSubField(subFieldConfig, uniqueFieldId, parent)
+                FormFieldConfig.FieldType.TIMEPICKER -> createTimepickerFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.SELECT -> createSelectFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.MULTISELECT -> createMultiSelectFieldForSubField(subFieldConfig, uniqueFieldId, parent)
                 FormFieldConfig.FieldType.GPS -> createGPSFieldForSubField(subFieldConfig, uniqueFieldId, parent)
@@ -2387,6 +2626,27 @@ class FormEditActivity : AppCompatActivity() {
         
         return textInputLayout
     }
+
+    private fun createTimepickerFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
+        val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
+        editText.setText("00:00:00")
+        editText.isFocusable = false
+        editText.isClickable = true
+
+        if (!isReadOnly) {
+            editText.setOnClickListener {
+                showTimepickerDialog(uniqueFieldId, editText) {
+                    dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
+                }
+            }
+        } else {
+            editText.setKeyListener(null)
+            editText.setTextIsSelectable(true)
+        }
+
+        fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = "00:00:00")
+        return textInputLayout
+    }
     
     private fun createSelectFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
@@ -2490,7 +2750,11 @@ class FormEditActivity : AppCompatActivity() {
         
         val textLabel = container.findViewById<TextView>(R.id.textLabel)
         val buttonCapture = container.findViewById<MaterialButton>(R.id.buttonCapture)
+        val buttonChooseFromGallery = container.findViewById<MaterialButton>(R.id.buttonChooseFromGallery)
+        val photoInfoRow = container.findViewById<View>(R.id.photoInfoRow)
         val textFileName = container.findViewById<TextView>(R.id.textFileName)
+        val buttonViewPhoto = container.findViewById<ImageButton>(R.id.buttonViewPhoto)
+        val buttonClearPhoto = container.findViewById<ImageButton>(R.id.buttonClearPhoto)
         
         if (textLabel == null || buttonCapture == null || textFileName == null) {
             android.util.Log.e("FormEditActivity", "Failed to find views in field_photo layout")
@@ -2505,11 +2769,20 @@ class FormEditActivity : AppCompatActivity() {
         
         container.tag = uniqueFieldId
         
-        // Load existing photo filename
+        buttonViewPhoto?.setOnClickListener {
+            showPhotoPreviewDialog(it.tag as? String)
+        }
+        
+        buttonClearPhoto?.setOnClickListener { clearPhotoSelection(container) }
+        
+        // Load existing photo filename and show view button
         val existingValue = fieldValues[uniqueFieldId]
         if (existingValue?.photoFileName != null) {
-            textFileName.text = getString(R.string.photo_filename, existingValue.photoFileName)
-            textFileName.visibility = View.VISIBLE
+            textFileName.text = getString(R.string.photo_filename, getPhotoDisplayName(existingValue) ?: existingValue.photoFileName)
+            photoInfoRow?.visibility = View.VISIBLE
+            val pathOrUri = getPhotoPathOrUri(existingValue)
+            buttonViewPhoto?.tag = pathOrUri
+            buttonViewPhoto?.visibility = if (pathOrUri != null) View.VISIBLE else View.GONE
         }
         
         if (!isReadOnly) {
@@ -2517,8 +2790,14 @@ class FormEditActivity : AppCompatActivity() {
                 currentPhotoFieldId = uniqueFieldId
                 checkCameraPermissionAndCapture()
             }
+            buttonChooseFromGallery?.setOnClickListener {
+                currentPhotoFieldId = uniqueFieldId
+                galleryPickerLauncher.launch("image/*")
+            }
         } else {
             buttonCapture.isEnabled = false
+            buttonChooseFromGallery?.isEnabled = false
+            buttonClearPhoto?.isEnabled = false
         }
         
         return container
@@ -2728,6 +3007,7 @@ class FormEditActivity : AppCompatActivity() {
             FormFieldConfig.FieldType.TEXTAREA,
             FormFieldConfig.FieldType.DATE,
             FormFieldConfig.FieldType.TIME,
+            FormFieldConfig.FieldType.TIMEPICKER,
             FormFieldConfig.FieldType.SELECT,
             FormFieldConfig.FieldType.BARCODE -> {
                 val editText = subFieldView.findViewById<TextInputEditText>(R.id.editText)
@@ -3003,6 +3283,54 @@ class FormEditActivity : AppCompatActivity() {
             dynamicFieldIdFromFormKey(fieldId)?.let { updateAddButtonForDynamicField(it) }
         }
     }
+
+    /**
+     * Shows the timepicker pop-up (hours, minutes, seconds 0–60). On Save, updates [editText] and [fieldValues].
+     * [onAfterValueSet] is called after save (e.g. to refresh dynamic add button).
+     */
+    private fun showTimepickerDialog(fieldId: String, editText: TextInputEditText, onAfterValueSet: (() -> Unit)?) {
+        val currentValue = editText.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: "00:00:00"
+        val (h, m, s) = parseTimepickerValue(currentValue)
+
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_timepicker, null)
+        val numberPickerHours = dialogView.findViewById<NumberPicker>(R.id.numberPickerHours)
+        val numberPickerMinutes = dialogView.findViewById<NumberPicker>(R.id.numberPickerMinutes)
+        val numberPickerSeconds = dialogView.findViewById<NumberPicker>(R.id.numberPickerSeconds)
+        val buttonClear = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.buttonClear)
+        val buttonCancel = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.buttonCancel)
+        val buttonSave = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.buttonSave)
+
+        setupTimepickerSpinners(numberPickerHours, numberPickerMinutes, numberPickerSeconds)
+        numberPickerHours.value = h
+        numberPickerMinutes.value = m
+        numberPickerSeconds.value = s
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setTitle(R.string.timepicker_dialog_title)
+            .create()
+
+        buttonClear.setOnClickListener {
+            numberPickerHours.value = 0
+            numberPickerMinutes.value = 0
+            numberPickerSeconds.value = 0
+        }
+        buttonCancel.setOnClickListener { dialog.dismiss() }
+        buttonSave.setOnClickListener {
+            val value = formatTimepickerValue(
+                numberPickerHours.value,
+                numberPickerMinutes.value,
+                numberPickerSeconds.value
+            )
+            editText.setText(value)
+            fieldValues[fieldId] = FormFieldValue(fieldId, value = value)
+            markFormChanged()
+            onAfterValueSet?.invoke()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
     
     private fun showSelectDialog(fieldConfig: FormFieldConfig, editText: TextInputEditText) {
         val options = fieldConfig.options ?: return
@@ -3013,6 +3341,11 @@ class FormEditActivity : AppCompatActivity() {
                 val selectedValue = options[which]
                 editText.setText(selectedValue)
                 fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = selectedValue)
+                markFormChanged()
+            }
+            .setNegativeButton(getString(R.string.clear)) { _, _ ->
+                editText.setText("")
+                fieldValues.remove(fieldConfig.id)
                 markFormChanged()
             }
             .show()
@@ -3027,6 +3360,12 @@ class FormEditActivity : AppCompatActivity() {
                 val selectedValue = options[which]
                 editText.setText(selectedValue)
                 fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = selectedValue)
+                markFormChanged()
+                dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
+            }
+            .setNegativeButton(getString(R.string.clear)) { _, _ ->
+                editText.setText("")
+                fieldValues.remove(uniqueFieldId)
                 markFormChanged()
                 dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
             }
@@ -3203,6 +3542,10 @@ class FormEditActivity : AppCompatActivity() {
                     editText?.setText(value)
                 }
             }
+            FormFieldConfig.FieldType.TIMEPICKER -> {
+                val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                editText?.setText(fieldValue.value ?: "00:00:00")
+            }
             FormFieldConfig.FieldType.SELECT -> {
                 val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
                 editText?.setText(fieldValue.value)
@@ -3231,6 +3574,20 @@ class FormEditActivity : AppCompatActivity() {
                 }
                 if (fieldValue.gpsLongitude != null) {
                     editTextLongitude?.setText(fieldValue.gpsLongitude.toString())
+                }
+            }
+            FormFieldConfig.FieldType.PHOTO -> {
+                val fileName = fieldValue.photoFileName
+                if (!fileName.isNullOrBlank()) {
+                    val photoInfoRow = fieldView.findViewById<View>(R.id.photoInfoRow)
+                    val textFileName = fieldView.findViewById<TextView>(R.id.textFileName)
+                    val buttonViewPhoto = fieldView.findViewById<ImageButton>(R.id.buttonViewPhoto)
+                    val displayName = getPhotoDisplayName(fieldValue) ?: fileName
+                    val pathOrUri = getPhotoPathOrUri(fieldValue)
+                    textFileName?.text = getString(R.string.photo_filename, displayName)
+                    photoInfoRow?.visibility = View.VISIBLE
+                    buttonViewPhoto?.tag = pathOrUri
+                    buttonViewPhoto?.visibility = if (pathOrUri != null) View.VISIBLE else View.GONE
                 }
             }
             FormFieldConfig.FieldType.DYNAMIC -> {
@@ -3350,6 +3707,13 @@ class FormEditActivity : AppCompatActivity() {
                     editText?.setText(timeValue)
                     fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = timeValue)
                 }
+
+                FormFieldConfig.FieldType.TIMEPICKER -> {
+                    val value = parseTimepickerValue(defaultValue).let { (h, m, s) -> formatTimepickerValue(h, m, s) }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(value)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                }
                 
                 else -> {
                     // Default values not supported for this field type
@@ -3465,6 +3829,13 @@ class FormEditActivity : AppCompatActivity() {
                     editText?.setText(timeValue)
                     fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = timeValue)
                 }
+
+                FormFieldConfig.FieldType.TIMEPICKER -> {
+                    val value = parseTimepickerValue(prefillValue).let { (h, m, s) -> formatTimepickerValue(h, m, s) }
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    editText?.setText(value)
+                    fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = value)
+                }
                 
                 else -> {
                     // Prefills not supported for this field type
@@ -3524,6 +3895,11 @@ class FormEditActivity : AppCompatActivity() {
                     if (value.isNotEmpty()) {
                         values.add(FormFieldValue(fieldId, value = value))
                     }
+                }
+                FormFieldConfig.FieldType.TIMEPICKER -> {
+                    val editText = fieldView.findViewById<TextInputEditText>(R.id.editText)
+                    val value = editText?.text?.toString()?.trim() ?: "00:00:00"
+                    values.add(FormFieldValue(fieldId, value = value))
                 }
                 FormFieldConfig.FieldType.CHECKBOX -> {
                     val checkbox = fieldView.findViewById<CheckBox>(R.id.checkbox)
@@ -3706,6 +4082,7 @@ class FormEditActivity : AppCompatActivity() {
                 FormFieldConfig.FieldType.TEXTAREA,
                 FormFieldConfig.FieldType.DATE,
                 FormFieldConfig.FieldType.TIME,
+                FormFieldConfig.FieldType.TIMEPICKER,
                 FormFieldConfig.FieldType.SELECT,
                 FormFieldConfig.FieldType.SELECT_IMAGE,
                 FormFieldConfig.FieldType.BARCODE -> {
@@ -3785,6 +4162,7 @@ class FormEditActivity : AppCompatActivity() {
                                 FormFieldConfig.FieldType.TEXTAREA,
                                 FormFieldConfig.FieldType.DATE,
                                 FormFieldConfig.FieldType.TIME,
+                                FormFieldConfig.FieldType.TIMEPICKER,
                                 FormFieldConfig.FieldType.SELECT,
                                 FormFieldConfig.FieldType.BARCODE ->
                                     subFieldValue?.value?.trim()?.isEmpty() ?: true

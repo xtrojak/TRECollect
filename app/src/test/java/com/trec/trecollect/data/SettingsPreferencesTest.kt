@@ -159,15 +159,13 @@ class SettingsPreferencesTest {
     fun `getAppUuid generates new UUID when not exists`() {
         whenever(mockSharedPreferences.getString("app_uuid", null)).thenReturn(null)
         whenever(mockEditor.putString(eq("app_uuid"), any())).thenReturn(mockEditor)
-        
-        val result = settingsPreferences.getAppUuid()
+        val settingsPrefsRelease = SettingsPreferences(mockContext, isDevBuildOverride = { false })
+        val result = settingsPrefsRelease.getAppUuid()
         
         assertNotNull(result)
         assertTrue(result.isNotEmpty())
-        // Should be a valid UUID format
         try {
             UUID.fromString(result)
-            // If we get here, it's a valid UUID
         } catch (e: IllegalArgumentException) {
             fail("Generated UUID is not valid: $result")
         }
@@ -179,10 +177,19 @@ class SettingsPreferencesTest {
     fun `getAppUuid returns existing UUID`() {
         val existingUuid = UUID.randomUUID().toString()
         whenever(mockSharedPreferences.getString("app_uuid", null)).thenReturn(existingUuid)
-        
-        val result = settingsPreferences.getAppUuid()
+        val settingsPrefsRelease = SettingsPreferences(mockContext, isDevBuildOverride = { false })
+        val result = settingsPrefsRelease.getAppUuid()
         
         assertEquals(existingUuid, result)
+        verify(mockEditor, never()).putString(eq("app_uuid"), any())
+    }
+
+    @Test
+    fun `getAppUuid returns dev-debug when dev build`() {
+        whenever(mockSharedPreferences.getString("app_uuid", null)).thenReturn(null)
+        val settingsPrefsDev = SettingsPreferences(mockContext, isDevBuildOverride = { true })
+        val result = settingsPrefsDev.getAppUuid()
+        assertEquals("dev-debug", result)
         verify(mockEditor, never()).putString(eq("app_uuid"), any())
     }
 

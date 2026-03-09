@@ -255,7 +255,7 @@ class MainViewModel(
             return CreateSiteResult.Error("Storage folder not configured. Please select a folder in Settings.")
         }
         
-        // Try to get the TREC_logsheets folder (the stored URI should point to TREC_logsheets)
+        // Try to get the TRECollect_logsheets folder (the stored URI should point to TRECollect_logsheets)
         val trecFolder = try {
             folderHelper.getTrecLogsheetsFolder(settingsPreferences)
         } catch (e: Exception) {
@@ -263,28 +263,28 @@ class MainViewModel(
         }
         
         if (trecFolder == null) {
-            return CreateSiteResult.Error("TREC_logsheets folder not found. Please reconfigure storage in Settings.")
+            return CreateSiteResult.Error("TRECollect_logsheets folder not found. Please reconfigure storage in Settings.")
         }
         
-        // CRITICAL: Verify we have the TREC_logsheets folder by checking its name
+        // CRITICAL: Verify we have the TRECollect_logsheets folder by checking its name
         val folderName = trecFolder.name
             AppLogger.d("MainViewModel", "Retrieved folder name: '$folderName', expected: '${FolderStructureHelper.PARENT_FOLDER_NAME}'")
         
         if (folderName != FolderStructureHelper.PARENT_FOLDER_NAME) {
-            // The URI might point to the parent folder, try to find TREC_logsheets inside it
-            AppLogger.w("MainViewModel", "Folder name mismatch! Looking for TREC_logsheets inside '$folderName'...")
+            // The URI might point to the parent folder, try to find TRECollect_logsheets inside it
+            AppLogger.w("MainViewModel", "Folder name mismatch! Looking for TRECollect_logsheets inside '$folderName'...")
             val actualTrecFolder = trecFolder.findFile(FolderStructureHelper.PARENT_FOLDER_NAME)
             if (actualTrecFolder != null && actualTrecFolder.exists()) {
-                AppLogger.d("MainViewModel", "Found TREC_logsheets inside parent folder")
-                // Use the actual TREC_logsheets folder
+                AppLogger.d("MainViewModel", "Found TRECollect_logsheets inside parent folder")
+                // Use the actual TRECollect_logsheets folder
                 val verifiedTrecFolder = actualTrecFolder
                 return createSiteInFolder(trimmedName, verifiedTrecFolder)
             } else {
-                return CreateSiteResult.Error("TREC_logsheets folder not found. The stored URI points to '$folderName' instead. Please reconfigure storage in Settings.")
+                return CreateSiteResult.Error("TRECollect_logsheets folder not found. The stored URI points to '$folderName' instead. Please reconfigure storage in Settings.")
             }
         }
         
-        // Continue with the verified TREC_logsheets folder
+        // Continue with the verified TRECollect_logsheets folder
         return createSiteInFolder(trimmedName, trecFolder)
     }
 
@@ -401,6 +401,8 @@ class MainViewModel(
                 _finishedSites.value = current
             }
             loadSitesFromFolders(force = true)
+            // Do not call loadSitesFromFolders here: we already updated _finishedSites in-place.
+            // A full reload from disk can overwrite with empty/stale data (e.g. in tests or when folder is not ready).
         } catch (e: Exception) {
             AppLogger.e("MainViewModel", "Error updating site upload status: ${e.message}", e)
         }
@@ -431,9 +433,9 @@ class MainViewModel(
     }
     
     private suspend fun createSiteInFolder(siteName: String, trecFolder: DocumentFile): CreateSiteResult {
-        // Check if TREC_logsheets folder exists and is accessible (name already verified by createSite() caller)
+        // Check if TRECollect_logsheets folder exists and is accessible (name already verified by createSite() caller)
         if (!trecFolder.canRead() || !trecFolder.canWrite()) {
-            return CreateSiteResult.Error("Cannot access TREC_logsheets folder. Please check permissions in Settings.")
+            return CreateSiteResult.Error("Cannot access TRECollect_logsheets folder. Please check permissions in Settings.")
         }
 
         val (ongoingFolder, folderError) = getOngoingFolderForWrite()
@@ -461,7 +463,7 @@ class MainViewModel(
         val createdFolder = ongoingFolder.createDirectory(siteName)
         if (createdFolder == null) {
             AppLogger.e("MainViewModel", "Failed to create site folder: name='$siteName'")
-            return CreateSiteResult.Error("Could not create site folder in TREC_logsheets/ongoing/")
+            return CreateSiteResult.Error("Could not create site folder in TRECollect_logsheets/ongoing/")
         }
         
         // If created folder name differs from requested, treat as error and remove wrong folder

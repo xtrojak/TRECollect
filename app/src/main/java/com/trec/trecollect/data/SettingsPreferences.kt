@@ -3,8 +3,9 @@ package com.trec.trecollect.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.trec.trecollect.BuildConfig
 
-class SettingsPreferences(context: Context) {
+class SettingsPreferences(context: Context, private val isDevBuildOverride: (() -> Boolean)? = null) {
     private val prefs: SharedPreferences = context.getSharedPreferences(
         PREFS_NAME,
         Context.MODE_PRIVATE
@@ -22,8 +23,16 @@ class SettingsPreferences(context: Context) {
         private const val KEY_LOGSHEETS_DOWNLOADED = "logsheets_downloaded"
         
         const val DEFAULT_MAP_EXPIRY_DAYS = 30L // Default: 30 days
+        
+        /** Fixed identifier for debug builds so all dev data goes to one ownCloud folder. */
+        private val DEV_BUILD_UUID: String = "dev-debug"
     }
     
+    /** True for debug builds; use fixed "dev-debug" UUID. Release uses generated/stored UUID. */
+    fun isDevBuild(): Boolean {
+        isDevBuildOverride?.let { return it() }
+        return BuildConfig.DEBUG
+    }
     fun getSubmissionPath(): String {
         return prefs.getString(KEY_SUBMISSION_PATH, "") ?: ""
     }
@@ -79,15 +88,26 @@ class SettingsPreferences(context: Context) {
     }
     
     /**
-     * Gets the app UUID (generates if not exists)
+     * Gets the app UUID. In debug builds returns "dev-debug" so all dev data is grouped.
+     * In release, generates once and persists.
      */
     fun getAppUuid(): String {
+        if (isDevBuild()) return DEV_BUILD_UUID
         var uuid = prefs.getString(KEY_APP_UUID, null)
         if (uuid == null) {
             uuid = java.util.UUID.randomUUID().toString()
             prefs.edit { putString(KEY_APP_UUID, uuid) }
         }
         return uuid
+    }
+
+    /**
+     * Sets the app UUID (e.g. when read from the UUID file in the output folder).
+     * No-op in debug builds so "dev-debug" is always used.
+     */
+    fun setAppUuid(uuid: String) {
+        if (isDevBuild()) return
+        prefs.edit { putString(KEY_APP_UUID, uuid) }
     }
     
     /**

@@ -13,21 +13,76 @@
         android:textStyle="bold"
         android:layout_marginBottom="8dp" />
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/buttonCapture"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/take_photo"
-        android:icon="@android:drawable/ic_menu_camera" />
-
-    <TextView
-        android:id="@+id/textFileName"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonCapture"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/take_photo"
+            android:drawablePadding="4dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:layout_marginEnd="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonChooseFromGallery"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/choose_photo"
+            android:drawablePadding="4dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/photoInfoRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:layout_marginTop="8dp"
-        android:textSize="12sp"
-        android:textColor="?android:attr/textColorSecondary"
-        android:visibility="gone" />
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/textFileName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <ImageButton
+            android:id="@+id/buttonViewPhoto"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:src="@drawable/ic_visibility"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/view_photo"
+            android:scaleType="centerInside"
+            android:padding="8dp" />
+
+        <ImageButton
+            android:id="@+id/buttonClearPhoto"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:src="@android:drawable/ic_menu_delete"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/clear_photo"
+            android:scaleType="centerInside"
+            android:padding="8dp" />
+
+    </LinearLayout>
 
 </LinearLayout>
-
