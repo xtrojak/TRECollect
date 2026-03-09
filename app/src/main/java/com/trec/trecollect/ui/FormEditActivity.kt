@@ -3343,6 +3343,11 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = selectedValue)
                 markFormChanged()
             }
+            .setNegativeButton(getString(R.string.clear)) { _, _ ->
+                editText.setText("")
+                fieldValues.remove(fieldConfig.id)
+                markFormChanged()
+            }
             .show()
     }
     
@@ -3355,6 +3360,12 @@ class FormEditActivity : AppCompatActivity() {
                 val selectedValue = options[which]
                 editText.setText(selectedValue)
                 fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = selectedValue)
+                markFormChanged()
+                dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
+            }
+            .setNegativeButton(getString(R.string.clear)) { _, _ ->
+                editText.setText("")
+                fieldValues.remove(uniqueFieldId)
                 markFormChanged()
                 dynamicFieldIdFromFormKey(uniqueFieldId)?.let { updateAddButtonForDynamicField(it) }
             }
