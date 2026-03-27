@@ -1435,7 +1435,7 @@ class FormEditActivity : AppCompatActivity() {
             picker.maxValue = 59
             picker.displayedValues = displayedValues
             picker.value = 0
-            picker.wrapSelectorWheel = false
+            picker.wrapSelectorWheel = true
         }
     }
 
