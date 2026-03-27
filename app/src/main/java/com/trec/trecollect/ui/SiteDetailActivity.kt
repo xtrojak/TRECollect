@@ -53,6 +53,7 @@ class SiteDetailActivity : AppCompatActivity() {
     // Flag to prevent duplicate setupFormsList calls
     private var isSettingUpForms = false
     private var formsListInitialized = false
+    private var isFinalizeFlowInProgress = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -322,8 +323,8 @@ class SiteDetailActivity : AppCompatActivity() {
             finalizeItem?.isVisible = true
             renameItem?.isVisible = true
             deleteItem?.isVisible = true
-            // Submit button is always enabled; if mandatory forms are missing, the dialog will explain
-            finalizeItem?.isEnabled = true
+            // Disable while submit-check/finalize flow is already in progress (prevents double triggers).
+            finalizeItem?.isEnabled = !isFinalizeFlowInProgress
         }
         
         return super.onPrepareOptionsMenu(menu)
@@ -332,6 +333,12 @@ class SiteDetailActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_finalize -> {
+                if (isFinalizeFlowInProgress) {
+                    Toast.makeText(this, "Please wait, site submission is already in progress", Toast.LENGTH_SHORT).show()
+                    return true
+                }
+                isFinalizeFlowInProgress = true
+                invalidateOptionsMenu()
                 showFinalizeConfirmationDialog()
                 true
             }
@@ -383,103 +390,138 @@ class SiteDetailActivity : AppCompatActivity() {
     }
     
     private fun showFinalizeConfirmationDialog() {
+        if (!isFinalizeFlowInProgress) {
+            isFinalizeFlowInProgress = true
+            invalidateOptionsMenu()
+        }
+
+        @Suppress("DEPRECATION")
+        val checkProgressDialog = android.app.ProgressDialog.show(
+            this@SiteDetailActivity,
+            "Checking",
+            "Checking required forms, please wait...",
+            true,
+            false
+        )
+
         lifecycleScope.launch {
-            val formFileHelper = FormFileHelper(this@SiteDetailActivity)
-            
-            // OPTIMIZATION: Use cached forms data if available, otherwise load
-            val formsBySection = cachedBaseFormsBySection ?: run {
-                val sections = withContext(Dispatchers.IO) {
-                    PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
-                }
-                sections.associateWith { section ->
-                    PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
-                }
-            }
-            
-            // OPTIMIZATION: Pre-compute instance indices for all forms to avoid recalculation
-            val instanceIndexMap = mutableMapOf<Triple<String, String, Int>, Int>() // (formId, section, orderInSection) -> instanceIndex
-            formsBySection.forEach { (section, forms) ->
-                forms.forEachIndexed { orderInSection, form ->
-                    var instanceIndex = 0
-                    for (i in 0 until orderInSection) {
-                        if (forms[i].id == form.id) {
-                            instanceIndex++
+            try {
+                // Run full mandatory-form check in IO to keep UI responsive and block repeated taps.
+                val missingForms = withContext(Dispatchers.IO) {
+                    val formFileHelper = FormFileHelper(this@SiteDetailActivity)
+
+                    // OPTIMIZATION: Use cached forms data if available, otherwise load
+                    val formsBySection = cachedBaseFormsBySection ?: run {
+                        val sections = PredefinedForms.getSectionsForSite(this@SiteDetailActivity, site.name)
+                        sections.associateWith { section ->
+                            PredefinedForms.getFormsBySectionForSite(this@SiteDetailActivity, site.name, section)
                         }
                     }
-                    instanceIndexMap[Triple(form.id, section, orderInSection)] = instanceIndex
-                }
-            }
-            
-            // Check which mandatory form instances are missing (use each form's mandatory flag, not form id)
-            val missingForms = formsBySection.values.flatten()
-                .filter { it.mandatory }
-                .filter { form ->
-                    val formsInSection = formsBySection[form.section] ?: emptyList()
-                    val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
-                        .takeIf { it >= 0 } ?: 0
-                    val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
-                    val isSubmitted = if (form.isDynamic) {
-                        val instances = formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
-                        instances.any { subIndex ->
-                            formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex, subIndex)
+
+                    // OPTIMIZATION: Pre-compute instance indices for all forms to avoid recalculation
+                    val instanceIndexMap = mutableMapOf<Triple<String, String, Int>, Int>() // (formId, section, orderInSection) -> instanceIndex
+                    formsBySection.forEach { (section, forms) ->
+                        forms.forEachIndexed { orderInSection, form ->
+                            var instanceIndex = 0
+                            for (i in 0 until orderInSection) {
+                                if (forms[i].id == form.id) {
+                                    instanceIndex++
+                                }
+                            }
+                            instanceIndexMap[Triple(form.id, section, orderInSection)] = instanceIndex
                         }
-                    } else {
-                        formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
                     }
-                    !isSubmitted
+
+                    // Check which mandatory form instances are missing (use each form's mandatory flag, not form id)
+                    formsBySection.values.flatten()
+                        .filter { it.mandatory }
+                        .filter { form ->
+                            val formsInSection = formsBySection[form.section] ?: emptyList()
+                            val formPosition = formsInSection.indexOfFirst { it.id == form.id && it.name == form.name }
+                                .takeIf { it >= 0 } ?: 0
+                            val instanceIndex = instanceIndexMap[Triple(form.id, form.section, formPosition)] ?: 0
+                            val isSubmitted = if (form.isDynamic) {
+                                val instances = formFileHelper.getDynamicFormInstances(site.name, form.id, instanceIndex)
+                                instances.any { subIndex ->
+                                    formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex, subIndex)
+                                }
+                            } else {
+                                formFileHelper.isFormSubmitted(site.name, form.id, instanceIndex)
+                            }
+                            !isSubmitted
+                        }
                 }
+                checkProgressDialog.dismiss()
             
-            if (missingForms.isNotEmpty()) {
-                val missingNames = missingForms.map { it.name }
-                // Log complete list for debugging
-                AppLogger.d("SiteDetailActivity", "Cannot finalize site \"${site.name}\": missing mandatory forms (${missingNames.size}): ${missingNames.joinToString(", ")}")
-                android.util.Log.d("SiteDetailActivity", "Cannot finalize: missing mandatory forms: ${missingNames.joinToString(", ")}")
-                
-                val message = if (missingNames.size <= 3) {
-                    "The following mandatory forms are not filled:\n\n• ${missingNames.joinToString("\n• ")}"
-                } else {
-                    "Many mandatory forms are not filled yet (${missingNames.size} forms). Complete all required forms before submitting the site."
-                }
-                AlertDialog.Builder(this@SiteDetailActivity)
-                    .setTitle("Cannot submit site")
-                    .setMessage(message)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
-                return@launch
-            }
-            
-            AlertDialog.Builder(this@SiteDetailActivity)
-                .setTitle("Submit Site")
-                .setMessage("Are you sure you want to submit \"${site.name}\"? This will move the site to finished sites and cannot be undone.")
-                .setPositiveButton("Submit") { _, _ ->
-                    // Show loading indicator
-                    @Suppress("DEPRECATION")
-                    val progressDialog = android.app.ProgressDialog.show(
-                        this@SiteDetailActivity,
-                        "Submitting",
-                        "Moving site to finished...",
-                        true,
-                        false
-                    )
+                if (missingForms.isNotEmpty()) {
+                    val missingNames = missingForms.map { it.name }
+                    // Log complete list for debugging
+                    AppLogger.d("SiteDetailActivity", "Cannot finalize site \"${site.name}\": missing mandatory forms (${missingNames.size}): ${missingNames.joinToString(", ")}")
+                    android.util.Log.d("SiteDetailActivity", "Cannot finalize: missing mandatory forms: ${missingNames.joinToString(", ")}")
                     
-                    lifecycleScope.launch {
-                        val result = viewModel.finalizeSite(site)
-                        progressDialog.dismiss()
+                    val message = if (missingNames.size <= 3) {
+                        "The following mandatory forms are not filled:\n\n• ${missingNames.joinToString("\n• ")}"
+                    } else {
+                        "Many mandatory forms are not filled yet (${missingNames.size} forms). Complete all required forms before submitting the site."
+                    }
+                    AlertDialog.Builder(this@SiteDetailActivity)
+                        .setTitle("Cannot submit site")
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                    isFinalizeFlowInProgress = false
+                    invalidateOptionsMenu()
+                    return@launch
+                }
+            
+                AlertDialog.Builder(this@SiteDetailActivity)
+                    .setTitle("Submit Site")
+                    .setMessage("Are you sure you want to submit \"${site.name}\"? This will move the site to finished sites and cannot be undone.")
+                    .setPositiveButton("Submit") { _, _ ->
+                        // Show loading indicator
+                        @Suppress("DEPRECATION")
+                        val progressDialog = android.app.ProgressDialog.show(
+                            this@SiteDetailActivity,
+                            "Submitting",
+                            "Moving site to finished...",
+                            true,
+                            false
+                        )
                         
-                        when (result) {
-                            is MainViewModel.FinalizeSiteResult.Success -> {
-                                Toast.makeText(this@SiteDetailActivity, "Site finalized", Toast.LENGTH_SHORT).show()
-                                // Navigate to MainActivity with site so it starts upload in its ViewModel (checkbox will update)
-                                navigateToHomeWithSiteToUpload(result.siteToUpload)
-                            }
-                            is MainViewModel.FinalizeSiteResult.Error -> {
-                                Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
+                        lifecycleScope.launch {
+                            val result = viewModel.finalizeSite(site)
+                            progressDialog.dismiss()
+                            
+                            when (result) {
+                                is MainViewModel.FinalizeSiteResult.Success -> {
+                                    Toast.makeText(this@SiteDetailActivity, "Site finalized", Toast.LENGTH_SHORT).show()
+                                    // Navigate to MainActivity with site so it starts upload in its ViewModel (checkbox will update)
+                                    navigateToHomeWithSiteToUpload(result.siteToUpload)
+                                }
+                                is MainViewModel.FinalizeSiteResult.Error -> {
+                                    Toast.makeText(this@SiteDetailActivity, result.message, Toast.LENGTH_LONG).show()
+                                    isFinalizeFlowInProgress = false
+                                    invalidateOptionsMenu()
+                                }
                             }
                         }
                     }
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
+                    .setNegativeButton("Cancel") { _, _ ->
+                        isFinalizeFlowInProgress = false
+                        invalidateOptionsMenu()
+                    }
+                    .setOnCancelListener {
+                        isFinalizeFlowInProgress = false
+                        invalidateOptionsMenu()
+                    }
+                    .show()
+            } catch (e: Exception) {
+                checkProgressDialog.dismiss()
+                isFinalizeFlowInProgress = false
+                invalidateOptionsMenu()
+                AppLogger.e("SiteDetailActivity", "Error during submit-site check: ${e.message}", e)
+                Toast.makeText(this@SiteDetailActivity, "Error checking site before submit", Toast.LENGTH_LONG).show()
+            }
         }
     }
     
