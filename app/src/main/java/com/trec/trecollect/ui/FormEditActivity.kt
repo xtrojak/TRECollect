@@ -41,6 +41,8 @@ import com.trec.trecollect.R
 import com.trec.trecollect.data.*
 import com.trec.trecollect.util.AppLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -74,6 +76,9 @@ class FormEditActivity : AppCompatActivity() {
     private val barcodeScanner = BarcodeScanning.getClient()
     private var isFormSaved = false // Track if form was just saved
     private val manuallyEditedCalculatedFields = mutableSetOf<String>() // Track manually edited calculated fields
+    private var autosaveJob: Job? = null
+    private var isSaveInProgress: Boolean = false
+    private var isAutosaveInProgress: Boolean = false
     
     /** Debounce Tab/Enter from barcode scanners: some devices deliver the key twice, causing two focus moves. */
     private var lastFocusTraversalKeyTimeNs = 0L
@@ -91,6 +96,7 @@ class FormEditActivity : AppCompatActivity() {
     // Helper to mark form as changed
     private fun markFormChanged() {
         isFormSaved = false
+        scheduleAutosaveDebounced()
     }
     
     /**
@@ -803,6 +809,39 @@ class FormEditActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+    }
+
+    override fun onStop() {
+        autosaveJob?.cancel()
+        autosaveJob = null
+        super.onStop()
+    }
+
+    private fun scheduleAutosaveDebounced() {
+        // Autosave is only for editable drafts, never for read-only or already-submitted forms.
+        if (isReadOnly || wasLoadedAsSubmitted) return
+        autosaveJob?.cancel()
+        autosaveJob = lifecycleScope.launch {
+            delay(AUTOSAVE_DEBOUNCE_MS)
+            autosaveDraftIfNeeded()
+        }
+    }
+
+    private fun autosaveDraftIfNeeded() {
+        if (isReadOnly || wasLoadedAsSubmitted) return
+        if (isSaveInProgress || isAutosaveInProgress) return
+        if (!hasUnsavedChanges()) return
+
+        // Do not create an initial file for an empty form.
+        val currentValues = buildCurrentFormValuesForSignature()
+        if (currentValues.isEmpty()) return
+
+        isAutosaveInProgress = true
+        saveForm(isDraft = true, fromAutoSave = true)
     }
     
     /**
@@ -1768,6 +1807,7 @@ class FormEditActivity : AppCompatActivity() {
     
     companion object {
         private const val REQUEST_CODE_GPS_PICKER = 2001
+        private const val AUTOSAVE_DEBOUNCE_MS = 10_000L
         private const val FOCUS_TRAVERSAL_DEBOUNCE_MS = 400L
         private const val FOCUS_CHANGE_DEBOUNCE_MS = 120L
         private const val HID_NEW_DEVICE_SUPPRESS_MS = 500L
@@ -4217,12 +4257,15 @@ class FormEditActivity : AppCompatActivity() {
             .show()
     }
     
-    private fun saveForm(isDraft: Boolean) {
+    private fun saveForm(isDraft: Boolean, fromAutoSave: Boolean = false) {
+        if (isSaveInProgress) return
+        isSaveInProgress = true
         // Never save as draft when editing an already-submitted form
         val saveAsDraft = isDraft && !wasLoadedAsSubmitted
         lifecycleScope.launch {
-            // Collect current field values from UI
-            val currentValues = collectFieldValues()
+            try {
+                // Collect current field values from UI
+                val currentValues = collectFieldValues()
             
             // Identify which fields are dynamic widgets (to exclude their sub-fields)
             val dynamicFieldIds = formConfig.fields
@@ -4279,9 +4322,9 @@ class FormEditActivity : AppCompatActivity() {
                 fieldValues = allValues.values.toList()
             )
             
-            val success = formFileHelper.saveFormData(formData, orderInSection, subIndex)
-            
-            if (success) {
+                val success = formFileHelper.saveFormData(formData, orderInSection, subIndex)
+                
+                if (success) {
                 // Update initial state to match current state
                 initialFieldValues.clear()
                 initialFieldValues.putAll(allValues)
@@ -4290,7 +4333,11 @@ class FormEditActivity : AppCompatActivity() {
                 
                 if (saveAsDraft) {
                     AppLogger.i("FormEditActivity", "Draft saved: site=$siteName, form=$formId")
-                    Toast.makeText(this@FormEditActivity, "Draft saved", Toast.LENGTH_SHORT).show()
+                    if (!fromAutoSave) {
+                        Toast.makeText(this@FormEditActivity, "Draft saved", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@FormEditActivity, "Draft autosaved", Toast.LENGTH_SHORT).show()
+                    }
                 } else {
                     AppLogger.i("FormEditActivity", "Form submitted: site=$siteName, form=$formId")
                     Toast.makeText(this@FormEditActivity, "Form submitted", Toast.LENGTH_SHORT).show()
@@ -4305,13 +4352,19 @@ class FormEditActivity : AppCompatActivity() {
                     )
                     finish()
                 }
-            } else {
-                AppLogger.e("FormEditActivity", "Failed to save form: site=$siteName, form=$formId, isDraft=$saveAsDraft")
-                Toast.makeText(
-                    this@FormEditActivity,
-                    "Error saving form",
-                    Toast.LENGTH_LONG
-                ).show()
+                } else {
+                    AppLogger.e("FormEditActivity", "Failed to save form: site=$siteName, form=$formId, isDraft=$saveAsDraft")
+                    if (!fromAutoSave) {
+                        Toast.makeText(
+                            this@FormEditActivity,
+                            "Error saving form",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } finally {
+                if (fromAutoSave) isAutosaveInProgress = false
+                isSaveInProgress = false
             }
         }
     }
