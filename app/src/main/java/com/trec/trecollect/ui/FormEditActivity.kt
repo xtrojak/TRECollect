@@ -1403,7 +1403,12 @@ class FormEditActivity : AppCompatActivity() {
     /** Timepicker: shows value (HH:MM:SS) in the list; click opens pop-up with spinners and Save/Clear/Cancel. */
     private fun createTimepickerField(fieldConfig: FormFieldConfig): View {
         val (textInputLayout, editText) = inflateTextInputField(fieldConfig)
-        editText.setText("00:00:00")
+        val initialValue = fieldValues[fieldConfig.id]?.value
+            ?.takeIf { it.isNotBlank() }
+            ?.let { parseTimepickerValue(it) }
+            ?.let { (h, m, s) -> formatTimepickerValue(h, m, s) }
+            ?: "00:00:00"
+        editText.setText(initialValue)
         editText.isFocusable = false
         editText.isClickable = true
 
@@ -1416,7 +1421,6 @@ class FormEditActivity : AppCompatActivity() {
             }
         }
 
-        fieldValues[fieldConfig.id] = FormFieldValue(fieldConfig.id, value = "00:00:00")
         return textInputLayout
     }
 
@@ -2629,7 +2633,12 @@ class FormEditActivity : AppCompatActivity() {
 
     private fun createTimepickerFieldForSubField(fieldConfig: FormFieldConfig, uniqueFieldId: String, parent: ViewGroup): View {
         val (textInputLayout, editText) = inflateTextInputFieldInto(fieldConfig, parent, uniqueFieldId)
-        editText.setText("00:00:00")
+        val initialValue = fieldValues[uniqueFieldId]?.value
+            ?.takeIf { it.isNotBlank() }
+            ?.let { parseTimepickerValue(it) }
+            ?.let { (h, m, s) -> formatTimepickerValue(h, m, s) }
+            ?: "00:00:00"
+        editText.setText(initialValue)
         editText.isFocusable = false
         editText.isClickable = true
 
@@ -2644,7 +2653,6 @@ class FormEditActivity : AppCompatActivity() {
             editText.setTextIsSelectable(true)
         }
 
-        fieldValues[uniqueFieldId] = FormFieldValue(uniqueFieldId, value = "00:00:00")
         return textInputLayout
     }
     
